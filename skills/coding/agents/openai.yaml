@@ -1,0 +1,4 @@
+interface:
+  display_name: "Coding"
+  short_description: "Review, diagnose, or change code: good code, fix shape, verification, and context rules"
+  default_prompt: "Use $coding for this code task."

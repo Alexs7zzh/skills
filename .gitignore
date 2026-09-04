@@ -1,0 +1,51 @@
+# Local development references
+/references/
+/TODO.md
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+
+# JavaScript dependencies and caches
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+
+# Python environments and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build, test, and coverage output
+/build/
+/dist/
+/coverage/
+.coverage
+.coverage.*
+htmlcov/
+*.log
+
+# Temporary files
+.cache/
+/tmp/
+/temp/
+*.tmp
