@@ -49,3 +49,6 @@ htmlcov/
 /tmp/
 /temp/
 *.tmp
+
+# Retired skill variants, kept locally, never published
+/archive/
