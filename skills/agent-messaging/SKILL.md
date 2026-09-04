@@ -11,7 +11,7 @@ The receiver is an agent with the codebase, its tools, and its own skills. It re
 
 A message that hands over work carries these slots, in this order, and nothing else. A slot you cannot fill is a reason to wait, not to pad. A reply to a question is the answer alone; a ruling is one line naming its option.
 
-- **Goal.** One sentence: what is true when the receiver is done.
+- **Goal.** What is true when the receiver is done, and what bothers us now that makes it worth doing. One or two sentences.
 - **Acceptance.** The check that shows it, stated so the receiver can run it and read the answer: a test that fails before and passes after, a log line that appears, a command's exit. "Understood" and "verified" are not checks.
 - **Facts.** What you know that the receiver cannot find in seconds: the claim and its site as file:line, the changeset, what was tried and what it showed, and each fact's certainty. Mark belief as belief: "the code is believed correct at step 3" lets the receiver treat a failing check as a question about the check before a bug in the code.
 - **Constraints.** Rulings by their option label, the workspace and target, what must not change, who checks in.
@@ -25,6 +25,7 @@ A message that hands over work carries these slots, in this order, and nothing e
 - **One message, one job.** A question from the receiver gets the answer, never the brief again.
 - **A message is not a change.** It is never countersigned, versioned, reviewed for wording, or tested. The whole review is one read for a false premise: a fact the receiver would act on that is wrong. The receiver's result is the test.
 - **Never write what the receiver will write itself:** its plan, its evidence layout, its retries, its restore steps.
+- **A reminder is one clause.** "Update the docs too" is fine. Expanding it into which docs and what to write is method, and the receiver knows the docs better once it has done the work.
 
 ## Example
 
