@@ -29,7 +29,7 @@ Inventory everything the change touches. Read the changed files plus enough surr
 
 When you go as far as fix, each Bug or Restructure gets its test and fix per good-change.md, shelved with its red and green logs, and a fresh subagent reviews the diff with the two questions in deep.md step 7.
 
-Escalate mid-review if a change you took as small turns out to touch a risk surface. Say you are escalating, then read [deep.md](./deep.md). Never run a deep review's judgment on a quick review's evidence.
+Escalate mid-review if a change you took as small turns out to touch a risk surface. Say you are escalating, run `"$LEDGER_DIR/bin/ledger.ts" run escalate hunks=<changed-hunks>` if the quick run already has a database, then read [deep.md](./deep.md). Never run a deep review's judgment on a quick review's evidence.
 
 ## Report
 

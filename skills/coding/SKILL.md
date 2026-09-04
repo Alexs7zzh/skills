@@ -81,6 +81,6 @@ Probes are allowed under every mode, and encouraged whenever running code settle
 - Never change the behavior under review or diagnosis, and never count a probe as a fix.
 - Back up and hash each file before editing it. Remove every tagged edit before you release the checkout. When reporting, verify the checkout against the reviewed revision rather than the SCM status line.
 - A temporary test that goes red on an issue is the start of that issue's regression test. Keep it with the proposed fix.
-- In a shared checkout, take the checkout in the database before any edit, probes included. deep.md, Shared checkout, says how.
+- In a shared checkout, take the checkout in the database before any edit, probes included. An isolated cold pass records a needed code probe and waits until import to run it. deep.md, Shared checkout, says how.
 
 A diagnostic log meant to ship for a release cycle is not a probe. It is a logging change, and it follows the project's logging policy.

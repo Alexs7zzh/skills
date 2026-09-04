@@ -4,7 +4,7 @@ From issue to check-in: how an issue is proved, what it is labeled, how severe i
 
 ## Rows in the database
 
-Six kinds of row. Each has its own revision and its own marks:
+Six kinds of row. Each has its own revision; Issue, Proposed fix, and Shelved fix are the rows that receive independent-review marks:
 
 | Row | It answers | States |
 |---|---|---|
@@ -66,6 +66,8 @@ Standing rulings on labels:
 When two verified issues together mean something neither means alone, a new failure, a shared root cause, or a higher severity, write that as a new issue linked to both and verify it like any issue. When two proposed fixes overlap, conflict, share a structure, or must go in an order, note that on both before either is shelved. Reconsider only the issues linked to the one that changed.
 
 ## Severity
+
+Record an impact rank on every verified or assumed issue: 1 is highest user impact and 5 is lowest. The report uses it to rank substantive issues; Hardening, telemetry-quality, and Nit stay in their own batches after them.
 
 Impact bounds downgrade the instance, never the issue. "Harmless as observed" is a severity note, not a disposition. Release-gating issues need step 4; a release-gating issue may stay assumed only after stating why no fifteen-minute probe exists, and it stays visible.
 

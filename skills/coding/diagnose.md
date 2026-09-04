@@ -12,7 +12,7 @@ Name plain or deep beside how far you go in your first line.
 | Several independent symptoms, exports, or issue lists; or the user asked for an exhaustive diagnosis | Deep. Read [deep.md](./deep.md) and choose your role at the top. |
 | The user asked for a deep run, or a cause sits on a risk surface | Deep. Read [deep.md](./deep.md) and choose your role at the top. |
 
-Risk surfaces are listed in good-code.md. Escalate mid-diagnosis if a cause lands on a risk surface: say you are escalating, then read deep.md.
+Risk surfaces are listed in good-code.md. Escalate mid-diagnosis if a cause lands on a risk surface: say you are escalating, run `"$LEDGER_DIR/bin/ledger.ts" run escalate` if the plain run already has a database, then read deep.md.
 
 ## Build the feedback loop first
 

@@ -1,19 +1,36 @@
-# Ledger implementation
+# Coding ledger implementation
 
-`ledger.ts` is the executable deep-run ledger. It requires Node.js 22.18 or newer, uses Node's built-in SQLite driver, and has no installed dependencies. Start a run with the source copy; `init` pins `ledger.ts`, `ledger.sql`, and a compatibility launcher under `<run>/bin`. Use the pinned copy for the rest of a live run.
+The coding ledger is a bundled TypeScript command-line program for review and
+diagnosis runs. Its protocol is a typed reducer: commands produce validated state
+transitions, and SQLite stores the current state plus an append-only transition
+journal. Effect v4 supplies the CLI and SQLite services. `fast-check` exercises
+the reducer independently of the command line and database.
 
-```sh
-export LEDGER=/absolute/path/to/coding/scripts/ledger.ts
-export LEDGER_DIR=/path/to/run LEDGER_ME=master
-"$LEDGER" --help
-```
-
-The schema remains explicit SQL. SQLite constraints and triggers protect immutable revisions and legal state transitions; TypeScript owns the command grammar, role checks, dependency checks, atomic signing, pinning, rendering, and notifications. Public mutations share the retained helper's run-directory lock as well as SQLite transactions. The root `ledger.sh` and `ledger.sql` remain together as the schema-v8 reference and entry point for already-pinned old runs. New runs do not migrate old ledgers automatically.
-
-Effect v4 RC and Drizzle were evaluated for this port. Neither is used. Effect's service and error channels would help a larger asynchronous application, but this helper is a synchronous, single-file command pinned into arbitrary run directories. Adopting Effect would require distributing a package tree or generated bundle, and the v4 CLI and SQL modules are still under `effect/unstable`. Drizzle would obscure the trigger-heavy state constraints without replacing them. Reconsider either only if this workspace adopts a build and dependency-distribution contract.
-
-Run the focused implementation checks with:
+Build the self-contained executable with Node.js 22.16 or newer:
 
 ```sh
-node --no-warnings --test skills/coding/scripts/ledger.test.ts
+cd skills/coding/scripts
+npm install
+npm run build
 ```
+
+The build writes executable `ledger.mjs`. A new run copies that bundle under
+`<run>/bin`; all later commands use the pinned copy so an installed skill update
+cannot change a live run's protocol.
+
+Treat `LEDGER_DIR` as trusted executable state. Its manifest hashes detect a
+changed pin; they do not authenticate a run directory supplied by someone else.
+
+The CLI is organized around the protocol's work objects: coverage, issue,
+question, proposed fix, shelved fix, and check-in. It also manages issue takes,
+the single workspace checkout, handoffs, status, reporting, and per-agent
+timelines. Run `./ledger.mjs --help` for the authoritative command grammar.
+
+Run the complete implementation checks with:
+
+```sh
+npm run check
+```
+
+The TypeScript bundle is the only supported implementation. It refuses an
+incompatible database instead of guessing at a migration.
