@@ -7,6 +7,7 @@ Properties of code at rest, independent of any task. Read the lenses a change to
 ## Values
 
 - **Defense follows ownership.** Guards belong at boundaries the component does not control. Inside a controlled mechanism, make misuse unrepresentable or fix the call site. A guard against a case the contract excludes is itself a restructure candidate.
+- **Complexity lives behind the boundary that owns the failure.** A subsystem recovers under its own recorded policy and shows its callers only the states they must react to. Size a design by what crosses that boundary, the states other modules see and the dependencies between them, never by line count. Complexity inside is earned when it deletes a bug class or owns a failure the caller must not see. Complexity for a future nobody asked for is not.
 - **Constants carry their reason.** A hardcoded value describing anything external, a rate, size, limit or timeout, states its source at the declaration: contract, measurement, or derivation. It is a claim about someone else's system, so name who guarantees it; the provider's own docs usually answer in one read.
 - **One authoritative home per fact.** Illegal states unrepresentable. Result types express every terminal state. One explicit state beats a pile of booleans.
 - **One owner, lifetimes forming a tree**, scoping preferred over managing. Scattered validity checks mean ownership was never decided.

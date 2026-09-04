@@ -5,6 +5,7 @@ Properties of a change relative to its cause. Read before proposing or writing a
 - **Fix at the origin.** A fix lands where the bad state is produced, never where it is read. A guard that swallows bad input in a shared path hides the misusing caller. Ask why until the mechanism is in hand, not the symptom, then sweep the siblings for the same pattern.
 - **Restructure-first.** The best output is spotting a structure that invites a class of bugs, and proposing the structure that deletes the class. The bar: name what the new structure deletes. Invalid states made unrepresentable, scattered checks collapsed, a bug class that can no longer be written. Nothing deleted means style preference, so downgrade or drop. Several bugs in one area usually share a structural cause, so report the Restructure as primary and the bugs as evidence.
 - **Restructure triggers.** A lock added to fix a race. A fix that adds one more flag to a pile of booleans. A poll watching for a condition another system causes. Scattered validity checks. A new ad-hoc conditional inserted into an unrelated flow.
+- **Reuse before adding.** A new helper, type, mode, or file is one more thing to maintain. Before writing one, look for the same job in the owning module and in the libraries the project already depends on. Re-implementing what lives a few files over is the commonest way a change grows. Use what you find, or say why it does not fit.
 
 ## Origin decides the shape
 
