@@ -68,4 +68,4 @@ Every sweep returns these, each as an obligation row with file:line and the clai
 - every doc and coverage claim. Grep the whole feature doc for prose still asserting behavior the change deleted.
 - every consumed-library setting that differs from its provider default or stated usage, where every deviation is a deliberate-choice claim: verify its recorded justification or file it
 - every symmetry the test generators impose
-- every seam where a consumed API's result gates correctness: read one level into the provider and confirm it can distinguish the outcomes the consumer branches on
+- every place where a consumed API's result gates correctness: read one level into the provider and confirm it can distinguish the outcomes the consumer branches on

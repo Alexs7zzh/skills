@@ -13,4 +13,10 @@ Read this once, after the user says yes to changing their local copy. The goal i
 9. One-line behavior cues fire about half the time. Enforce behaviors through levers 1 and 2.
 10. Encode lessons in structure before instructions: unrepresentable state > CI-failing lint or test > canonical helper > runtime check > doc rule.
 
-Keep the split the read-set table in SKILL.md shows: one concept, one section, and one read moment, one file, because a rule copied into two places drifts; every pointer carries the trigger that sends the reader there, because a file mentioned without its trigger does not get read. The Markdown owns the work objects, dependencies, stopping policies, and evidence rules. `scripts/ledger.ts` and `scripts/ledger.sql` enforce that model; the root `ledger.sh` and `ledger.sql` are the retained previous implementation. Change the concept first, then make the helper reject states the concept forbids. Analysis always runs; lasting edits wait for the stopping policy that authorizes them.
+## Words
+
+Use the most common word that is exact: bug, issue, fix, test, build, log, shelve, check in, database, question, probe, mark. SKILL.md's Words section is the one home for a term: define it there, reuse it everywhere, and never write a synonym for a defined word. A reader who needs a glossary to run a step was given the wrong word.
+
+## Structure
+
+Keep the split the read-set table in SKILL.md shows: one concept, one section, and one read moment, one file, because a rule copied into two places drifts; every pointer carries the trigger that sends the reader there, because a file mentioned without its trigger does not get read. The Markdown owns the rows, their dependencies, how far to go, and the evidence rules. `scripts/ledger.ts` and `scripts/ledger.sql` enforce that model. Change the concept first, then make the script reject the states the concept forbids. Analysis always runs; lasting edits wait for the user's yes.
