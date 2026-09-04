@@ -2,6 +2,48 @@
 
 This workspace contains portable skills for Codex and Claude Code.
 
+## Install
+
+Install skills for the current project:
+
+```sh
+npx skills add Alexs7zzh/skills
+```
+
+Install skills globally:
+
+```sh
+npx skills add Alexs7zzh/skills --global
+```
+
+Choose one skill with `--skill`:
+
+```sh
+npx skills add Alexs7zzh/skills --skill coding
+```
+
+The repository publishes these skills:
+
+- `agent-messaging` writes prompts, briefs, dispatches, and handoffs that another agent can act on.
+- `coding` handles code changes, reviews, and diagnosis.
+- `skill-authoring` creates, reviews, tests, and maintains agent skills.
+
+## Update
+
+Update project skills:
+
+```sh
+npx skills update --project
+```
+
+Update global skills:
+
+```sh
+npx skills update --global
+```
+
+Updates follow the latest skill content on the default branch. This repository does not publish versioned releases or pinned tags.
+
 ## Layout
 
 - `skills/` contains the maintained skills.
@@ -12,7 +54,7 @@ This workspace contains portable skills for Codex and Claude Code.
 
 `AGENTS.md` contains the workspace instructions. `CLAUDE.md` is a symlink to the same file so both agents read one maintained copy.
 
-## Set up the workspace
+## Develop locally
 
 To make the skills in this workspace available to Codex or Claude Code on the current machine, run:
 
@@ -39,5 +81,3 @@ The checker skips hidden variants.
 ## Author or maintain a skill
 
 Follow [`skills/skill-authoring/SKILL.md`](skills/skill-authoring/SKILL.md). Keep the skill portable across agents, then run the checker and a realistic prompt or workflow that exercises the change.
-
-See [`BEFORE_PUBLISHING.md`](BEFORE_PUBLISHING.md) before turning this workspace into a public package or repository.
