@@ -1,7 +1,7 @@
 -- The deep-run ledger. Loaded by `ledger.sh init`; the protocol in deep.md, as constraints.
 -- Every protocol fact lives here: rows and marks, the seats' roles, the partition, the imports, the fix reviews,
 -- the compositions, and the countersignature. Only syntax shared by sqlite3 3.31+ (no RETURNING, no JSON operators).
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;
 
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);          -- scribe, joint_path, route, mode
 CREATE TABLE clusters (name TEXT PRIMARY KEY);                          -- the partition the master froze
@@ -48,21 +48,24 @@ CREATE TABLE ledger (
   reviewed_rev    INTEGER,                       -- the revision the fix review covered; a later edit needs a new review
   agree_a         INTEGER NOT NULL DEFAULT 0 CONSTRAINT agree_a_bool CHECK (agree_a IN (0,1)),
   agree_b         INTEGER NOT NULL DEFAULT 0 CONSTRAINT agree_b_bool CHECK (agree_b IN (0,1)),
+  CONSTRAINT review_fields_are_a_pair CHECK ((reviewed_by IS NULL) = (reviewed_rev IS NULL)),
   CONSTRAINT verified_needs_step4_and_evidence CHECK (status <> 'verified' OR (step >= 4 AND evidence_path IS NOT NULL)),
-  CONSTRAINT contested_needs_probe CHECK (status <> 'contested' OR probe IS NOT NULL),
-  CONSTRAINT contested_proposal_needs_its_axis_in_decision CHECK (status <> 'contested' OR label NOT IN ('Bug','Restructure') OR decision IS NOT NULL),
+  CONSTRAINT contested_needs_probe CHECK (status <> 'contested' OR length(trim(coalesce(probe, ''))) > 0),
+  CONSTRAINT contested_proposal_needs_its_axis_in_decision CHECK (status <> 'contested' OR label NOT IN ('Bug','Restructure') OR length(trim(coalesce(decision, ''))) > 0),
   CONSTRAINT dup_needs_target CHECK (status <> 'dup' OR dup_of IS NOT NULL),
   CONSTRAINT fixed_needs_changeset CHECK (status <> 'fixed' OR changeset IS NOT NULL),
-  CONSTRAINT accepted_is_for_nits_and_hardening_with_a_reason CHECK (status <> 'accepted' OR (label IN ('Nit','Hardening') AND decision IS NOT NULL)),
+  CONSTRAINT accepted_is_for_nits_with_a_reason CHECK (status <> 'accepted' OR (label = 'Nit' AND length(trim(coalesce(decision, ''))) > 0)),
   CONSTRAINT withdrawn_needs_verdict_and_step CHECK (status <> 'withdrawn' OR (verdict IS NOT NULL AND verdict_step IS NOT NULL)),
   CONSTRAINT test_seam_starts_with_exists_new_or_none CHECK (test_seam IS NULL OR test_seam LIKE 'exists:%' OR test_seam LIKE 'new:%' OR test_seam LIKE 'none:%'),
-  CONSTRAINT composition_names_the_rows_it_composes CHECK (label <> 'Composition' OR cluster IS NOT NULL),
+  CONSTRAINT composition_names_rows_and_a_decision CHECK (label <> 'Composition' OR (length(trim(coalesce(cluster, ''))) > 0 AND length(trim(coalesce(decision, ''))) > 0)),
   CONSTRAINT bug_converges_only_with_trigger_impact_cost_and_slots CHECK (NOT (
       label IN ('Bug','Restructure')
-      AND status IN ('finding','verified','assumed','needs-ruling')
+      AND status IN ('finding','verified','assumed','needs-ruling','contested')
       AND ((last_editor = 'A' AND agree_b = 1) OR (last_editor = 'B' AND agree_a = 1))
-      AND (trigger IS NULL OR impact IS NULL OR origin_class IS NULL OR fix_shape IS NULL
-           OR sites_walked IS NULL OR rulings_checked IS NULL OR test_seam IS NULL OR cost IS NULL)))
+      AND (length(trim(coalesce(trigger, ''))) = 0 OR length(trim(coalesce(impact, ''))) = 0 OR origin_class IS NULL
+           OR length(trim(coalesce(fix_shape, ''))) = 0 OR length(trim(coalesce(sites_walked, ''))) = 0
+           OR length(trim(coalesce(rulings_checked, ''))) = 0 OR length(trim(coalesce(test_seam, ''))) = 0
+           OR length(trim(coalesce(cost, ''))) = 0)))
 );
 
 CREATE TABLE events (
@@ -90,6 +93,10 @@ BEGIN SELECT RAISE(ABORT, 'owner never changes'); END;
 CREATE TRIGGER id_is_immutable BEFORE UPDATE OF id ON ledger WHEN NEW.id <> OLD.id
 BEGIN SELECT RAISE(ABORT, 'id never changes'); END;
 
+CREATE TRIGGER composition_label_is_immutable BEFORE UPDATE OF label ON ledger
+WHEN (OLD.label = 'Composition') <> (NEW.label = 'Composition')
+BEGIN SELECT RAISE(ABORT, 'a Composition is added as its own row and never converted to or from another label'); END;
+
 -- A content edit advances rev, is signed by a seat, and clears both marks in the same statement.
 CREATE TRIGGER content_edit_is_signed BEFORE UPDATE OF
   cold_id, label, cluster, site, claim, trigger, impact, decision, step, evidence_path, status, probe,
@@ -103,9 +110,8 @@ CREATE TRIGGER two_cycles_then_probe BEFORE UPDATE OF
   dup_of, verdict, verdict_step, origin_class, fix_shape, sites_walked, rulings_checked, test_seam, cost, changeset ON ledger
 WHEN NEW.rev > OLD.rev
  AND NEW.last_editor <> NEW.owner
- AND NEW.status <> 'contested'
- AND NEW.step < 4
- AND NOT (NEW.status = 'withdrawn' AND NEW.verdict_step >= 4)
+ AND NEW.status NOT IN ('contested','fixed','accepted','dup')
+ AND (CASE WHEN NEW.status = 'withdrawn' THEN coalesce(NEW.verdict_step, NEW.step) ELSE NEW.step END) < 4
  AND (SELECT count(*) FROM events WHERE row_id = NEW.id AND kind = 'edit' AND who <> NEW.owner) >= 2
 BEGIN SELECT RAISE(ABORT, 'two cycles spent on this row: contest it with a probe (ledger.sh contest) or land step-4 evidence'); END;
 
@@ -116,6 +122,51 @@ WHEN NEW.status = 'dup' AND (
   OR (SELECT status FROM ledger WHERE id = NEW.dup_of) = 'dup'
   OR EXISTS (SELECT 1 FROM ledger WHERE dup_of = NEW.id AND status = 'dup' AND id <> NEW.id))
 BEGIN SELECT RAISE(ABORT, 'a dup points at one live row: not itself, not another dup, and not while rows point at it; dup the newer row onto the surviving one'); END;
+
+-- Composition starts only after the factual rows converge. `none` is the explicit nothing-composes row;
+-- otherwise the comma tokens are live factual row ids. The helper withholds the peer's rows until both seats submit.
+CREATE TRIGGER composition_waits_for_facts BEFORE INSERT ON ledger
+WHEN NEW.label = 'Composition' AND EXISTS (SELECT 1 FROM unconverged WHERE label <> 'Composition')
+BEGIN SELECT RAISE(ABORT, 'Composition starts after every factual row converges'); END;
+
+CREATE TRIGGER composition_update_waits_for_facts BEFORE UPDATE ON ledger
+WHEN NEW.rev > OLD.rev AND NEW.label = 'Composition' AND NEW.status NOT IN ('withdrawn','dup')
+ AND EXISTS (SELECT 1 FROM unconverged WHERE label <> 'Composition')
+BEGIN SELECT RAISE(ABORT, 'Composition resumes after every factual row converges'); END;
+
+CREATE TRIGGER composition_references_live_facts AFTER INSERT ON ledger
+WHEN NEW.label = 'Composition' AND lower(trim(NEW.cluster)) <> 'none'
+BEGIN
+  SELECT CASE WHEN EXISTS (
+    WITH RECURSIVE parts(token, rest) AS (
+      SELECT trim(substr(trim(NEW.cluster) || ',', 1, instr(trim(NEW.cluster) || ',', ',') - 1)),
+             substr(trim(NEW.cluster) || ',', instr(trim(NEW.cluster) || ',', ',') + 1)
+      UNION ALL
+      SELECT trim(substr(rest, 1, instr(rest, ',') - 1)), substr(rest, instr(rest, ',') + 1)
+      FROM parts WHERE rest <> ''
+    )
+    SELECT 1 FROM parts p LEFT JOIN ledger l ON l.id = CAST(p.token AS INTEGER)
+    WHERE p.token = '' OR p.token GLOB '*[^0-9]*' OR CAST(p.token AS INTEGER) < 1
+       OR l.id IS NULL OR l.label = 'Composition' OR l.status IN ('withdrawn','dup')
+  ) THEN RAISE(ABORT, 'a Composition cluster is `none` or a comma list of live factual row ids') END;
+END;
+
+CREATE TRIGGER composition_update_references_live_facts AFTER UPDATE ON ledger
+WHEN NEW.label = 'Composition' AND NEW.status NOT IN ('withdrawn','dup') AND lower(trim(NEW.cluster)) <> 'none'
+BEGIN
+  SELECT CASE WHEN EXISTS (
+    WITH RECURSIVE parts(token, rest) AS (
+      SELECT trim(substr(trim(NEW.cluster) || ',', 1, instr(trim(NEW.cluster) || ',', ',') - 1)),
+             substr(trim(NEW.cluster) || ',', instr(trim(NEW.cluster) || ',', ',') + 1)
+      UNION ALL
+      SELECT trim(substr(rest, 1, instr(rest, ',') - 1)), substr(rest, instr(rest, ',') + 1)
+      FROM parts WHERE rest <> ''
+    )
+    SELECT 1 FROM parts p LEFT JOIN ledger l ON l.id = CAST(p.token AS INTEGER)
+    WHERE p.token = '' OR p.token GLOB '*[^0-9]*' OR CAST(p.token AS INTEGER) < 1
+       OR l.id IS NULL OR l.label = 'Composition' OR l.status IN ('withdrawn','dup')
+  ) THEN RAISE(ABORT, 'a Composition cluster is `none` or a comma list of live factual row ids') END;
+END;
 
 -- A content edit is logged and voids any countersignature: the signer stood by a ledger that no longer exists.
 CREATE TRIGGER log_content_edit AFTER UPDATE OF
@@ -133,14 +184,22 @@ WHEN (NEW.agree_a = 1 AND OLD.agree_a = 0 AND (OLD.last_editor = 'A' OR NEW.rev 
   OR (NEW.agree_b = 1 AND OLD.agree_b = 0 AND (OLD.last_editor = 'B' OR NEW.rev <> OLD.rev))
 BEGIN SELECT RAISE(ABORT, 'you cannot agree a row you last edited; agree is its own statement (ledger.sh agree <id>)'); END;
 
+CREATE TRIGGER marks_clear_only_with_an_edit BEFORE UPDATE OF agree_a, agree_b ON ledger
+WHEN NEW.rev = OLD.rev AND ((NEW.agree_a = 0 AND OLD.agree_a = 1) OR (NEW.agree_b = 0 AND OLD.agree_b = 1))
+BEGIN SELECT RAISE(ABORT, 'a mark is withdrawn only by a content edit (ledger.sh set), which advances the revision'); END;
+
 CREATE TRIGGER log_agree AFTER UPDATE OF agree_a, agree_b ON ledger
 WHEN (NEW.agree_a = 1 AND OLD.agree_a = 0) OR (NEW.agree_b = 1 AND OLD.agree_b = 0)
 BEGIN INSERT INTO events(who,row_id,kind) VALUES (CASE WHEN NEW.agree_a > OLD.agree_a THEN 'A' ELSE 'B' END, NEW.id, 'agree'); END;
 
--- A fix review is the other seat's, at the row's current revision.
-CREATE TRIGGER review_is_the_others BEFORE UPDATE OF reviewed_by, reviewed_rev ON ledger
-WHEN NEW.reviewed_by IS NOT NULL AND (NEW.reviewed_by = OLD.last_editor OR NEW.reviewed_rev <> OLD.rev OR NEW.rev <> OLD.rev)
-BEGIN SELECT RAISE(ABORT, 'a fix review is recorded by the seat that did not last edit the row, at its current revision (ledger.sh review <id>)'); END;
+-- The designated countersigner reviews every proposal, at a converged current revision. The countersigner may
+-- have written conditions into that revision; the review is independent from the final whole-ledger signature.
+CREATE TRIGGER review_is_countersigners BEFORE UPDATE OF reviewed_by, reviewed_rev ON ledger
+WHEN NEW.reviewed_by IS NOT NULL AND (
+     NEW.reviewed_by = (SELECT value FROM meta WHERE key = 'scribe')
+  OR NEW.reviewed_rev <> OLD.rev OR NEW.rev <> OLD.rev
+  OR NOT ((OLD.last_editor = 'A' AND OLD.agree_b = 1) OR (OLD.last_editor = 'B' AND OLD.agree_a = 1)))
+BEGIN SELECT RAISE(ABORT, 'a fix review is recorded by the countersigner after the row converges, at its current revision (ledger.sh review <id>)'); END;
 
 CREATE TRIGGER log_review AFTER UPDATE OF reviewed_by ON ledger
 WHEN NEW.reviewed_by IS NOT NULL
@@ -158,20 +217,58 @@ CREATE VIEW unconverged AS
   SELECT id, owner, last_editor, label, status, step, agree_a, agree_b FROM ledger
   WHERE NOT ((last_editor = 'A' AND agree_b = 1) OR (last_editor = 'B' AND agree_a = 1));
 
+-- Exact comma-token coverage. A terminal numeric fraction such as `(5/6)` annotates a token; semicolons,
+-- newlines, substrings, and non-terminal parentheses are not separators or annotations.
+CREATE VIEW factual_cluster_tokens AS
+WITH RECURSIVE split(id, token, rest) AS (
+  SELECT id, '', replace(replace(replace(coalesce(cluster, ''), ' ', ','), char(9), ','), char(10), ',') || ',' FROM ledger WHERE label <> 'Composition'
+  UNION ALL
+  SELECT id, trim(substr(rest, 1, instr(rest, ',') - 1)), substr(rest, instr(rest, ',') + 1)
+  FROM split WHERE rest <> ''
+), shaped(id, token, suffix) AS (
+  SELECT id, token,
+         CASE WHEN token LIKE '%)' AND instr(token, '(') > 1
+              THEN substr(token, instr(token, '(') + 1, length(token) - instr(token, '(') - 1) ELSE '' END
+  FROM split WHERE token <> ''
+)
+SELECT id,
+       CASE WHEN suffix <> '' AND suffix NOT GLOB '*[^0-9/]*' AND instr(suffix, '/') > 1
+                  AND instr(substr(suffix, instr(suffix, '/') + 1), '/') = 0
+                  AND substr(suffix, -1) GLOB '[0-9]'
+            THEN trim(substr(token, 1, instr(token, '(') - 1)) ELSE token END AS cluster
+FROM shaped;
+
+CREATE VIEW uncovered_clusters AS
+  SELECT c.name FROM clusters c
+  WHERE NOT EXISTS (SELECT 1 FROM factual_cluster_tokens t WHERE t.cluster = c.name);
+
+-- A composition is current only when its latest content event follows the latest factual content event.
+-- A later fact therefore reopens composition without a generation counter.
+CREATE VIEW current_compositions AS
+  SELECT l.* FROM ledger l
+  WHERE l.label = 'Composition' AND l.status NOT IN ('withdrawn','dup')
+    AND coalesce((SELECT max(e.rowid) FROM events e WHERE e.row_id = l.id AND e.kind IN ('add','edit')), 0)
+        > coalesce((SELECT max(e.rowid) FROM events e JOIN ledger f ON f.id = e.row_id
+                    WHERE f.label <> 'Composition' AND e.kind IN ('add','edit')), 0);
+
 -- Open proposals: the rows a fix round can dispatch once each is converged and fix-reviewed at its revision.
 CREATE VIEW proposals AS
   SELECT id, label, status, rev, reviewed_by, reviewed_rev,
          ((last_editor = 'A' AND agree_b = 1) OR (last_editor = 'B' AND agree_a = 1)) AS converged,
-         (reviewed_rev IS NOT NULL AND reviewed_rev = rev) AS reviewed
+         (reviewed_by IS NOT NULL
+          AND reviewed_by = (SELECT CASE value WHEN 'A' THEN 'B' ELSE 'A' END FROM meta WHERE key = 'scribe')
+          AND reviewed_rev = rev) AS reviewed
   FROM ledger WHERE label IN ('Bug','Restructure') AND status IN ('finding','verified','assumed','needs-ruling');
 
-CREATE VIEW ready AS SELECT id FROM proposals WHERE converged AND reviewed;
+CREATE VIEW ready AS SELECT id FROM proposals WHERE converged AND reviewed AND status <> 'needs-ruling';
 
 -- The countersignature is a single statement against the whole ledger: no unconverged row, no unreviewed proposal,
--- and in a two-family run a Composition row from each seat. A stale check cannot produce a signature.
+-- complete coverage, and in a two-family run a current Composition row from each seat. A stale check cannot
+-- produce a signature.
 CREATE TRIGGER sign_requires_a_converged_reviewed_composed_ledger BEFORE INSERT ON signatures
 WHEN (SELECT count(*) FROM unconverged) > 0
   OR EXISTS (SELECT 1 FROM proposals WHERE NOT reviewed)
+  OR EXISTS (SELECT 1 FROM uncovered_clusters)
   OR ((SELECT value FROM meta WHERE key = 'mode') = 'two-family'
-      AND (SELECT count(DISTINCT owner) FROM ledger WHERE label = 'Composition') < 2)
-BEGIN SELECT RAISE(ABORT, 'sign refused: the ledger has unconverged rows, an unreviewed proposal, or a seat without a Composition row (ledger.sh status names them)'); END;
+      AND (SELECT count(DISTINCT owner) FROM current_compositions) < 2)
+BEGIN SELECT RAISE(ABORT, 'sign refused: the ledger has unconverged rows, an uncovered cluster, an unreviewed proposal, or a seat without a current Composition row (ledger.sh status names them)'); END;

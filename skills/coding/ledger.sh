@@ -15,8 +15,8 @@ NOTIFY="${LEDGER_NOTIFY:-herdr agent prompt}"
 SHARED="$DIR/ledger.db"
 SQLITE="${SQLITE:-sqlite3}"
 # A run pins its helper: init copies this script and its schema into <run dir>/bin, and every later call runs that copy.
-if [ -x "$DIR/bin/ledger.sh" ] && [ "$(cd "$DIR/bin" 2>/dev/null && pwd -P)" != "$(cd "$HERE" && pwd -P)" ]; then exec "$DIR/bin/ledger.sh" "$@"; fi
-SCHEMA_VERSION=4
+if [ "${1:-}" != migrate ] && [ -x "$DIR/bin/ledger.sh" ] && [ "$(cd "$DIR/bin" 2>/dev/null && pwd -P)" != "$(cd "$HERE" && pwd -P)" ]; then exec "$DIR/bin/ledger.sh" "$@"; fi
+SCHEMA_VERSION=5
 INT_COLS=" step verdict_step dup_of "
 ADD_COLS=" label cluster site claim trigger impact decision step evidence_path status probe origin_class fix_shape sites_walked rulings_checked test_seam cost "
 SET_COLS="$ADD_COLS verdict verdict_step dup_of changeset "
@@ -32,25 +32,28 @@ Master:
   init --scribe A|B --joint <path> --route review|diagnose [--clusters "<id> <id> ..."]
                             create the shared ledger with the roles, the joint report path, and the partition;
                             pins this helper and its schema under <dir>/bin, which every later command runs
-Single seat (a plain review or diagnosis; LEDGER_ME=A):
+Single seat (a plain review or diagnosis; first `export LEDGER_ME=A`):
   init --single --route review|diagnose [--joint <path>] [--clusters "..."]   one seat, no marks, no peers
   report [--out <path>]     refuses while a Bug or Restructure row lacks a slot or a cluster is uncovered; else renders
   status                    imports, counts, unconverged rows, uncovered clusters, signature
-  migrate --scribe A|B --joint <path> --route review|diagnose [--clusters "..."]   rebuild a schema-v1 ledger under this schema
+  migrate --scribe A|B --joint <path> --route review|diagnose [--clusters "..."]   rebuild a schema-v1..4 ledger under this schema
 Peers:
   init --cold               create your cold ledger; every command below targets it until you import
   add k=v ...               new row you own; needs label= step= claim=; v may be @file for long text
   set <id> k=v ...          edit a row: advances rev, clears both marks, signs you as last editor
   agree <id>                mark a row you did not last edit; the row converges on that mark
   reject <id> verdict_step=N verdict=...   withdraw a row with the disproving evidence and its step
-  contest <id> probe=...    carry a row as contested with the probe that settles it
+  contest <id> probe=... [decision=...]   carry a row as contested with the probe that settles it; a Bug or
+                            Restructure also states the axis of the disagreement in decision=
   dup <id> <of>             close a row as a restatement of row <of> (a cross-examination verdict)
   claim-probe <id>          take the probe write-up for a row; the first claimant wins
-  review <id> [note=...]    countersigner: record the fix review of a Bug or Restructure row at its current revision
+  review <id> [note=...]    countersigner: review a converged Bug or Restructure row at its current revision;
+                            tells the master when that row becomes ready, without waiting for global convergence
   import                    move your cold rows into the shared ledger and tell your peer (report ready:)
   handoff                   end a pass: tell your peer what awaits them (ledger: ...)
   sign [note=...]           countersigner: refused until every row is converged, every proposal reviewed at its
-                            revision, and each seat has a Composition row; tells scribe and master (signed:)
+                            revision, coverage is complete, and each seat has a current Composition row;
+                            requires and hashes both seat-notes files, then tells scribe and master (signed:)
   converge                  scribe, at unconverged 0 and signed: renders the joint report, tells the master (converged:)
   status                    your role, your queue, the unconverged count, the next step
 Anyone:
@@ -64,10 +67,11 @@ Columns for add and set: label(Bug|Restructure|Hardening|Nit|telemetry-quality|C
   status(finding|verified|assumed|needs-ruling|contested|withdrawn|dup|fixed|accepted)
   probe origin_class(attention-miss|self-consistency|design-absence) fix_shape sites_walked
   rulings_checked test_seam cost
-  set only: verdict verdict_step dup_of changeset (status=fixed needs changeset=; status=accepted needs decision=,
-  Nit or Hardening only).  An empty value (k=) clears the column.
-A Composition row composes other rows: cluster= lists their ids, claim= what holds when they are all true,
-  decision= the fix order or changed severity. Each seat writes at least one before the ledger can be signed.
+  set only: verdict verdict_step dup_of changeset (status=fixed needs changeset=; status=accepted is Nit-only
+  and needs decision=). An empty value (k=) clears the column.
+A Composition row composes other rows: cluster= is a comma list of live factual ids (or `none`), claim= what
+  holds when they are all true, decision= the fix order or changed severity. Each seat writes a current row
+  after factual convergence and before reading the peer's; a later factual edit makes prior compositions stale.
 A Bug or Restructure converges only with trigger, impact, origin_class, fix_shape, sites_walked,
   rulings_checked, test_seam and cost filled. test_seam starts with `exists: <path>`, `new: <what must
   be built>`, or `none: <the architecture finding>`. cost comes from the code the fix touches.
@@ -76,7 +80,32 @@ USAGE
 }
 
 die() { printf 'ledger: %s\n' "$*" >&2; exit 1; }
-seat() { case "$ME" in A|B) ;; *) die "LEDGER_ME must be A or B for '$1' (got '${ME:-unset}')";; esac; }
+LOCK="$DIR/.ledger-write-lock"
+LOCK_HELD=0
+release_lock() {
+  [ "$LOCK_HELD" = 1 ] || return 0
+  rm -f "$LOCK/pid"
+  rmdir "$LOCK" 2>/dev/null || true
+  LOCK_HELD=0
+}
+acquire_lock() { # serialize every public mutation; converge holds this through report replacement and notification
+  local tries=0
+  [ -d "$DIR" ] || die "ledger directory $DIR does not exist"
+  while ! mkdir "$LOCK" 2>/dev/null; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 5000 ] || die "timed out waiting for $LOCK; if no ledger helper is running, remove the stale lock directory"
+    sleep 0.01
+  done
+  printf '%s\n' "$$" > "$LOCK/pid" || { rmdir "$LOCK" 2>/dev/null; die "cannot record the ledger lock owner"; }
+  LOCK_HELD=1
+  trap release_lock EXIT
+  trap 'exit 130' HUP INT TERM
+}
+seat() {
+  case "$ME" in A|B) ;; *) die "LEDGER_ME must be A or B for '$1' (got '${ME:-unset}')";; esac
+  is_single && [ "$ME" != A ] && die "a single-seat ledger is seat A: export LEDGER_ME=A"
+  return 0
+}
 other() { if [ "$ME" = A ]; then echo B; else echo A; fi; }
 mark_col() { if [ "$1" = A ]; then echo agree_a; else echo agree_b; fi; }
 is_int() { case "$1" in ''|*[!0-9]*) return 1;; *) return 0;; esac; }
@@ -95,7 +124,7 @@ run() { # run "$db" "$sql": one sqlite3 invocation; schema aborts and CHECK name
 
 check_version() {
   local v; v=$("$SQLITE" -batch -cmd ".timeout 5000" "$1" "PRAGMA user_version;" 2>/dev/null)
-  [ "$v" = "$SCHEMA_VERSION" ] || die "$1 has schema version '${v:-none}', this ledger.sh speaks $SCHEMA_VERSION; ledger.sh migrate rebuilds versions 1 to 3"
+  [ "$v" = "$SCHEMA_VERSION" ] || die "$1 has schema version '${v:-none}', this ledger.sh speaks $SCHEMA_VERSION; ledger.sh migrate rebuilds versions 1 to 4"
 }
 
 db_for_me() { # the cold ledger until this seat has imported, then the shared ledger
@@ -155,30 +184,56 @@ require_col() { case "$NAMES" in *" $1 "*) ;; *) die "$1= is required";; esac; }
 unconverged_count() { run "$1" "SELECT count(*) FROM unconverged;"; }
 signature_line() { run "$SHARED" "SELECT coalesce((SELECT 'signed by ' || seat || ' at ' || ts FROM signatures LIMIT 1), 'none');"; }
 imports_line() { run "$1" "SELECT coalesce(group_concat(seat || '=' || rows || ' rows', ', '), 'none') FROM imports;"; }
-covers() { # covers <cluster column> <name>: SQL boolean; the cluster field is a comma list, annotations in parentheses ignored
-  echo "instr(',' || replace(replace(replace(replace(coalesce($1, ''), ' ', ''), ';', ','), '(', ',('), char(10), ',') || ',', ',' || $2 || ',') > 0"
-}
 uncovered_line() { # clusters with no row naming them
-  run "$SHARED" "SELECT coalesce(group_concat(name, ' '), 'none') FROM clusters c WHERE NOT EXISTS (SELECT 1 FROM ledger l WHERE $(covers l.cluster c.name));"
+  run "$SHARED" "SELECT coalesce(group_concat(name, ' '), 'none') FROM uncovered_clusters;"
 }
 ready_line() { run "$SHARED" "SELECT coalesce(group_concat('#' || id, ' '), 'none') FROM ready;"; }
 unreviewed_line() { run "$SHARED" "SELECT coalesce(group_concat('#' || id, ' '), 'none') FROM proposals WHERE NOT reviewed;"; }
-composed_seats() { run "$SHARED" "SELECT coalesce(group_concat(DISTINCT owner), 'none') FROM ledger WHERE label = 'Composition';"; }
-notes_hash() { cat "$DIR/A-notes.md" "$DIR/B-notes.md" 2>/dev/null | shasum -a 256 | cut -c1-64; }
+reviewable_line() { run "$SHARED" "SELECT coalesce(group_concat('#' || id, ' '), 'none') FROM proposals WHERE converged AND NOT reviewed;"; }
+factual_unconverged_count() { run "$1" "SELECT count(*) FROM unconverged WHERE label <> 'Composition';"; }
+composed_seats() { run "$SHARED" "SELECT coalesce(group_concat(DISTINCT owner), 'none') FROM current_compositions;"; }
+my_composition_count() { run "$SHARED" "SELECT count(*) FROM current_compositions WHERE owner = '$1';"; }
+composition_blind() { # after facts converge, do not reveal the peer's composition until this seat has submitted its own
+  [ "$ME" = A ] || [ "$ME" = B ] || return 1
+  ! is_single || return 1
+  [ "$(factual_unconverged_count "$SHARED")" = 0 ] || return 1
+  [ "$(my_composition_count "$ME")" = 0 ]
+}
+notes_hash() { # hash file identity and each digest, so bytes cannot move between A and B without changing the result
+  local base=${1:-$DIR} a b
+  a=$(shasum -a 256 "$base/A-notes.md" 2>/dev/null | awk '{print $1}') || return 1
+  b=$(shasum -a 256 "$base/B-notes.md" 2>/dev/null | awk '{print $1}') || return 1
+  printf 'A:%s\nB:%s\n' "$a" "$b" | shasum -a 256 | cut -c1-64
+}
+validate_notes() { # validate the files that will actually be appended to the signed report
+  local base=${1:-$DIR} s
+  for s in A B; do
+    [ -s "$base/$s-notes.md" ] || { echo "ledger: $s-notes.md is required and must be non-empty before signing" >&2; return 1; }
+    grep -Eiq '^[[:space:]]*passes:[[:space:]]*[^[:space:]]' "$base/$s-notes.md" || { echo "ledger: $s-notes.md needs a non-empty passes: line" >&2; return 1; }
+    grep -Eiq '^[[:space:]]*retrospective:[[:space:]]*[^[:space:]]' "$base/$s-notes.md" || { echo "ledger: $s-notes.md needs a non-empty retrospective: line" >&2; return 1; }
+    grep -Eiq '^[[:space:]]*vote:[[:space:]]*[^[:space:]]' "$base/$s-notes.md" || { echo "ledger: $s-notes.md needs a non-empty vote: line" >&2; return 1; }
+  done
+  if [ "$(meta route)" = review ]; then
+    grep -Eiq '^[[:space:]]*#{1,6}[[:space:]]+goal closure[[:space:]]*$' "$base/A-notes.md" "$base/B-notes.md" || { echo "ledger: a deep review needs a Goal closure section in the signed seat notes" >&2; return 1; }
+    grep -Eiq '^[[:space:]]*#{1,6}[[:space:]]+domain scenarios[[:space:]]*$' "$base/A-notes.md" "$base/B-notes.md" || { echo "ledger: a deep review needs a Domain scenarios section in the signed seat notes" >&2; return 1; }
+  fi
+}
 
 incomplete_rows() { # Bug/Restructure rows still missing a slot, one line each
   run "$1" "SELECT '  #' || id || ': missing ' || trim(
-      CASE WHEN trigger IS NULL THEN 'trigger, ' ELSE '' END || CASE WHEN impact IS NULL THEN 'impact, ' ELSE '' END
-      || CASE WHEN origin_class IS NULL THEN 'origin_class, ' ELSE '' END || CASE WHEN fix_shape IS NULL THEN 'fix_shape, ' ELSE '' END
-      || CASE WHEN sites_walked IS NULL THEN 'sites_walked, ' ELSE '' END || CASE WHEN rulings_checked IS NULL THEN 'rulings_checked, ' ELSE '' END
-      || CASE WHEN test_seam IS NULL THEN 'test_seam, ' ELSE '' END || CASE WHEN cost IS NULL THEN 'cost, ' ELSE '' END, ', ')
-    FROM ledger WHERE label IN ('Bug','Restructure') AND status IN ('finding','verified','assumed','needs-ruling')
-      AND (trigger IS NULL OR impact IS NULL OR origin_class IS NULL OR fix_shape IS NULL OR sites_walked IS NULL OR rulings_checked IS NULL OR test_seam IS NULL OR cost IS NULL)
+      CASE WHEN length(trim(coalesce(trigger, ''))) = 0 THEN 'trigger, ' ELSE '' END || CASE WHEN length(trim(coalesce(impact, ''))) = 0 THEN 'impact, ' ELSE '' END
+      || CASE WHEN origin_class IS NULL THEN 'origin_class, ' ELSE '' END || CASE WHEN length(trim(coalesce(fix_shape, ''))) = 0 THEN 'fix_shape, ' ELSE '' END
+      || CASE WHEN length(trim(coalesce(sites_walked, ''))) = 0 THEN 'sites_walked, ' ELSE '' END || CASE WHEN length(trim(coalesce(rulings_checked, ''))) = 0 THEN 'rulings_checked, ' ELSE '' END
+      || CASE WHEN length(trim(coalesce(test_seam, ''))) = 0 THEN 'test_seam, ' ELSE '' END || CASE WHEN length(trim(coalesce(cost, ''))) = 0 THEN 'cost, ' ELSE '' END, ', ')
+    FROM ledger WHERE label IN ('Bug','Restructure') AND status IN ('finding','verified','assumed','needs-ruling','contested')
+      AND (length(trim(coalesce(trigger, ''))) = 0 OR length(trim(coalesce(impact, ''))) = 0 OR origin_class IS NULL
+           OR length(trim(coalesce(fix_shape, ''))) = 0 OR length(trim(coalesce(sites_walked, ''))) = 0
+           OR length(trim(coalesce(rulings_checked, ''))) = 0 OR length(trim(coalesce(test_seam, ''))) = 0 OR length(trim(coalesce(cost, ''))) = 0)
     ORDER BY id;"
 }
 
 next_step() { # what a peer does next, from the ledger's state; printed after every mutating command
-  local db=$1 u mine peers role sig
+  local db=$1 u factual_u mine peers role sig
   [ "$db" = "$SHARED" ] || { echo "next: keep adding rows; ledger.sh import when your report is done"; return; }
   if is_single; then
     local inc; inc=$(incomplete_rows "$db"); local unc; unc=$(uncovered_line)
@@ -187,15 +242,16 @@ next_step() { # what a peer does next, from the ledger's state; printed after ev
     if [ -z "$inc" ] && [ "$unc" = none ]; then echo "next: ledger.sh report"; else echo "next: fill the slots and disposition every cluster, then ledger.sh report"; fi
     return
   fi
-  u=$(unconverged_count "$db"); role=$(my_role); sig=$(signature_line)
+  u=$(unconverged_count "$db"); factual_u=$(factual_unconverged_count "$db"); role=$(my_role); sig=$(signature_line)
   mine=$(run "$db" "SELECT count(*) FROM ledger WHERE last_editor <> '$ME' AND $(mark_col "$ME") = 0;")
   peers=$(run "$db" "SELECT count(*) FROM ledger WHERE last_editor = '$ME' AND $(mark_col "$(other)") = 0;")
-  local mycomp; mycomp=$(run "$db" "SELECT count(*) FROM ledger WHERE label = 'Composition' AND owner = '$ME';")
-  local unrev; unrev=$(unreviewed_line)
+  local mycomp; mycomp=$(my_composition_count "$ME")
+  local unrev reviewable; unrev=$(unreviewed_line); reviewable=$(reviewable_line)
   echo "unconverged: $u | awaiting your mark: $mine | awaiting your peer's mark: $peers | ready for a fixer: $(ready_line) | signature: $sig"
-  if [ "$mine" != "0" ]; then echo "next: work your queue (ledger.sh status), then ledger.sh handoff"
+  if [ "$role" = countersigner ] && [ "$reviewable" != none ]; then echo "next: fix-review the converged proposals now (ledger.sh review): $reviewable; each becomes ready for an approved fix round without waiting for the rest"
+  elif [ "$factual_u" = 0 ] && [ "$mycomp" = 0 ]; then echo "next: factual rows converged. Before reading your peer's composition, add or refresh yours (label=Composition cluster=<comma row ids, or none> claim=<joint effect, or nothing composes> decision=<fix order or severity, or no change>), then ledger.sh handoff"
+  elif [ "$mine" != "0" ]; then echo "next: work your queue (ledger.sh status), then ledger.sh handoff"
   elif [ "$u" != "0" ]; then echo "next: ledger.sh handoff, so your peer marks what awaits them"
-  elif [ "$mycomp" = "0" ]; then echo "next: unconverged 0. Compose: add your Composition rows (label=Composition cluster=<row ids> claim=<what holds when they are all true> decision=<fix order or changed severity>), or one row saying nothing composes, then ledger.sh handoff"
   elif [ "$role" = countersigner ] && [ "$unrev" != none ]; then echo "next: fix review. Walk each open proposal as a diff, put conditions into its row with ledger.sh set, and record ledger.sh review <id>; unreviewed: $unrev"
   elif [ "$role" = countersigner ] && [ "$sig" = none ]; then echo "next: every proposal is reviewed at its revision: ledger.sh sign"
   elif [ "$role" = scribe ] && [ "$sig" != none ]; then echo "next: unconverged 0 and signed: ledger.sh converge"
@@ -220,11 +276,12 @@ cmd_init() {
   done
   [ -d "$DIR" ] || die "LEDGER_DIR $DIR does not exist"
   [ -f "$SCHEMA" ] || die "schema $SCHEMA missing"
+  local c; for c in $clusters; do case "$c" in *,*|*\(*|*\)*) die "cluster name '$c' contains a comma or parenthesis; names are single tokens";; esac; done
   local db
   if [ $cold = 1 ]; then
     seat "init --cold"; db="$DIR/cold-$ME.db"
   elif [ $single = 1 ]; then
-    seat "init --single"; db="$SHARED"; scribe="A"; [ -n "$joint" ] || joint="$DIR/report.md"
+    seat "init --single"; [ "$ME" = A ] || die "a single-seat ledger is seat A: export LEDGER_ME=A"; db="$SHARED"; scribe="A"; [ -n "$joint" ] || joint="$DIR/report.md"
     case "$route" in review|diagnose) ;; *) die "init --single needs --route review|diagnose";; esac
   else
     db="$SHARED"
@@ -240,7 +297,7 @@ cmd_init() {
     local sql="INSERT INTO meta VALUES ('scribe', '$scribe'), ('joint_path', $(sqlstr "$joint")), ('route', '$route'), ('mode', '$mode');"
     local c; for c in $clusters; do sql="$sql INSERT INTO clusters VALUES ($(sqlstr "$c"));"; done
     run "$db" "$sql" >/dev/null || exit 1
-    mkdir -p "$DIR/bin" && cp "$HERE/ledger.sh" "$HERE/ledger.sql" "$DIR/bin/" && chmod +x "$DIR/bin/ledger.sh" || die "cannot pin the helper under $DIR/bin"
+    if [ "$(cd "$HERE" && pwd -P)" != "$(cd "$DIR/bin" 2>/dev/null && pwd -P)" ]; then mkdir -p "$DIR/bin" && cp "$HERE/ledger.sh" "$HERE/ledger.sql" "$DIR/bin/" && chmod +x "$DIR/bin/ledger.sh" || die "cannot pin the helper under $DIR/bin"; fi
     if [ $single = 1 ]; then echo "created $db: single seat A, route $route, report $joint, clusters: ${clusters:-none declared}. Add rows, then ledger.sh report."
     else echo "created $db: scribe $scribe, route $route, joint report $joint, clusters: ${clusters:-none declared}"; fi
     echo "pinned helper: $DIR/bin/ledger.sh (every command in this run uses it)"
@@ -252,6 +309,9 @@ cmd_init() {
 cmd_add() {
   seat add
   local db; db=$(db_for_me) || exit 1; check_version "$db"
+  local arg is_comp=0
+  for arg in "$@"; do [ "$arg" = label=Composition ] && is_comp=1; done
+  [ $is_comp = 0 ] || [ "$db" = "$SHARED" ] || die "Composition is written in the shared ledger after the factual rows converge"
   parse_kv "$ADD_COLS" "$@"
   require_col label; require_col step; require_col claim
   local id; id=$(run "$db" "INSERT INTO ledger (owner, last_editor, $COLS) VALUES ('$ME', '$ME', $VALS); SELECT last_insert_rowid();") || exit 1
@@ -294,6 +354,7 @@ cmd_agree() {
 
 cmd_review() {
   seat review; two_family_only; [ $# -ge 1 ] || die "usage: review <id> [note=<what the fix review checked>]"
+  [ "$(my_role)" = countersigner ] || die "only the countersigner records fix review"
   local id=$1; shift; is_int "$id" || die "row id must be an integer"
   local note=""; for a in "$@"; do case "$a" in note=*) note=${a#note=};; *) die "usage: review <id> [note=...]";; esac; done
   local db; db=$(db_for_me) || exit 1; check_version "$db"; [ "$db" = "$SHARED" ] || die "review is for the shared ledger"
@@ -301,6 +362,9 @@ cmd_review() {
   [ "$n" = "1" ] || die "no Bug or Restructure row $id"
   [ -n "$note" ] && run "$db" "UPDATE events SET detail = coalesce(detail, '') || ': ' || $(sqlstr "$note") WHERE rowid = (SELECT max(rowid) FROM events WHERE row_id = $id AND kind = 'review');" >/dev/null
   echo "row $id: fix review recorded by $ME at revision $(run "$db" "SELECT rev FROM ledger WHERE id = $id;")"
+  if [ "$(run "$db" "SELECT count(*) FROM ready WHERE id = $id;")" = 1 ]; then
+    notify master "ready: row #$id is converged and fix-reviewed at its current revision. If the user has started the fix round, dispatch it without waiting for the ledger signature; otherwise keep it ready for go."
+  fi
   next_step "$db"
 }
 
@@ -338,15 +402,17 @@ cmd_handoff() {
   seat handoff; two_family_only
   local db; db=$(db_for_me) || exit 1; check_version "$db"
   [ "$db" = "$SHARED" ] || die "handoff is for the shared ledger; import first"
-  local u mine peers role sig
-  u=$(unconverged_count "$db"); role=$(my_role); sig=$(signature_line)
+  local u factual_u mine peers role sig
+  u=$(unconverged_count "$db"); factual_u=$(factual_unconverged_count "$db"); role=$(my_role); sig=$(signature_line)
   mine=$(run "$db" "SELECT count(*) FROM ledger WHERE last_editor <> '$ME' AND $(mark_col "$ME") = 0;")
   peers=$(run "$db" "SELECT count(*) FROM ledger WHERE last_editor = '$ME' AND $(mark_col "$(other)") = 0;")
   run "$db" "INSERT INTO events (who, kind, detail) VALUES ('$ME', 'handoff', 'unconverged $u, awaiting peer $peers, awaiting me $mine');" >/dev/null
   local msg="ledger: $peers rows await your mark, $mine await mine, unconverged $u."
-  if [ "$u" = "0" ]; then
-    if [ "$role" = scribe ] && [ "$sig" = none ]; then msg="$msg Unconverged 0: run your fix review, put its conditions into the rows, then ledger.sh sign."
-    elif [ "$role" = countersigner ] && [ "$sig" != none ]; then msg="$msg Signed: ledger.sh converge."
+  if [ "$factual_u" = "0" ]; then
+    local comp peercomp; comp=$(composed_seats); peercomp=$(my_composition_count "$(other)")
+    if [ "$role" = countersigner ] && [ "$sig" != none ]; then msg="$msg Signed: ledger.sh converge."
+    elif [ "$peercomp" = 0 ]; then msg="$msg Factual rows converged: before reading the existing composition, add or refresh your own Composition row, then handoff."
+    elif [ "$u" = 0 ] && [ "$role" = scribe ] && [ "$sig" = none ]; then msg="$msg Unconverged 0 and composed: review any remaining proposals, then ledger.sh sign."
     else msg="$msg Run ledger.sh status."; fi
   else msg="$msg Run ledger.sh status."; fi
   notify peer "$msg"
@@ -359,11 +425,13 @@ cmd_sign() {
   [ "$(my_role)" != scribe ] || die "the scribe does not sign; the countersigner does"
   local n; n=$(run "$SHARED" "SELECT count(*) FROM imports;"); [ "$n" = "2" ] || die "both seats must have imported (imports: $n)"
   local u; u=$(unconverged_count "$SHARED"); [ "$u" = "0" ] || die "unconverged: $u; sign at 0"
-  local comp; comp=$(composed_seats); case "$comp" in *A*B*|*B*A*) ;; *) die "Composition rows present from seats: $comp; each seat writes one before signing";; esac
+  local comp; comp=$(composed_seats); case "$comp" in *A*B*|*B*A*) ;; *) die "current Composition rows present from seats: $comp; each seat writes one before signing";; esac
+  local unc; unc=$(uncovered_line); [ "$unc" = none ] || die "uncovered clusters: $unc; every cluster needs a factual row before signing"
   local unrev; unrev=$(unreviewed_line); [ "$unrev" = none ] || die "unreviewed proposals: $unrev; ledger.sh review each after walking it as a diff"
   local note=""; for a in "$@"; do case "$a" in note=*) note=${a#note=}; case "$note" in @*) note=$(cat "${note#@}");; esac;; *) die "usage: sign [note=<fix review summary>]";; esac; done
   local joint; joint=$(meta joint_path)
-  local h; h=$(notes_hash)
+  local h; h=$(notes_hash) || die "cannot hash A-notes.md and B-notes.md"
+  validate_notes || exit 1
   run "$SHARED" "INSERT INTO signatures (seat, ts, note, notes_hash) VALUES ('$ME', strftime('%Y-%m-%dT%H:%M:%SZ','now'), $( [ -n "$note" ] && sqlstr "$note" || echo NULL ), '$h'); INSERT INTO events (who, kind, detail) VALUES ('$ME', 'sign', $( [ -n "$note" ] && sqlstr "$note" || echo NULL ));" >/dev/null || exit 1
   echo "signed by $ME"
   local msg="signed: $joint by seat $ME.${note:+ Fix review: $note} Scribe: ledger.sh converge."
@@ -371,12 +439,12 @@ cmd_sign() {
   notify master "$msg"
 }
 
-render_to() { # render_to <path>: the render plus both seats' notes
-  local out=$1
+render_to() { # render_to <path> [notes dir]: the render plus the available seat notes
+  local out=$1 note_dir=${2:-$DIR}
   cmd_render > "$out" || exit 1
   local s
   for s in A B; do
-    if [ -f "$DIR/$s-notes.md" ]; then printf '\n## Seat %s notes\n\n' "$s" >> "$out"; cat "$DIR/$s-notes.md" >> "$out"; fi
+    if [ -f "$note_dir/$s-notes.md" ]; then printf '\n## Seat %s notes\n\n' "$s" >> "$out"; cat "$note_dir/$s-notes.md" >> "$out"; fi
   done
 }
 
@@ -385,16 +453,33 @@ cmd_converge() {
   [ -f "$SHARED" ] || die "no shared ledger"; check_version "$SHARED"
   [ "$(my_role)" = scribe ] || die "only the scribe converges (scribe: $(scribe_seat))"
   local u; u=$(unconverged_count "$SHARED"); [ "$u" = "0" ] || die "unconverged: $u; converge at 0"
-  local sig; sig=$(signature_line); [ "$sig" != none ] || die "no countersignature; the countersigner runs ledger.sh sign first"
   local unc; unc=$(uncovered_line); [ "$unc" = none ] || die "uncovered clusters: $unc; every cluster needs a row before the report"
-  local h; h=$(notes_hash); local signed_h; signed_h=$(run "$SHARED" "SELECT coalesce(notes_hash, '') FROM signatures LIMIT 1;")
-  [ "$h" = "$signed_h" ] || die "the seat notes changed since signing; the countersigner re-signs"
+  local sig; sig=$(signature_line); [ "$sig" != none ] || die "no countersignature; the countersigner runs ledger.sh sign first"
   local joint; joint=$(meta joint_path); [ -n "$joint" ] || die "no joint report path in meta"
-  render_to "$joint"
-  local lines; lines=$(wc -l < "$joint" | tr -d ' ')
+  local stage; stage=$(mktemp -d "$DIR/.converge-notes.XXXXXX") || die "cannot stage the signed notes"
+  cp "$DIR/A-notes.md" "$DIR/B-notes.md" "$stage/" 2>/dev/null || { rmdir "$stage" 2>/dev/null; die "A-notes.md and B-notes.md are required before convergence"; }
+  local h; h=$(notes_hash "$stage") || { rm -f "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; die "cannot hash the staged seat notes"; }
+  validate_notes "$stage" || { rm -f "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; exit 1; }
+  local signed_h; signed_h=$(run "$SHARED" "SELECT coalesce(notes_hash, '') FROM signatures LIMIT 1;")
+  [ "$h" = "$signed_h" ] || { rm -f "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; die "the seat notes changed since signing; the countersigner re-signs"; }
+  local joint_dir tmp; joint_dir=$(dirname "$joint"); [ -d "$joint_dir" ] || { rm -f "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; die "joint report directory $joint_dir does not exist"; }
+  tmp=$(mktemp "$joint_dir/.joint-report.XXXXXX") || { rm -f "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; die "cannot stage the joint report"; }
+  (render_to "$tmp" "$stage") || { rm -f "$tmp" "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; exit 1; }
+  local lines; lines=$(awk 'END { print NR }' "$tmp")
+  if [ "$lines" -gt 300 ]; then
+    rm -f "$tmp" "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"
+    die "$lines lines is over the 300-line bound; report not replaced—move detail into files referenced by path"
+  fi
+  # Recheck after rendering. A concurrent content edit deletes the signature; a concurrent note edit changes its hash.
+  u=$(unconverged_count "$SHARED"); [ "$u" = 0 ] || { rm -f "$tmp" "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; die "ledger changed while rendering (unconverged: $u); re-converge and re-sign"; }
+  sig=$(signature_line); [ "$sig" != none ] || { rm -f "$tmp" "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; die "ledger changed while rendering and voided the countersignature"; }
+  unc=$(uncovered_line); [ "$unc" = none ] || { rm -f "$tmp" "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; die "coverage changed while rendering: $unc"; }
+  local live_h; live_h=$(notes_hash) || { rm -f "$tmp" "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; die "cannot re-hash the seat notes"; }
+  [ "$live_h" = "$signed_h" ] || { rm -f "$tmp" "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; die "the seat notes changed while rendering; the countersigner re-signs"; }
+  mv "$tmp" "$joint" || { rm -f "$tmp" "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"; die "cannot replace $joint"; }
+  rm -f "$stage/A-notes.md" "$stage/B-notes.md"; rmdir "$stage"
   run "$SHARED" "INSERT INTO events (who, kind, detail) VALUES ('$ME', 'converge', '$lines lines');" >/dev/null
   echo "rendered $joint ($lines lines, $sig)"
-  [ "$lines" -le 300 ] || echo "warning: $lines lines is over the 300-line bound; move detail into files referenced by path" >&2
   notify master "converged: $joint. unconverged 0, $sig, $lines lines. Gate it."
 }
 
@@ -428,13 +513,19 @@ cmd_status() {
       return
     fi
     if is_single; then
+      [ "$ME" = A ] || die "a single-seat ledger is seat A: export LEDGER_ME=A"
       echo "single seat $ME ($SHARED); route $(meta route); report $(meta joint_path); rows: $(run "$db" "SELECT count(*) FROM ledger;")"
       next_step "$db"; return
     fi
     local peer mycol; peer=$(other); mycol=$(mark_col "$ME")
     echo "seat $ME ($(my_role)), phase: shared ($SHARED); imports: $(imports_line "$db"); route $(meta route); joint report $(meta joint_path)"
     echo "awaiting your mark ($ME), Bug and Restructure first:"
-    run "$db" "SELECT $row_line FROM ledger WHERE last_editor <> '$ME' AND $mycol = 0 ORDER BY CASE label WHEN 'Bug' THEN 0 WHEN 'Restructure' THEN 1 ELSE 2 END, id;"
+    if composition_blind; then
+      run "$db" "SELECT $row_line FROM ledger WHERE label <> 'Composition' AND last_editor <> '$ME' AND $mycol = 0 ORDER BY CASE label WHEN 'Bug' THEN 0 WHEN 'Restructure' THEN 1 ELSE 2 END, id;"
+      echo "peer Composition rows are withheld until you submit your own"
+    else
+      run "$db" "SELECT $row_line FROM ledger WHERE last_editor <> '$ME' AND $mycol = 0 ORDER BY CASE label WHEN 'Bug' THEN 0 WHEN 'Restructure' THEN 1 ELSE 2 END, id;"
+    fi
     echo "uncovered clusters: $(uncovered_line) | unreviewed proposals: $(unreviewed_line) | compositions from: $(composed_seats)"
     next_step "$db"
   else
@@ -457,7 +548,10 @@ cmd_show() {
   if [ "$ME" = A ] || [ "$ME" = B ]; then db=$(db_for_me) || exit 1; else db="$SHARED"; fi
   [ -f "$db" ] || die "no ledger at $db"
   local n; n=$(run "$db" "SELECT count(*) FROM ledger WHERE id = $1;"); [ "$n" = "1" ] || die "no row $1"
-  local cols="id cold_id owner last_editor rev label cluster site claim trigger impact decision step evidence_path status probe probe_owner dup_of verdict verdict_step origin_class fix_shape sites_walked rulings_checked test_seam cost changeset agree_a agree_b" c sql=""
+  if [ "$db" = "$SHARED" ] && composition_blind && [ "$(run "$db" "SELECT count(*) FROM ledger WHERE id = $1 AND label = 'Composition' AND owner <> '$ME';")" = 1 ]; then
+    die "peer Composition rows are withheld until you submit your own"
+  fi
+  local cols="id cold_id owner last_editor rev label cluster site claim trigger impact decision step evidence_path status probe probe_owner dup_of verdict verdict_step origin_class fix_shape sites_walked rulings_checked test_seam cost changeset reviewed_by reviewed_rev agree_a agree_b" c sql=""
   for c in $cols; do sql="$sql${sql:+ || }CASE WHEN $c IS NULL THEN '' ELSE '$c: ' || $c || char(10) END"; done
   run "$db" "SELECT $sql FROM ledger WHERE id = $1;"
   echo "events:"
@@ -469,6 +563,7 @@ cmd_render() {
   while [ $# -gt 0 ]; do case "$1" in --route) route=${2:-}; shift 2;; *) die "unknown render option $1";; esac; done
   [ -f "$SHARED" ] || die "no ledger at $SHARED"
   check_version "$SHARED"
+  composition_blind && die "peer Composition rows are withheld until you submit your own"
   [ -n "$route" ] || route=$(meta route)
   case "$route" in review|diagnose) ;; *) die "render needs a route: init --route, or render --route review|diagnose";; esac
   run "$SHARED" "PRAGMA wal_checkpoint(TRUNCATE);" >/dev/null
@@ -482,7 +577,7 @@ cmd_render() {
   echo; echo "## Coverage"; echo
   if [ "$(run "$SHARED" "SELECT count(*) FROM clusters;")" != "0" ]; then
     echo "| Cluster | Rows |"; echo "|---|---|"
-    run "$SHARED" "SELECT '| ' || c.name || ' | ' || coalesce((SELECT group_concat('#' || l.id || ' ' || l.status, ', ') FROM ledger l WHERE $(covers l.cluster c.name)), '(uncovered)') || ' |' FROM clusters c ORDER BY c.name;"
+    run "$SHARED" "SELECT '| ' || c.name || ' | ' || coalesce((SELECT group_concat('#' || l.id || ' ' || l.status, ', ') FROM ledger l JOIN factual_cluster_tokens t ON t.id = l.id WHERE t.cluster = c.name), '(uncovered)') || ' |' FROM clusters c ORDER BY c.name;"
   else
     echo "| Cluster field | Rows |"; echo "|---|---|"
     run "$SHARED" "SELECT '| ' || coalesce(cluster, '(none)') || ' | ' || group_concat('#' || id || ' ' || status, ', ') || ' |' FROM ledger GROUP BY cluster ORDER BY cluster;"
@@ -502,11 +597,11 @@ cmd_render() {
     FROM ledger WHERE label IN ('Bug','Restructure') AND status IN ('finding','verified','assumed','needs-ruling')
     ORDER BY CASE label WHEN 'Bug' THEN 0 ELSE 1 END, id;"
   echo "## Composition"; echo
-  run "$SHARED" "SELECT '- #' || id || ' composes ' || cluster || ' (' || status || ', step ' || step || ', by ' || owner || '): ' || replace(claim, char(10), ' ') || char(10) || '  Decision: ' || $(printf "$e" decision) FROM ledger WHERE label = 'Composition' AND status NOT IN ('withdrawn','dup') ORDER BY id;"
+  run "$SHARED" "SELECT '- #' || id || ' composes ' || cluster || ' (' || status || ', step ' || step || ', by ' || owner || '): ' || replace(claim, char(10), ' ') || char(10) || '  Decision: ' || $(printf "$e" decision) FROM current_compositions ORDER BY id;"
   echo; echo "## Hardening, nits, and telemetry quality"; echo
   run "$SHARED" "SELECT '- #' || id || ' [' || label || '] ' || coalesce(site || ' — ', '') || substr(replace(claim, char(10), ' '), 1, 200) || ' (' || status || ', step ' || step || '; ' || $(printf "$e" decision) || ')' FROM ledger WHERE label NOT IN ('Bug','Restructure','Composition') AND status IN ('finding','verified','assumed','needs-ruling','accepted') ORDER BY id;"
   echo; echo "## Contested, carried with probes"; echo
-  run "$SHARED" "SELECT '- #' || id || ' [' || label || '] ' || coalesce(site || ' — ', '') || substr(replace(claim, char(10), ' '), 1, 200) || char(10) || '  Probe: ' || $(printf "$e" probe) || ' (owner: ' || coalesce(probe_owner, 'unclaimed') || '). Axis: ' || $(printf "$e" decision) FROM ledger WHERE status = 'contested' ORDER BY id;"
+  run "$SHARED" "SELECT '- #' || id || ' [' || label || '] ' || coalesce(site || ' — ', '') || substr(replace(claim, char(10), ' '), 1, 200) || char(10) || '  Probe: ' || $(printf "$e" probe) || ' (owner: ' || coalesce(probe_owner, 'unclaimed') || '). Axis: ' || $(printf "$e" decision) || CASE WHEN label IN ('Bug','Restructure') THEN char(10) || '  Trigger: ' || $(printf "$e" trigger) || char(10) || '  User impact: ' || $(printf "$e" impact) || char(10) || '  Proposal: origin ' || $(printf "$e" origin_class) || '; shape: ' || $(printf "$e" fix_shape) ELSE '' END FROM ledger WHERE status = 'contested' ORDER BY id;"
   echo; echo "## Dispositions"; echo
   run "$SHARED" "SELECT '- #' || id || ' withdrawn (step ' || coalesce(verdict_step, '?') || ' by ' || last_editor || '): ' || substr(replace(coalesce(verdict,''), char(10), ' '), 1, 200) || ' — ' || substr(replace(claim, char(10), ' '), 1, 100) FROM ledger WHERE status = 'withdrawn' ORDER BY id;"
   run "$SHARED" "SELECT '- #' || id || ' dup of #' || dup_of || ' — ' || substr(replace(claim, char(10), ' '), 1, 100) FROM ledger WHERE status = 'dup' ORDER BY id;"
@@ -525,6 +620,7 @@ cmd_log() {
   local db where=""
   if [ "$ME" = A ] || [ "$ME" = B ]; then db=$(db_for_me) || exit 1; else db="$SHARED"; fi
   [ -f "$db" ] || die "no ledger at $db"
+  [ "$db" != "$SHARED" ] || ! composition_blind || die "peer Composition rows are withheld until you submit your own; log is disabled during the blind composition step"
   if [ $# -ge 1 ]; then is_int "$1" || die "row id must be an integer"; where="WHERE row_id = $1"; fi
   run "$db" "SELECT ts || ' ' || who || ' ' || kind || coalesce(' #' || row_id, '') || ' ' || coalesce(detail, '') FROM events $where ORDER BY rowid;"
 }
@@ -534,10 +630,11 @@ cmd_query() {
   local db
   if [ "$ME" = A ] || [ "$ME" = B ]; then db=$(db_for_me) || exit 1; else db="$SHARED"; fi
   [ -f "$db" ] || die "no ledger at $db"
+  [ "$db" != "$SHARED" ] || ! composition_blind || die "peer Composition rows are withheld until you submit your own; query is disabled during the blind composition step"
   "$SQLITE" -readonly -batch -cmd ".timeout 5000" -header -column "$db" "$1"
 }
 
-cmd_migrate() { # rebuild a schema-v1 shared ledger under the current schema; roles and partition come from the flags
+cmd_migrate() { # rebuild a schema-v1..4 shared ledger under the current schema; roles and partition come from the flags
   local scribe="" joint="" route="" clusters=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -550,7 +647,17 @@ cmd_migrate() { # rebuild a schema-v1 shared ledger under the current schema; ro
   case "$route" in review|diagnose) ;; *) die "migrate needs --route review|diagnose";; esac
   [ -f "$SHARED" ] || die "no ledger at $SHARED"
   local v; v=$("$SQLITE" -batch -cmd ".timeout 5000" "$SHARED" "PRAGMA user_version;")
-  case "$v" in 1|2|3) ;; *) die "$SHARED is schema version '$v'; migrate handles versions 1 to 3";; esac
+  case "$v" in 1|2|3|4) ;; *) die "$SHARED is schema version '$v'; migrate handles versions 1 to 4";; esac
+  local cold seat_name cold_v imported
+  for seat_name in A B; do
+    cold="$DIR/cold-$seat_name.db"
+    [ -f "$cold" ] || continue
+    imported=$("$SQLITE" -batch -cmd ".timeout 5000" "$SHARED" "SELECT count(*) FROM imports WHERE seat='$seat_name';" 2>/dev/null || echo 0)
+    cold_v=$("$SQLITE" -batch -cmd ".timeout 5000" "$cold" "PRAGMA user_version;" 2>/dev/null)
+    if [ "$imported" = 0 ] && [ "$cold_v" != "$SCHEMA_VERSION" ]; then
+      die "unimported cold-$seat_name.db is schema ${cold_v:-unknown}; finish that live run with its pinned helper or start a fresh run before migrating the shared ledger"
+    fi
+  done
   local new="$SHARED.v$SCHEMA_VERSION" old="$DIR/ledger.v$v.db"
   rm -f "$new"
   "$SQLITE" -bail -batch "$new" "PRAGMA journal_mode=WAL;" >/dev/null && "$SQLITE" -bail -batch "$new" < "$SCHEMA" || die "schema load failed"
@@ -558,13 +665,42 @@ cmd_migrate() { # rebuild a schema-v1 shared ledger under the current schema; ro
   pick() { case "$have" in *" $1 "*) echo "$1";; *) echo "${2:-NULL}";; esac; }   # source column, or a default
   local cost_expr; cost_expr=$(pick cost "CASE WHEN label IN ('Bug','Restructure') THEN 'unstated: migrated from schema $v; state it from the code before the fix round' ELSE NULL END")
   local changeset_expr; changeset_expr=$(pick changeset)
-  local triggers; triggers=$(awk '/^CREATE TRIGGER/{p=1} p{print} /END;[[:space:]]*$/{p=0}' "$SCHEMA")
-  local drops; drops=$(printf '%s\n' "$triggers" | awk '/^CREATE TRIGGER/{print "DROP TRIGGER " $3 ";"}')
+  local triggers; triggers=$("$SQLITE" -batch "$new" "SELECT sql || ';' FROM sqlite_master WHERE type = 'trigger' ORDER BY name;")
+  local drops; drops=$("$SQLITE" -batch "$new" "SELECT 'DROP TRIGGER ' || name || ';' FROM sqlite_master WHERE type = 'trigger' ORDER BY name;")
   local sql="ATTACH $(sqlstr "$SHARED") AS old; BEGIN; $drops
     INSERT INTO ledger (id, cold_id, owner, last_editor, rev, label, cluster, site, claim, trigger, impact, decision, step, evidence_path, status, probe, probe_owner, dup_of, verdict, verdict_step, origin_class, fix_shape, sites_walked, rulings_checked, test_seam, cost, changeset, agree_a, agree_b)
-      SELECT id, cold_id, owner, last_editor, rev, label, cluster, site, claim, trigger, impact, decision, step, evidence_path, status, probe, probe_owner, dup_of, verdict, verdict_step, origin_class, fix_shape, sites_walked, rulings_checked,
+      SELECT id, cold_id, owner, last_editor, rev, label,
+        CASE WHEN label = 'Composition' THEN coalesce(nullif(trim(cluster), ''), 'none') ELSE cluster END,
+        site, claim, trigger, impact,
+        CASE WHEN label = 'Composition' AND length(trim(coalesce(decision, ''))) = 0 THEN 'migration invalidated this composition; recompute it from the converged facts'
+             WHEN status = 'contested' AND label IN ('Bug','Restructure') AND length(trim(coalesce(decision, ''))) = 0 THEN 'unstated: migrated; state the probe outcome axis before convergence'
+             ELSE decision END,
+        step, evidence_path,
+        CASE WHEN label = 'Composition' THEN 'withdrawn'
+             WHEN status = 'accepted' AND (label <> 'Nit' OR length(trim(coalesce(decision, ''))) = 0) THEN 'finding'
+             ELSE status END,
+        CASE WHEN status = 'contested' AND length(trim(coalesce(probe, ''))) = 0 THEN 'unstated: migrated; name the settling probe' ELSE probe END,
+        probe_owner, dup_of,
+        CASE WHEN label = 'Composition' THEN 'schema migration invalidated prior composition; each seat recomputes it after factual convergence' ELSE verdict END,
+        CASE WHEN label = 'Composition' THEN coalesce(verdict_step, 2) ELSE verdict_step END,
+        origin_class, fix_shape, sites_walked, rulings_checked,
         CASE WHEN test_seam IS NULL OR test_seam LIKE 'exists:%' OR test_seam LIKE 'new:%' OR test_seam LIKE 'none:%' THEN test_seam ELSE 'new: ' || test_seam END,
-        $cost_expr, $changeset_expr, agree_a, agree_b FROM old.ledger ORDER BY id;
+        $cost_expr, $changeset_expr,
+        CASE WHEN label = 'Composition'
+          OR (status = 'accepted' AND (label <> 'Nit' OR length(trim(coalesce(decision, ''))) = 0))
+          OR (status = 'contested' AND label IN ('Bug','Restructure')
+          AND (length(trim(coalesce(trigger, ''))) = 0 OR length(trim(coalesce(impact, ''))) = 0 OR origin_class IS NULL
+            OR length(trim(coalesce(fix_shape, ''))) = 0 OR length(trim(coalesce(sites_walked, ''))) = 0
+            OR length(trim(coalesce(rulings_checked, ''))) = 0 OR length(trim(coalesce(test_seam, ''))) = 0
+            OR length(trim(coalesce($cost_expr, ''))) = 0)) THEN 0 ELSE agree_a END,
+        CASE WHEN label = 'Composition'
+          OR (status = 'accepted' AND (label <> 'Nit' OR length(trim(coalesce(decision, ''))) = 0))
+          OR (status = 'contested' AND label IN ('Bug','Restructure')
+          AND (length(trim(coalesce(trigger, ''))) = 0 OR length(trim(coalesce(impact, ''))) = 0 OR origin_class IS NULL
+            OR length(trim(coalesce(fix_shape, ''))) = 0 OR length(trim(coalesce(sites_walked, ''))) = 0
+            OR length(trim(coalesce(rulings_checked, ''))) = 0 OR length(trim(coalesce(test_seam, ''))) = 0
+            OR length(trim(coalesce($cost_expr, ''))) = 0)) THEN 0 ELSE agree_b END
+        FROM old.ledger ORDER BY id;
     INSERT INTO meta (key, value) SELECT 'mode', 'two-family' WHERE NOT EXISTS (SELECT 1 FROM meta WHERE key = 'mode');
     INSERT INTO imports SELECT * FROM old.imports;
     INSERT INTO events (ts, who, row_id, kind, detail) SELECT ts, who, row_id, kind, detail FROM old.events ORDER BY rowid;
@@ -575,10 +711,13 @@ cmd_migrate() { # rebuild a schema-v1 shared ledger under the current schema; ro
   local n; n=$(run "$new" "SELECT (SELECT count(*) FROM ledger) || ' rows, ' || (SELECT count(*) FROM unconverged) || ' unconverged, ' || (SELECT count(*) FROM sqlite_master WHERE type='trigger') || ' triggers';")
   mv "$SHARED" "$old"; rm -f "$SHARED-wal" "$SHARED-shm"; mv "$new" "$SHARED"; rm -f "$new-wal" "$new-shm"
   mkdir -p "$DIR/bin" && cp "$HERE/ledger.sh" "$HERE/ledger.sql" "$DIR/bin/" && chmod +x "$DIR/bin/ledger.sh"
-  echo "migrated $SHARED to schema $SCHEMA_VERSION ($n); the old file is $old; helper pinned under $DIR/bin. Unprefixed seams became 'new:', a ledger without cost carries 'unstated', and no proposal counts as fix-reviewed until ledger.sh review records it."
+  echo "migrated $SHARED to schema $SCHEMA_VERSION ($n); the old file is $old; helper pinned under $DIR/bin. Unprefixed seams became 'new:', invalid accepted rows reopened, prior compositions were withdrawn for recomposition, incomplete contested proposals were unmarked, and no proposal counts as fix-reviewed until ledger.sh review records it."
 }
 
 cmd=${1:-}; [ $# -gt 0 ] && shift
+case "$cmd" in
+  migrate|add|set|reject|contest|dup|agree|claim-probe|review|import|handoff|sign|converge|report) acquire_lock;;
+esac
 case "$cmd" in
   init) cmd_init "$@";;
   migrate) cmd_migrate "$@";;

@@ -9,6 +9,7 @@ Name plain or deep beside report or fix in your first line.
 | The input | What to do |
 |---|---|
 | One symptom, or one export or issue list however many symptoms it holds, and no cause on a risk surface | Plain. Follow the loop and the steps below. |
+| Several independent symptoms, exports, or issue lists; or the user asked for an exhaustive diagnosis | Deep. Read [deep.md](./deep.md) and choose your role at the top. |
 | The user asked for a deep run, or a cause sits on a risk surface | Deep. Read [deep.md](./deep.md) and choose your role at the top. |
 
 Risk surfaces are listed in good-code.md. Escalate mid-diagnosis if a cause lands on a risk surface: say you are escalating, then read deep.md.
@@ -31,7 +32,7 @@ When the input is telemetry or crash reports from shipped builds, the loop is a 
 
 ## Ledger
 
-A plain diagnosis writes its causes as rows in a single-seat ledger, the same rows a deep run writes, in a run directory placed per deep.md's Run directory paragraph: `ledger.sh init --single --route diagnose --clusters "<the issue or cluster ids>"`, one `add` per cause with its label, clusters, claim, step, and evidence path, and `ledger.sh report` renders the report below once every Bug or Restructure row carries its slots and every cluster has a row; it refuses otherwise and names what is missing. The helper sits beside deep.md and `ledger.sh --help` lists the columns. Your `passes:` line and retrospective go in `A-notes.md` in the ledger directory, which the report appends.
+A plain diagnosis writes its causes as rows in a single-seat ledger, the same rows a deep run writes. Create a run directory per deep.md's Run directory paragraph, export `LEDGER_DIR=<that directory> LEDGER_ME=A`, then run `ledger.sh init --single --route diagnose --clusters "<the issue or cluster ids>"`. Add one row per cause with its label, clusters, claim, step, and evidence path; `ledger.sh report` renders the report below once every Bug or Restructure row carries its slots and every cluster has a row, and otherwise names what is missing. The helper sits beside deep.md and `ledger.sh --help` lists the columns. Your `passes:` line and retrospective go in `A-notes.md` in the ledger directory, which the report appends.
 
 ## Report
 

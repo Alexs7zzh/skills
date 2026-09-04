@@ -31,7 +31,7 @@ Findings and verdicts are decisions.
 
 - **Bug.** A defect with an investigated trigger. Its proposal names the test that would have caught it and that test's seam.
 - **Restructure.** A structure that invites a class of bugs, proposed with what the new structure deletes. Several bugs sharing a structural cause report as one Restructure with the bugs as evidence.
-- **Hardening.** A real defect with low current impact. Fixed in the same touch as the substantive work in that file or subsystem, where the risk is already being tested, and never gates a release on its own.
+- **Hardening.** A real defect with low current impact. Fixed in the same touch as the substantive work in that file or subsystem, where the risk is already being tested, and never gates a release on its own. It does not use the Nit-only accepted exit.
 - **Nit.** One round of life: fixed opportunistically when its file is next modified, or dispositioned **accepted** with its reason and removed from the open ledger. Carrying a nit unfixed and unaccepted across rounds is a bookkeeping defect, not diligence.
 - **telemetry-quality.** A defect in what the telemetry says rather than in what the product does: a wrong or missing field, a misleading message, misgrouping, a symbol or release gap. Fixed as a logging or pipeline change under the project's logging policy, and never release-gating on its own.
 - **Composition.** A claim about a set of rows: what holds when they are all true on one user path, and the fix order or severity that follows. Each seat writes its compositions after the factual rows converge; they are cross-examined like Bugs and carry no proposal slots.
@@ -66,7 +66,7 @@ Three rules on the package:
 
 ## States
 
-One vocabulary. A claim in a ledger is **finding**, **verified** with its certainty step, **assumed**, **needs-ruling**, or **contested** with its settling probe; a row disproved closes as **withdrawn** with the disproving evidence and its step, and a row that restates another closes as **dup** of it. A row closes as **fixed** with its changeset; a Nit or Hardening row may close **accepted** with its reason in the decision. An unresolved item is agent-decidable, needs-ruling, or needs-external-evidence.
+One vocabulary. A claim in a ledger is **finding**, **verified** with its certainty step, **assumed**, **needs-ruling**, or **contested** with its settling probe; a row disproved closes as **withdrawn** with the disproving evidence and its step, and a row that restates another closes as **dup** of it. A row closes as **fixed** with its changeset; only a Nit may close **accepted**, with its reason in the decision. An unresolved item is agent-decidable, needs-ruling, or needs-external-evidence.
 
 ## Closing a round
 
