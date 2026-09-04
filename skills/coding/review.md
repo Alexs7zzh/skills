@@ -33,7 +33,7 @@ Escalate mid-review if a change you took as small turns out to touch a risk surf
 
 The response is triage, written in the owner's language, so explain any term of art in one clause at its first use or drop it. Carry only what the owner must know, decide, or act on:
 
-- Findings in the format below, ranked by user impact. A quick review may leave Decision and Validation status empty; Trigger stays, since a Bug is a defect with an investigated trigger.
+- Findings in the format below, ranked by user impact. A quick review may leave the decision and the evidence path empty; the trigger stays.
 - Each needs-ruling as a decision package per findings.md.
 - Assumed rows on release-gating claims, one line each.
 - Nits and hardening rows collapsed into one batch each, never interleaved with decisions; their lifecycles are in findings.md.
@@ -48,7 +48,7 @@ A deep review adds two mandatory sections in the seat notes, which `sign` hashes
 - **Goal closure.** The goal as the user experiences it, never in the design's vocabulary. What reality includes in that scope. Whether the design's boundary matches.
 - **Domain scenarios.** The canonical stress cases of the component's field. One row each: decision variables traced, coverage, verdict.
 
-A deep review ends with the render's **fix table**: one row per proposal, approved when it is converged and fix-reviewed at its revision, gated when contested on its named probe, or needs-ruling with its options labeled (a), (b), (c) in its decision.
+A deep review ends with the render's **fix table**, one row per fixable row with its stage per deep.md, and the rulings queue, each question with its options labeled (a), (b), (c) and the default it proceeds under.
 
 ## Retrospective
 

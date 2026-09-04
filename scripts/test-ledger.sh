@@ -12,6 +12,8 @@ not() { local want=$1 out; shift; out=$("$@" 2>&1); if printf '%s' "$out" | grep
 A() { LEDGER_ME=A "$L" "$@"; }
 B() { LEDGER_ME=B "$L" "$@"; }
 M() { LEDGER_ME=master "$L" "$@"; }
+F() { LEDGER_ME=fixer "$L" "$@"; }
+mk() { mkdir -p "$(dirname "$1")"; printf 'log\n' > "$1"; }
 RAW() { sqlite3 "$T/ledger.db" "$1"; }
 
 # init: roles, joint path, route, partition are ledger facts
@@ -19,11 +21,15 @@ bad "LEDGER_ME must be" env -u LEDGER_ME "$L" init --cold
 bad "needs --scribe" M init --joint "$T/joint.md" --route diagnose
 bad "needs --joint" M init --scribe A --route diagnose
 bad "needs --route" M init --scribe A --joint "$T/joint.md"
-has "pinned helper: $T/bin/ledger.sh" M init --scribe A --joint "$T/joint.md" --route diagnose --clusters "MES-V0 MES-V5 MES-W7 MES-WC"
+bad "init needs --names" M init --scribe A --joint "$T/joint.md" --route diagnose
+bad "--names role 'boss' is not" M init --scribe A --joint "$T/joint.md" --route diagnose --names "boss=x"
+bad "--names needs all four roles; missing B" M init --scribe A --joint "$T/joint.md" --route diagnose --names "A=x"
+has "pinned helper: $T/bin/ledger.sh" M init --scribe A --joint "$T/joint.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss" --clusters "MES-V0 MES-V5 MES-W7 MES-WC"
 [ -x "$T/bin/ledger.sh" ] && cmp -s "$T/bin/ledger.sh" "$L" && cmp -s "$T/bin/ledger.sql" "${L%/*}/ledger.sql" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: helper or schema not pinned under $T/bin"; }
-bad "exists" M init --scribe A --joint "$T/joint.md" --route diagnose
+bad "exists" M init --scribe A --joint "$T/joint.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss"
 has "rows: 0 total" M status
 has "scribe: A" M status
+has "agents: A=opus B=codex fixer=fx master=boss" M status
 has "uncovered clusters: MES-V0 MES-V5 MES-W7 MES-WC" M status
 ok A init --cold
 ok B init --cold
@@ -79,7 +85,10 @@ bad "cannot agree a row you last edited" A agree 1
 ok B set 1 claim="GC scan walks every entry per pass"
 has "0" B query "SELECT agree_b FROM ledger WHERE id=1"
 bad "cannot agree a row you last edited" B agree 1
-ok A agree 1
+has "fix: rows #1 are fixable" A agree 1
+bad "LEDGER_ME must be A or B" M init --cold
+bad "LEDGER_ME must be fixer, A, B or master" env -u LEDGER_ME "$L" land 1 shelve=s green_run=g
+has "fixable (write the seam's test" F status
 
 # bypass attempts
 bad "content edits go through ledger.sh set" RAW "UPDATE ledger SET claim='x' WHERE id=2"
@@ -87,6 +96,10 @@ bad "never deleted" RAW "DELETE FROM ledger WHERE id=2"
 bad "owner never changes" RAW "UPDATE ledger SET owner='B', rev=rev+1, agree_a=0, agree_b=0 WHERE id=2"
 bad "a new row is owned" RAW "INSERT INTO ledger (owner,last_editor,label,claim,step,agree_b) VALUES ('A','A','Nit','x',2,1)"
 bad "cannot agree" RAW "UPDATE ledger SET agree_b=1, rev=rev+1 WHERE id=2"
+bad "a landing goes through ledger.sh land" RAW "UPDATE ledger SET shelve='raw', green_run='g', red_run='r' WHERE id=1"
+bad "land only a fixable row" RAW "UPDATE ledger SET shelve='raw', green_run='g', red_run='r', fix_rev=fix_rev+1, landed_rev=rev, landed_by='x' WHERE id=2"
+bad "closed as fixed with ledger.sh close" RAW "UPDATE ledger SET status='fixed', changeset='x', rev=rev+1, agree_a=0, agree_b=0 WHERE id=1"
+bad "closes only under the user's go\|closes as fixed only when ready" RAW "UPDATE ledger SET status='fixed', changeset='x' WHERE id=1"
 
 # two cycles then probe (row 2: owner A); a contested row still needs the other's mark
 ok B set 2 claim=c1
@@ -132,16 +145,52 @@ bad "sign at 0" B sign
 bad "converge at 0" A converge
 # a raw signature while rows are unconverged is refused by the schema itself
 bad "sign refused" RAW "INSERT INTO signatures (seat, ts) VALUES ('B', 'now')"
-bad "Composition starts after every factual row converges" A add label=Composition step=2 cluster=none claim="premature composition" decision="no change"
+bad "Composition starts when every factual row is converged and every Bug or Restructure is ready" A add label=Composition step=2 cluster=none claim="premature composition" decision="no change"
 has "ledger: 1 rows await your mark" B handoff
 has "send it yourself" B handoff
 has "awaiting your mark (A)" A status
 bad "bug_converges_only_with_trigger_impact_cost_and_slots" A agree 4
 ok B set 4 trigger="every health poll" impact="dead server passes" origin_class=self-consistency fix_shape="return the probed value" sites_walked="Bar.cpp:7" rulings_checked="none" test_seam="none: no seam reaches the GameLift callback" cost="one lambda body; no interface change"
-has "next: factual rows converged" A agree 4
+has "next: the fixer lands #1 #4" A agree 4
 has "unconverged: 0" M status
-has "fix-review the converged proposals now" B status
+has "fixable: #1 #4" M status
+has "next: the fixer lands #1 #4" B status
 bad "no countersignature" A converge
+# landing and fix review: the fixer lands a fixable row with its shelve, red run and green run; the countersigner
+# reviews the landed diff; a landed and reviewed row is ready
+bad "proposals not ready: #1 #4" B sign
+bad "usage: review <id> rev=N fix_rev=M" B review 1
+bad "usage: land" F land 1
+mk "$T/logs/green-1.log"; mk "$T/logs/red-1.log"; mk "$T/logs/green-4.log"; mk "$T/logs/green-4b.log"
+bad "land needs rev=" F land 1 shelve=shelve-1 green_run=logs/green-1.log
+bad "shelve= is required" F land 1 rev=3 green_run=logs/green-1.log
+bad "is not an existing non-empty file" F land 1 rev=3 shelve=shelve-1 green_run=logs/missing.log red_run=logs/red-1.log
+bad "landing_is_shelve_green_and_red_unless_no_seam" F land 1 rev=3 shelve=shelve-1 green_run=logs/green-1.log
+bad "row 1 is not at rev 2" F land 1 rev=2 shelve=shelve-1 green_run=logs/green-1.log red_run=logs/red-1.log
+has "review: row #1 landed (rev 3, fix_rev 1): shelve shelve-1, red $T/logs/red-1.log" F land 1 rev=3 shelve=shelve-1 green_run=logs/green-1.log red_run=logs/red-1.log
+bad "land only a fixable row" F land 1 rev=3 shelve=shelve-1b green_run=logs/green-1.log red_run=logs/red-1.log
+bad "in a two-family run only the fixer edits the tree" M land 4 rev=1 shelve=s green_run=logs/green-4.log
+has "awaiting review: #1" M status
+has "fix-review the landed rows you did not write" B status
+bad "row 1 is yours" A review 1 rev=3 fix_rev=1
+bad "review needs rev= and fix_rev=" B review 1 note="no revs" rev=3 fix_rev=x
+bad "row 1 is not at rev 2, fix_rev 1" B review 1 rev=2 fix_rev=1
+has "ready: #1" B review 1 rev=3 fix_rev=1 note="walked the guard and the non-empty path"
+bad "in a two-family run only the fixer edits the tree" A land 4 rev=1 shelve=s green_run=logs/green-4.log
+bad "ruling_is_ruled_or_default" A set 4 ruling="maybe"
+has "ready for check-in: #1" M status
+has "fixable: #4" M status
+bad "proposals not ready: #4" B sign
+has "fix_rev 1 shelve shelve-1, red $T/logs/red-1.log, green $T/logs/green-1.log" M log 1
+has "fixer land #1" M log 1
+has "B review #1 rev 3 fix_rev 1" M log 1
+ok F land 4 rev=1 shelve=shelve-4 green_run=logs/green-4.log
+bad "row 4 is yours" B review 4 rev=1 fix_rev=1
+has "fix review recorded by A" A review 4 rev=1 fix_rev=1
+has "ready for check-in: #1 #4" M status
+bad "go approves a ready row at its current landing, after the countersignature" M go 1
+has "| #1 | Bug | finding | ready | shelve-1 |" M render
+has "Landed: shelve-4 (fix_rev 1); red: none (no seam); green: $T/logs/green-4.log" M render
 bad "Composition rows present from seats: none" B sign
 # compositions: one current row per seat, submitted blind and then cross-marked
 bad "composition_names_rows_and_a_decision" A add label=Composition step=2 claim="rows 1 and 4 together"
@@ -157,17 +206,6 @@ bad "log is disabled" B log
 ok B add label=Composition step=2 cluster="1,4" claim="same set, same order" decision="fix 1 before 4"
 ok B agree 8
 ok A agree 9
-# fix review: recorded by the countersigner as soon as a row converges; an edit needs a new review
-bad "unreviewed proposals: #1 #4" B sign
-has "unreviewed proposals: #1 #4" M status
-bad "only the countersigner" A review 1
-has "ready: row #1 is converged and fix-reviewed at its current revision. If the user has started the fix round" B review 1 note="walked the guard and the non-empty path"
-has "ready for a fixer (converged and fix-reviewed): #1" M status
-has "unreviewed proposals: #4" M status
-bad "unreviewed proposals: #4" B sign
-has "fix review recorded by B" B review 4
-has "ready for a fixer (converged and fix-reviewed): #1 #4" M status
-has "| #1 | Bug | finding | yes |" M render
 bad "only the scribe converges" B converge
 # both notes are mandatory; each records passes, retrospective, and vote
 bad "A-notes.md is required" B sign note="no blockers in #1 and #4"
@@ -181,14 +219,17 @@ sed -i.bak 's/^vote:$/vote: ship the reviewed rows/' "$T/A-notes.md"
 has "signed: $T/joint.md by seat B" B sign note="no blockers in #1 and #4"
 has "signature: signed by B" M status
 has "next: unconverged 0 and signed: ledger.sh converge" A status
-# an edit after signing voids the signature and the row's review
+# an edit after signing voids the signature and the row's review; the row is fixable again once it converges,
+# and is landed again (the same shelve, confirmed against the conditions, or a new one) before the next review
 ok A set 4 fix_shape="return the probed value; condition: keep the poll interval"
 has "signature: none" M status
-has "unreviewed proposals: #4" M status
 bad "converge at 0" A converge
-ok B agree 4
-bad "Composition rows present from seats: none" B sign
-ok B review 4
+has "fix: rows #4 are fixable" B agree 4
+bad "a fix review is recorded by the seat that did not write the row, on a landed, converged row awaiting review" A review 4 rev=2 fix_rev=1
+bad "proposals not ready: #4" B sign
+ok F land 4 rev=2 shelve=shelve-4 green_run=logs/green-4b.log
+has "signature: none" M status
+ok A review 4 rev=2 fix_rev=2
 # the factual edit made both prior compositions stale; refresh each independently, then cross-mark them
 has "compositions from: none" M status
 bad "Composition rows present from seats: none" B sign
@@ -256,23 +297,54 @@ cp "$T/joint.md" "$T/joint-before-bound.md"
 i=0; while [ "$i" -lt 310 ]; do printf "detail %s\n" "$i" >> "$T/A-notes.md"; i=$((i+1)); done
 RAW "DELETE FROM signatures"
 ok B sign note="oversized report probe"
-bad "over the 300-line bound" A converge
-cmp -s "$T/joint.md" "$T/joint-before-bound.md" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: oversized converge replaced the joint report"; }
-# closing a row as fixed needs its changeset, and the other seat's mark like any edit; closing never counts as a cycle
+has "WARNING: over the 300-line bound" A converge
+cmp -s "$T/joint.md" "$T/joint-before-bound.md" && { fail=$((fail+1)); echo "FAIL: oversized converge did not replace the joint report"; } || pass=$((pass+1))
+has "signature: signed by B" M status
+# a Nit edit leaves the signature standing; only Bug, Restructure and Composition edits void it
+ok B set 2 claim="nit wording"
+ok A agree 2
+has "signature: signed by B" M status
+# closing: the user's go approves ready rows at their landing; close records the check-in without a revision or a mark
+bad "records the user's decision: LEDGER_ME=master" F close 1 changeset=cs:16005
+bad "closes only under the user's go" M close 1 changeset=cs:16005
+has "approved at their landing: #1 (shelve-1)" M go 1
+has "approved: #1" M status
+has "| #1 | Bug | finding | approved | shelve-1 |" M render
+ok M close 1 changeset=cs:16005
+has "signature: signed by B" M status
+has "fixed in cs:16005 from shelve-1" M log 1
+has "master go rows 1" M log
+bad "no open row 1" M close 1 changeset=cs:16006
+bad "closes only under the user's go" M close 4 changeset=cs:16006
+has "#1 \\[Bug\\] Foo.cpp:12" M render
+has "## Fixed" M render
+has "(cs:16005)" M render
+has "| #1 | Bug | fixed | done | shelve-1 |" M render
 cyc=$(B add label=Bug step=2 claim="cycle-then-fix row" | sed -n 's/^added row \([0-9]*\).*/\1/p')
+has "signature: none" M status
 ok A set "$cyc" claim=e1
 ok B set "$cyc" claim=e2
 ok A set "$cyc" claim=e3
 ok B set "$cyc" claim=e4
 bad "two cycles spent" A set "$cyc" claim=e5
-ok A set "$cyc" status=fixed changeset="pending: closed by the non-owner after two cycles"
+bad "not settable" A set "$cyc" status=fixed changeset=x
+bad "closed as fixed with ledger.sh close" A set "$cyc" status=fixed
+bad "closes only under the user's go\|closes as fixed only when ready" M close "$cyc" changeset=cs:16007
+ok A contest "$cyc" probe=p decision=axis trigger=t impact=i origin_class=attention-miss fix_shape=f sites_walked=s rulings_checked=r test_seam="none: n" cost=c
 ok B agree "$cyc"
-bad "fixed_needs_changeset" A set 1 status=fixed
-has "unconverged: 1" A set 1 status=fixed changeset="pending: guarded early-out"
-ok B agree 1
-has "#1 \\[Bug\\] Foo.cpp:12" M render
-has "## Fixed" M render
-has "(pending: guarded early-out)" M render
+# a Hardening row closes on its changeset alone; a carried row names its exit
+hc=$(B add label=Hardening step=2 claim="lands like a Bug when fixed" | sed -n 's/^added row \([0-9]*\).*/\1/p')
+not "fix: rows" A agree "$hc"
+bad "closes only under the user's go\|closes as fixed only when ready" M close "$hc" changeset=cs:16008
+bad "landing_is_shelve_green_and_red_unless_no_seam" F land "$hc" rev=0 shelve=shelve-h green_run=logs/green-1.log
+ok F land "$hc" rev=0 shelve=shelve-h green_run=logs/green-1.log red_run=logs/red-1.log
+ok A review "$hc" rev=0 fix_rev=1
+bad "closes only under the user's go" M close "$hc" changeset=cs:16008
+bad "carried_is_ruled_and_names_its_exit" A set 2 status=carried decision="Docs/todos/Probe.md"
+bad "carried_is_ruled_and_names_its_exit" A set 2 status=carried ruling="default: carry" decision="Docs/todos/Probe.md"
+ok A set 2 status=carried ruling="ruled: carry it as a todo" decision="Docs/todos/Probe.md; no lane can run the probe this round"
+ok B agree 2
+has "carried out of the round: Docs/todos/Probe.md" M render
 
 # dups: no cycles, no chains
 rowid() { sed -n 's/^added row \([0-9]*\).*/\1/p'; }
@@ -307,11 +379,21 @@ ok A agree "$hard"
 ok A agree "$tele"
 ok B agree "$ac"
 has "\[Nit\].*accepted" M render
-# a needs-ruling proposal can be fix-reviewed but cannot be dispatched before its owner decides
-nr=$(A add label=Bug step=2 status=needs-ruling cluster=MES-V0 claim="owner must choose the compatibility trade" trigger=t impact=i origin_class=design-absence fix_shape=f sites_walked=s rulings_checked=r test_seam="new: ruling test" cost=c | rowid)
+# a needs-ruling proposal tells the master, waits for a ruling or a stated default, and only then is fixable
+nr_out=$(A add label=Bug step=2 status=needs-ruling cluster=MES-V0 claim="owner must choose the compatibility trade" decision="(a) break compatibility; (b) keep it" trigger=t impact=i origin_class=design-absence fix_shape=f sites_walked=s rulings_checked=r test_seam="new: ruling test" cost=c 2>&1)
+nr=$(printf '%s\n' "$nr_out" | rowid)
+printf '%s' "$nr_out" | grep -q "ruling: rows #$nr need the owner" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: no ruling notification on add -> $nr_out"; }
 ok B agree "$nr"
-not "ready: row #$nr" B review "$nr" note="walked both owner options"
-has "0" M query "SELECT count(*) FROM ready WHERE id=$nr"
+has "awaiting ruling: #$nr" M status
+bad "land only a fixable row" F land "$nr" rev=0 shelve=s green_run=logs/green-1.log red_run=logs/red-1.log
+bad "a fix review is recorded by the seat that did not write the row" B review "$nr" rev=0 fix_rev=0 note="walked both owner options"
+has "Proceeding under: nothing; the fixer waits" M render
+ok A set "$nr" ruling="default: (b) keep compatibility"
+has "fix: rows #$nr are fixable" B agree "$nr"
+has "Proceeding under: default: (b)" M render
+ok F land "$nr" rev=1 shelve=s-nr green_run=logs/green-1.log red_run=logs/red-1.log
+ok B review "$nr" rev=1 fix_rev=1
+has "1" M query "SELECT count(*) FROM ready WHERE id=$nr"
 # coverage is token-based: a decoy cluster is not covered by a longer name, an annotated token is
 S2=$(mktemp -d /tmp/ledger-cov.XXXXXX)
 ( export LEDGER_DIR=$S2; LEDGER_ME=A "$L" init --single --route review --clusters "foo foobar MES-VT bar" >/dev/null && LEDGER_ME=A "$L" add label=Nit step=2 cluster="foobar, MES-VT(5/6), foo;bar, foo(note)extra" claim=x >/dev/null && LEDGER_ME=A "$L" status ) | grep -q "uncovered clusters: foo bar$" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: exact comma-token coverage"; }
@@ -322,7 +404,7 @@ C=$(mktemp -d /tmp/ledger-contested.XXXXXX)
 CA() { LEDGER_DIR=$C LEDGER_ME=A "$L" "$@"; }
 CB() { LEDGER_DIR=$C LEDGER_ME=B "$L" "$@"; }
 CM() { LEDGER_DIR=$C LEDGER_ME=master "$L" "$@"; }
-ok CM init --scribe A --joint "$C/joint.md" --route diagnose
+ok CM init --scribe A --joint "$C/joint.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss"
 ok CA init --cold
 ok CB init --cold
 bad "contested_proposal_needs_its_axis_in_decision" CA add label=Bug step=2 claim="uncertain bug" status=contested probe="run the shipped seam"
@@ -340,7 +422,7 @@ F=$(mktemp -d /tmp/ledger-composition-refresh.XXXXXX)
 FA() { LEDGER_DIR=$F LEDGER_ME=A "$L" "$@"; }
 FB() { LEDGER_DIR=$F LEDGER_ME=B "$L" "$@"; }
 FM() { LEDGER_DIR=$F LEDGER_ME=master "$L" "$@"; }
-ok FM init --scribe A --joint "$F/joint.md" --route diagnose
+ok FM init --scribe A --joint "$F/joint.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss"
 ok FA init --cold
 ok FB init --cold
 ok FA add label=Nit step=2 claim="live fact"
@@ -352,7 +434,7 @@ ok FB add label=Composition step=2 cluster=1 claim="B composition" decision="no 
 ok FB agree 2
 ok FA agree 3
 ok FA set 1 claim="edited fact"
-bad "Composition resumes after every factual row converges" FB set 3 site="forged freshness"
+bad "Composition resumes when every factual row is converged" FB set 3 site="forged freshness"
 ok FB agree 1
 ok FB reject 1 verdict_step=2 verdict="fact no longer applies"
 ok FA agree 1
@@ -369,7 +451,7 @@ V=$(mktemp -d /tmp/ledger-two-coverage.XXXXXX)
 VA() { LEDGER_DIR=$V LEDGER_ME=A "$L" "$@"; }
 VB() { LEDGER_DIR=$V LEDGER_ME=B "$L" "$@"; }
 VM() { LEDGER_DIR=$V LEDGER_ME=master "$L" "$@"; }
-ok VM init --scribe A --joint "$V/joint.md" --route diagnose --clusters "1 c1 c2"
+ok VM init --scribe A --joint "$V/joint.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss" --clusters "1 c1 c2"
 ok VA init --cold
 ok VB init --cold
 ok VA add label=Nit step=2 cluster=c1 claim="covers only c1"
@@ -392,7 +474,7 @@ R=$(mktemp -d /tmp/ledger-review-notes.XXXXXX)
 RA() { LEDGER_DIR=$R LEDGER_ME=A "$L" "$@"; }
 RB() { LEDGER_DIR=$R LEDGER_ME=B "$L" "$@"; }
 RM() { LEDGER_DIR=$R LEDGER_ME=master "$L" "$@"; }
-ok RM init --scribe A --joint "$R/joint.md" --route review
+ok RM init --scribe A --joint "$R/joint.md" --route review --names "A=opus B=codex fixer=fx master=boss"
 ok RA init --cold
 ok RB init --cold
 ok RA import
@@ -420,29 +502,31 @@ P=$(mktemp -d /tmp/ledger-pin.XXXXXX)
 mkdir -p "$P/source" "$P/run"
 cp "$L" "${L%/*}/ledger.sql" "$P/source/"
 PL="$P/source/ledger.sh"
-has "pinned helper" env LEDGER_DIR=$P/run LEDGER_ME=master "$PL" init --scribe A --joint "$P/run/joint.md" --route diagnose
-sed -i.bak 's/SCHEMA_VERSION=5/SCHEMA_VERSION=999/' "$PL"
+has "pinned helper" env LEDGER_DIR=$P/run LEDGER_ME=master "$PL" init --scribe A --joint "$P/run/joint.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss"
+sed -i.bak 's/SCHEMA_VERSION=7/SCHEMA_VERSION=999/' "$PL"
 has "rows: 0 total" env LEDGER_DIR=$P/run LEDGER_ME=master "$PL" status
 cmp -s "$P/run/bin/ledger.sql" "${L%/*}/ledger.sql" && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: pinned schema changed"; }
 rm -rf "$P"
 
 # migration rebuilds an older shared schema, and refuses to strand an unimported older cold ledger
 G=$(mktemp -d /tmp/ledger-migrate.XXXXXX)
-has "pinned helper" env LEDGER_DIR=$G LEDGER_ME=master "$L" init --scribe A --joint "$G/joint.md" --route diagnose
-sqlite3 "$G/ledger.db" "PRAGMA ignore_check_constraints=ON; INSERT INTO ledger(owner,last_editor,label,claim,step,status,decision) VALUES('A','A','Hardening','accepted under schema 4',2,'accepted','leave it'),('A','A','Nit','empty accepted reason under schema 4',2,'accepted',''),('A','A','Nit','valid accepted nit under schema 4',2,'accepted','leave it'); UPDATE ledger SET agree_b=1;"
+has "pinned helper" env LEDGER_DIR=$G LEDGER_ME=master "$L" init --scribe A --joint "$G/joint.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss"
+sqlite3 "$G/ledger.db" "PRAGMA ignore_check_constraints=ON; INSERT INTO ledger(owner,last_editor,label,claim,step,status,decision,changeset) VALUES('A','A','Hardening','accepted under schema 4',2,'accepted','leave it',NULL),('A','A','Nit','empty accepted reason under schema 4',2,'accepted','',NULL),('A','A','Nit','valid accepted nit under schema 4',2,'accepted','leave it',NULL),('A','A','Hardening','fixed hardening with a real changeset',2,'fixed',NULL,'cs:1'),('A','A','Bug','fixed with a pending changeset',2,'fixed',NULL,'pending: not yet checked in'); UPDATE ledger SET agree_b=1;"
 sqlite3 "$G/ledger.db" "PRAGMA user_version=4;"
-has "migrated $G/ledger.db to schema 5" env LEDGER_DIR=$G LEDGER_ME=master "$L" migrate --scribe A --joint "$G/joint.md" --route diagnose
-has "rows: 3 total" env LEDGER_DIR=$G LEDGER_ME=master "$L" status
-has "2" env LEDGER_DIR=$G LEDGER_ME=master "$L" query "SELECT count(*) FROM ledger WHERE status='finding'"
+has "migrated $G/ledger.db to schema 8" env LEDGER_DIR=$G LEDGER_ME=master "$L" migrate --scribe A --joint "$G/joint.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss"
+has "rows: 5 total" env LEDGER_DIR=$G LEDGER_ME=master "$L" status
+has "3" env LEDGER_DIR=$G LEDGER_ME=master "$L" query "SELECT count(*) FROM ledger WHERE status='finding'"
 has "1" env LEDGER_DIR=$G LEDGER_ME=master "$L" query "SELECT count(*) FROM ledger WHERE status='accepted' AND agree_b=1"
-has "2" env LEDGER_DIR=$G LEDGER_ME=master "$L" query "SELECT count(*) FROM unconverged"
+has "migrated: cs:1" env LEDGER_DIR=$G LEDGER_ME=master "$L" query "SELECT shelve FROM ledger WHERE status='fixed'"
+has "1" env LEDGER_DIR=$G LEDGER_ME=master "$L" query "SELECT count(*) FROM ledger WHERE status='fixed'"
+has "3" env LEDGER_DIR=$G LEDGER_ME=master "$L" query "SELECT count(*) FROM unconverged"
 rm -rf "$G"
 G=$(mktemp -d /tmp/ledger-migrate-cold.XXXXXX)
-has "pinned helper" env LEDGER_DIR=$G LEDGER_ME=master "$L" init --scribe A --joint "$G/joint.md" --route diagnose
+has "pinned helper" env LEDGER_DIR=$G LEDGER_ME=master "$L" init --scribe A --joint "$G/joint.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss"
 ok env LEDGER_DIR=$G LEDGER_ME=A "$L" init --cold
 sqlite3 "$G/ledger.db" "PRAGMA user_version=4;"
 sqlite3 "$G/cold-A.db" "PRAGMA user_version=4;"
-bad "unimported cold-A.db is schema 4" env LEDGER_DIR=$G LEDGER_ME=master "$L" migrate --scribe A --joint "$G/joint.md" --route diagnose
+bad "unimported cold-A.db is schema 4" env LEDGER_DIR=$G LEDGER_ME=master "$L" migrate --scribe A --joint "$G/joint.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss"
 rm -rf "$G"
 
 # two-writer race: 150 adds per seat into the shared ledger, concurrently; then concurrent marks
@@ -469,6 +553,8 @@ has "single seat A" SA status
 bad "single-seat ledger is seat A" env LEDGER_DIR=$S LEDGER_ME=B "$L" status
 bad "single-seat ledger is seat A" env LEDGER_DIR=$S LEDGER_ME=B "$L" add label=Nit step=2 claim="wrong seat"
 ok SA add label=Bug step=3 cluster=C1 site=X.cpp:1 claim="single bug"
+mk "$S/green.log"
+bad "land only a fixable row" SA land 1 rev=0 shelve=s green_run=green.log
 bad "#1: missing trigger, impact, origin_class, fix_shape, sites_walked, rulings_checked, test_seam, cost" SA report
 bad "uncovered clusters: C2" SA report
 bad "single-seat ledger" SA handoff
@@ -479,6 +565,11 @@ ok SA add label=Nit step=2 cluster=C2 claim="covers C2"
 has "next: ledger.sh report" SA status
 has "rendered $S/report.md" SA report
 has "Single seat, no countersignature" cat "$S/report.md"
+bad "fixed_needs_a_landing_unless_nit" SA close 1 changeset=cs1
+ok SA land 1 rev=1 shelve=shelve-s1 green_run=green.log
+has "A land #1" SA log 1
+ok SA close 1 changeset=cs1
+has "(cs1)" SA render
 not "unconverged" cat "$S/report.md"
 has "| C2 | #2 finding |" cat "$S/report.md"
 not "## Convergence" cat "$S/report.md"
@@ -489,8 +580,8 @@ rm -rf "$S"
 # the verdict step in the two-cycle rule, raw mark clears, re-init over a pinned helper
 R=$(mktemp -d /tmp/ledger-reopen.XXXXXX)
 RA() { LEDGER_DIR=$R LEDGER_ME=A "$L" "$@"; }; RB() { LEDGER_DIR=$R LEDGER_ME=B "$L" "$@"; }; RM() { LEDGER_DIR=$R LEDGER_ME=master "$L" "$@"; }
-bad "contains a comma or parenthesis" RM init --scribe A --joint "$R/j.md" --route diagnose --clusters "C1,C2"
-ok RM init --scribe A --joint "$R/j.md" --route diagnose --clusters "C1 C2 C3"
+bad "contains a comma or parenthesis" RM init --scribe A --joint "$R/j.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss" --clusters "C1,C2"
+ok RM init --scribe A --joint "$R/j.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss" --clusters "C1 C2 C3"
 ok RA init --cold; ok RB init --cold
 ok RA add label=Bug step=4 cluster="C1 C2" site=x:1 claim=b1 evidence_path=e trigger=T-IMPORTANT impact=I-IMPORTANT origin_class=attention-miss fix_shape=F-IMPORTANT sites_walked=s rulings_checked=r test_seam="none: n" cost=c
 ok RA add label=Nit step=4 evidence_path=e cluster="C3" claim=n1
@@ -513,8 +604,48 @@ bad "withdrawn only by a content edit" sqlite3 "$R/ledger.db" "UPDATE ledger SET
 has "1" RA query "SELECT agree_a FROM ledger WHERE id = 2"
 # re-running init over a pinned helper neither copies onto itself nor fails
 rm -f "$R/ledger.db" "$R/ledger.db-wal" "$R/ledger.db-shm"
-not "identical" RM init --scribe A --joint "$R/j.md" --route diagnose --clusters "C1"
+not "identical" RM init --scribe A --joint "$R/j.md" --route diagnose --names "A=opus B=codex fixer=fx master=boss" --clusters "C1"
 rm -rf "$R"
+
+# conditions on a landed row are not argument; a flag blocks landing until a seat edits; rulings survive import
+# and are restated when their question changes; land and review name the revision they read
+Z=$(mktemp -d /tmp/ledger-landed.XXXXXX)
+ZA() { LEDGER_DIR=$Z LEDGER_ME=A "$L" "$@"; }; ZB() { LEDGER_DIR=$Z LEDGER_ME=B "$L" "$@"; }; ZF() { LEDGER_DIR=$Z LEDGER_ME=fixer "$L" "$@"; }; ZM() { LEDGER_DIR=$Z LEDGER_ME=master "$L" "$@"; }
+mk "$Z/g.log"; mk "$Z/r.log"
+ok ZM init --scribe A --joint "$Z/j.md" --route diagnose --clusters "C1" --names "A=a B=b fixer=f master=m"
+ok ZA init --cold; ok ZB init --cold
+ok ZA add label=Bug step=4 cluster=C1 site=x:1 claim=b1 evidence_path=e trigger=t impact=i origin_class=attention-miss fix_shape=f sites_walked=s rulings_checked=r test_seam="exists: x.spec" cost=c
+ok ZA add label=Nit step=2 cluster=C1 status=needs-ruling claim=r1 decision="keep?" ruling="default: (b)"
+ok ZA add label=Nit step=2 cluster=C1 status=needs-ruling claim=r2 decision="drop?"
+has "ruling: rows #3 need the owner" ZA import
+ok ZB import
+has "default: (b)" ZM query "SELECT ruling FROM ledger WHERE id=2"
+has "fix: rows #1 are fixable" ZB agree 1
+has "flag: row #1: the seam test passes before the fix" ZF flag 1 note="the seam test passes before the fix"
+has "fixer flag #1 the seam test passes" ZM log 1
+has "flagged: #1" ZM status
+bad "land only a fixable row" ZF land 1 rev=0 shelve=s1 green_run=g.log red_run=r.log
+ok ZA set 1 claim=b1-corrected
+has "fix: rows #1 are fixable" ZB agree 1
+bad "row 1 is not at rev 0" ZF land 1 rev=0 shelve=s1 green_run=g.log red_run=r.log
+ok ZF land 1 rev=1 shelve=s1 green_run=g.log red_run=r.log
+bad "row 1 is yours" ZA review 1 rev=1 fix_rev=1
+ok ZB set 1 claim=cond1; ok ZA agree 1
+ok ZF land 1 rev=2 shelve=s1 green_run=g.log red_run=r.log
+ok ZB set 1 claim=cond2; ok ZA agree 1
+ok ZF land 1 rev=3 shelve=s1 green_run=g.log red_run=r.log
+ok ZB set 1 claim=cond3; ok ZA agree 1
+ok ZF land 1 rev=4 shelve=s1 green_run=g.log red_run=r.log
+bad "row 1 is not at rev 4, fix_rev 3" ZB review 1 rev=4 fix_rev=3
+ok ZB review 1 rev=4 fix_rev=4
+has "ready for check-in: #1" ZM status
+# a ruling is restated or cleared when its question changes
+ok ZB set 2 decision="keep?" ruling="default: (b)"
+ok ZA agree 2
+bad "restate ruling=" ZA set 2 decision="keep or rename?"
+ok ZA set 2 decision="keep or rename?" ruling=
+has "awaiting ruling: #2 #3" ZM status
+rm -rf "$Z"
 
 echo "ledger tests: $pass passed, $fail failed (dir $T)"
 [ $fail -eq 0 ] && rm -rf "$T"

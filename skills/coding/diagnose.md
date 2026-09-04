@@ -18,17 +18,17 @@ Risk surfaces are listed in good-code.md. Escalate mid-diagnosis if a cause land
 
 A tight pass/fail signal that goes red on this bug does most of the work. Bisection, hypotheses, and instrumentation only consume it. Ways to build one: failing test at the nearest seam, script against a running instance, replayed captured trace, throwaway harness, differential run old-vs-new, bisection harness. Then tighten it. Faster: seconds. Sharper: assert the user's exact symptom, not "didn't crash". Deterministic: pin time, seed RNG. Non-deterministic bugs: raise the reproduction rate (loop 100x, stress, narrow timing) until debuggable.
 
-**Completion criterion:** one command, already run once, that is red-capable (asserts the exact symptom, goes green on the fix), deterministic, fast, and agent-runnable. Reading code to build a theory before this command exists is the failure this file prevents. If a loop is genuinely impossible: say so, list what you tried, ask for a captured artifact or environment access.
+**Completion criterion:** one command, already run once, that is red-capable (asserts the exact symptom, goes green on the fix), deterministic, fast, and agent-runnable. Build it before reading code for a theory. If a loop is genuinely impossible: say so, list what you tried, ask for a captured artifact or environment access.
 
 When the input is telemetry or crash reports from shipped builds, the loop is a deterministic assertion over the export: it goes red on the exact rows and cannot go green locally, the one exception to the criterion above. Say that once for the run, not once per issue, and build a local seam whenever the code path admits one, because a test that drives the real code outranks the assertion.
 
 ## Then, in order
 
 1. **Reproduce and minimise.** Watch the loop go red on the user's failure mode (not a nearby one). Shrink until every remaining element is load-bearing. The minimal repro shrinks the hypothesis space and becomes the regression test.
-2. **Hypothesise in threes.** 3 to 5 ranked falsifiable hypotheses before testing any ("if X is the cause, changing Y makes it disappear"). A hypothesis without a prediction is a vibe. Show the ranking; humans re-rank instantly.
+2. **Hypothesise in threes.** 3 to 5 ranked falsifiable hypotheses before testing any, each with its prediction: "if X is the cause, changing Y makes it disappear". Show the ranking.
 3. **Instrument one variable at a time**, probes mapped to predictions, as temporary changes under Permissions. For performance: measure baseline first, then bisect; logs are usually the wrong tool.
-4. **Fix at the origin** when fixing; when reporting, propose it in the Report shape below. Before writing the fix or its proposal, read good-change.md and shape it there; before labeling or grading it, read findings.md.
-5. **Lock it down** when fixing; when reporting, attach the red loop as the proposed regression test. Regression test at the correct seam, per good-change.md. Re-run the original loop. Remove every tagged edit. State the confirmed hypothesis in the commit message.
+4. **Fix at the origin.** Before writing the fix, read good-change.md and shape it there; before labeling or grading it, read findings.md. Under Report the fix is landed as a shelve, not checked in.
+5. **Lock it down.** The red loop becomes the regression test at the correct seam, per good-change.md, its red and green runs kept. Remove every tagged edit. State the confirmed hypothesis in the commit message.
 
 ## Ledger
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent messaging"
+  short_description: "Write a brief another agent acts on: goal, acceptance, facts, constraints, report"
+  default_prompt: "Use $agent-messaging to write this message to an agent."
