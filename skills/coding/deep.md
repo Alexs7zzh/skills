@@ -6,7 +6,7 @@ Two reviewers from different model families, one shared checkout, one database. 
 
 - **Nobody marks their own work.** The reviewer who did not write an issue agrees with it or disputes it. The reviewer who did not write a shelved fix reviews its diff. A question is answered by the user and nobody else.
 - **Issues, proposed fixes, and shelved fixes are separate rows.** Correcting a proposed fix never reopens the agreed issue. Fixing a diff never reopens the proposed fix. The script enforces it: an edit clears the marks on that row and on the rows built on it, and nothing else.
-- **The test comes first.** A shelved fix needs its red log and its green log, and the script refuses one without them. A test that passes before the fix does not test the bug: rewrite it.
+- **The test comes first.** A shelved fix needs its red log and its green log, and the script refuses one without them. A test that passes before the fix does not test the bug: rewrite it. When no test can reach the bug, that is an architecture issue, and the fix is shelved without a red log only on the user's answer to a question that says so.
 - **Argue twice, then stop.** A fact disputed through two back-and-forth edits gets the probe that settles it, run rather than described. A fix shape disputed through two edits becomes a question for the user, with both shapes and a recommendation. A disputed shape is never shelved; move to another issue.
 - **Never wait on one row.** `ledger status` lists the work you can do now. When one issue is blocked on a probe, a review, or the user, take another.
 - **Two files per shelved fix.** The red log and the green log go in the run directory. An issue carries file:line and at most one probe output. Nothing else is written there.
