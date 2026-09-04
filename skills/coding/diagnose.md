@@ -4,7 +4,7 @@ The procedure from symptom to cause. Read when the task is to debug or diagnose.
 
 ## Choose the mode
 
-Name plain or deep beside report or fix in your first line.
+Name plain or deep beside the stopping policy in your first line.
 
 | The input | What to do |
 |---|---|
@@ -26,13 +26,13 @@ When the input is telemetry or crash reports from shipped builds, the loop is a 
 
 1. **Reproduce and minimise.** Watch the loop go red on the user's failure mode (not a nearby one). Shrink until every remaining element is load-bearing. The minimal repro shrinks the hypothesis space and becomes the regression test.
 2. **Hypothesise in threes.** 3 to 5 ranked falsifiable hypotheses before testing any, each with its prediction: "if X is the cause, changing Y makes it disappear". Show the ranking.
-3. **Instrument one variable at a time**, probes mapped to predictions, as temporary changes under Permissions. For performance: measure baseline first, then bisect; logs are usually the wrong tool.
-4. **Fix at the origin.** Before writing the fix, read good-change.md and shape it there; before labeling or grading it, read findings.md. Under Report the fix is landed as a shelve, not checked in.
-5. **Lock it down.** The red loop becomes the regression test at the correct seam, per good-change.md, its red and green runs kept. Remove every tagged edit. State the confirmed hypothesis in the commit message.
+3. **Instrument one variable at a time**, probes mapped to predictions, as temporary changes under the stopping policy. For performance: measure baseline first, then bisect; logs are usually the wrong tool.
+4. **Shape the remedy at the origin.** Read good-change.md. Sweep the cause's siblings and interactions until its connected group is stable, then compose related Claims before choosing the Remedy. Report stops with the evidence or reviewed Remedy its policy calls for.
+5. **Lock down a landing.** Under Land or Check in, reuse the red loop as the regression test at the correct seam, run it red before the fix and green after, and keep both runs. Remove every tagged edit. State the confirmed hypothesis in the commit message.
 
 ## Ledger
 
-A plain diagnosis writes its causes as rows in a single-seat ledger, the same rows a deep run writes. Create a run directory per deep.md's Run directory paragraph, export `LEDGER_DIR=<that directory> LEDGER_ME=A`, then run `ledger.sh init --single --route diagnose --clusters "<the issue or cluster ids>"`. Add one row per cause with its label, clusters, claim, step, and evidence path; `ledger.sh report` renders the report below once every Bug or Restructure row carries its slots and every cluster has a row, and otherwise names what is missing. The helper sits beside deep.md and `ledger.sh --help` lists the columns. Your `passes:` line and retrospective go in `A-notes.md` in the ledger directory, which the report appends.
+A plain diagnosis uses a single-seat run ledger with the six objects from findings.md. Create a fresh directory per deep.md's Run directory paragraph, set `LEDGER=<absolute path to the coding skill>/scripts/ledger.ts`, export `LEDGER_DIR=<that directory> LEDGER_ME=A`, then run `"$LEDGER" init --single --route diagnose --policy <report|prepare|land|check-in> --clusters "<the issue or cluster ids>"`. Record each cause as a Claim with its covered clusters, step, and evidence path; record Decisions, Remedies, Landings, and Deliveries separately as they become relevant. `"$LEDGER" report` renders a deadline snapshot and names open coverage and work. `"$LEDGER" --help` lists the commands. Your `passes:` line and retrospective go in `A-notes.md` in the ledger directory, which the report appends.
 
 ## Report
 
@@ -46,4 +46,4 @@ Every reported cause names its certainty step, and every cause left below step 4
 
 Every cause that recurred in the field names the detector, watchdog, or health check that should have caught it and why it did not; a detector that cannot fire is a finding of its own.
 
-The report ends with the validation line per Declarations.
+The report separates verified causes from open hypotheses and marks each Remedy and Landing with its current state. It ends with the validation line per Declarations.

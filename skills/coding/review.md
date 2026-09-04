@@ -4,7 +4,7 @@ The procedure for judging a change. Read for a diff, branch, changeset, PR, or u
 
 ## Choose the review
 
-Name quick or deep beside report or fix in your first line, so the user can redirect you in one word.
+Name quick or deep beside the stopping policy in your first line, so the user can redirect either choice.
 
 | The change | What to do |
 |---|---|
@@ -35,12 +35,13 @@ The response is triage, written in the owner's language, so explain any term of 
 
 - Findings in the format below, ranked by user impact. A quick review may leave the decision and the evidence path empty; the trigger stays.
 - Each needs-ruling as a decision package per findings.md.
-- Assumed rows on release-gating claims, one line each.
-- Nits and hardening rows collapsed into one batch each, never interleaved with decisions; their lifecycles are in findings.md.
+- Assumed release-gating Claims, one line each.
+- Nit and Hardening Claims collapsed into one batch each, never interleaved with decisions; their lifecycles are in findings.md.
 - The validation line per Declarations, plus any prescribed step you skipped, named with why.
-- A deep review closes everything green in one line in the seat notes: "closed N rows: X by execution, Y by proof, Z by evidence." The full ledger, verified-clean entries (safe because <the one fact> (step N); ran against: <the shipped seam | a replica | which proxy>; windows: <interleavings walked>), and audit disposition stay in the run directory rather than the response.
+- A deep review closes everything green in one line in the seat notes: "closed N Claims: X by execution, Y by proof, Z by evidence." The full ledger, verified-clean entries (safe because <the one fact> (step N); ran against: <the shipped seam | a replica | which proxy>; windows: <interleavings walked>), and audit disposition stay in the run directory rather than the response.
+- At a deadline, the current snapshot is the report. Separate completed Claims and reviewed Remedies from open coverage, contested claims, pending decisions, unreviewed remedies, and unfinished landings. A gap blocks an exhaustive certificate, not the snapshot.
 
-Findings are ledger rows, and the findings section is the render of that ledger. A quick review that finds nothing wrong needs no ledger. Once a quick review has its first Bug or Restructure finding, open a run directory, export `LEDGER_DIR=<that directory> LEDGER_ME=A`, and run `ledger.sh init --single --route review` (the helper sits beside deep.md, whose Run directory paragraph says where the directory goes). Write each finding as a row; `ledger.sh report` renders the section and refuses while a Bug or Restructure row lacks a slot. A deep review's rows are written by the peers, and `converge` renders them. The row carries what the finding template carried: the claim as what and why, at `site`; `trigger`, how the condition arises in the field, cause, scope as all users, per machine, per session, or per event, and rough frequency, investigated rather than hypothesized; `impact` on the user; the proposal as `origin_class`, `fix_shape`, `sites_walked`, `rulings_checked`, `test_seam` (for Bugs, the test that would have caught it and its seam, stated as existing, new, or none), and `cost`; `decision`, the trade with recommendation and fix risk; `step` for confidence; `evidence_path` for validation status. A quick review may leave `decision` and `evidence_path` empty.
+The ledger stores the six objects from findings.md and renders their current states. A quick review that finds nothing wrong needs no ledger. Once a quick review has its first Bug or Restructure Claim, open a fresh run directory, set `LEDGER=<absolute path to the coding skill>/scripts/ledger.ts`, export `LEDGER_DIR=<that directory> LEDGER_ME=A`, and run `"$LEDGER" init --single --route review --policy <report|prepare|land|check-in>`. Record its site, trigger, cause, scope, frequency, impact, certainty step, and evidence independently of any Decision or Remedy. A Remedy records its origin class, fix shape, sites walked, rulings checked, test seam, cost, and fix risk. Opening the ledger does not change the stopping policy or authorize a landing.
 
 
 A deep review adds two mandatory sections in the seat notes, which `sign` hashes and `converge` appends:
@@ -48,8 +49,8 @@ A deep review adds two mandatory sections in the seat notes, which `sign` hashes
 - **Goal closure.** The goal as the user experiences it, never in the design's vocabulary. What reality includes in that scope. Whether the design's boundary matches.
 - **Domain scenarios.** The canonical stress cases of the component's field. One row each: decision variables traced, coverage, verdict.
 
-A deep review ends with the render's **fix table**, one row per fixable row with its stage per deep.md, and the rulings queue, each question with its options labeled (a), (b), (c) and the default it proceeds under.
+A deep review snapshot ends with the render's **remedy table**, one row per Remedy with its linked Claims and current state, plus the ruling queue. Each ruling has options labeled (a), (b), (c) and a recommendation. Only an explicit exhaustive certificate waits for complete coverage and settled connected groups.
 
 ## Retrospective
 
-One line at the end of every review, kept to deltas: which rule produced each finding, or whether it was judgment, and whether each bug was human-plausible or agent-typical. A deep review adds, to the seat notes rather than the answer, what the fix reviews and the fresh attack each caught, so a pass that never catches anything can be dropped, and which discovery channels produced this round's findings, which produced nothing, and which remain untried, so the next round spends its budget on unexamined ground. For each miss surfaced later, name what would have caught it in run one, preferring a repo-side test, assert, type or lint over a review instruction. A miss no rule names: propose the rule and ask; on yes, read [maintaining.md](./maintaining.md).
+One line at the end of every review, kept to deltas: which rule produced each finding, or whether it was judgment, and whether each bug was human-plausible or agent-typical. A deep review adds, to the seat notes rather than the answer, what the fix reviews and the fresh attack each caught, so a pass that never catches anything can be dropped, and which discovery channels produced findings, produced nothing, or remained untried. For each miss surfaced later, name what would have caught it in the original run, preferring a repo-side test, assert, type or lint over a review instruction. A miss no rule names: propose the rule and ask; on yes, read [maintaining.md](./maintaining.md).

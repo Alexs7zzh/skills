@@ -9,11 +9,13 @@ Properties of a change relative to its cause. Read before proposing or writing a
 
 ## Origin decides the shape
 
-A proposal is judged by what it deletes, not just what it patches. Classify each bug's origin first, because the origin decides the fix shape.
+A proposal is judged by what it deletes, not just what it patches. Classify each bug's origin first, because the origin decides the fix shape and the sibling sweep needed before its connected group is stable.
 
-- **Attention-miss.** A careful human would plausibly write this too: a wrong fence, a missed edge, an off-by-one. A spot fix is honest. Propose it.
-- **Self-consistency bug**, the agent-typical one: an unvalidated constant, a test that mirrors the code, an invented default, evidence measuring the wrong path. The same generator will produce this class again, so the proposal must carry the guardrail that makes recurrence impossible or CI-visible: an assertion at the boundary against the delivered value, a physical-unit test, a lint. A spot fix alone leaves the class alive.
-- **Design-absence bug.** A known structure prevents the class: single ownership per lifetime, an explicit state machine, a pure classifier over recomputed state. This is a Restructure rather than a Bug with a patch, and the proposal names the structure.
+- **Attention-miss.** A careful human would plausibly write this too: a wrong fence, a missed edge, an off-by-one. A spot fix is honest. Sweep the narrow sibling pattern and the paths that interact with it. It is not automatically a singleton.
+- **Self-consistency bug**, the agent-typical one: an unvalidated constant, a test that mirrors the code, an invented default, evidence measuring the wrong path. Sweep the mechanism that generated the inconsistency. The proposal must carry the guardrail that makes recurrence impossible or CI-visible: an assertion at the boundary against the delivered value, a physical-unit test, a lint. A spot fix alone leaves the class alive.
+- **Design-absence bug.** A known structure prevents the class: single ownership per lifetime, an explicit state machine, a pure classifier over recomputed state. Sweep every site compensating for the missing structure. This is a Restructure rather than a Bug with a patch, and the proposal names the structure.
+
+A connected group becomes stable when its declared sibling and interaction sweeps close and no open Claim can change its cause, severity, or remedy boundary. Origin class chooses the sweep; completion of the sweep establishes stability.
 
 ## Rules that sharpen the choice
 
@@ -22,6 +24,12 @@ A proposal is judged by what it deletes, not just what it patches. Classify each
 - **Restore the invariant when it is cheap.** A benign observed instance does not close a broken invariant, because the hole that admitted it admits bugs nobody caught. When restoring the invariant is cheap, recommend it outright.
 - **Lock a fix down.** A fix ships with a regression test at the correct seam, where the test exercises the real bug pattern as it occurs, written first and run red on the unfixed tree, then green with the fix, both runs kept as logs. A test that passes before the fix asserts the state after the fix rather than what separates fix from bug: rewrite it. When no correct seam exists, that is a finding about the architecture: record it.
 - **A fix that departs from the approved shape states its measured reason.**
+
+## Remedy review
+
+A Remedy normally becomes fixable when its linked Claims are stable, its sites and test seam have been walked, recorded rulings have been checked, and an independent reader accepts its shape. A bounded spot fix may enter implementation after the author completes those checks when it changes no interface or ownership, touches no risk surface, and needs no owner ruling; its non-author landing review then serves as remedy review. Every other Remedy is reviewed before implementation.
+
+Two remedy cross-edits are the limit. One independent adjudicator then chooses the stronger engineering shape. If the remaining choice turns on an owner value, present the mapped choice from findings.md. Never implement a default shape merely to avoid waiting.
 
 ## A proposal is a change
 

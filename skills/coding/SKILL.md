@@ -34,29 +34,34 @@ Names, comments, docs, commit messages, and another agent's report are testimony
 
 ## Attention
 
-- Fan out per independent unit, an issue, a sweep, a lens, or a claim cluster, one subagent each, with disjoint scopes named in the dispatch. Keep the model of the change, the verdicts, and the composition yourself. Those are the steps that cannot be delegated.
+- Fan out per independent unit, an issue, a sweep, a lens, or a connected claim group, one subagent each, with disjoint scopes named in the dispatch. Keep the model of the change and the final verdicts yourself. Those are the steps that cannot be delegated.
 - Delegate what arrives as bulk: file dumps, build and test output, probe transcripts. Subagents return conclusions with file:line and certainty step. Artifacts stay on disk and are referenced by path. Read a suite's summary and failure lines rather than its log. Independent commands batch inside one lane, which needs no delegation.
 - Cheap agents enumerate and flag. They never own a verdict.
 - A brief to an agent or subagent follows the `agent-messaging` skill: goal, acceptance, facts with their certainty, constraints, where to report, and no method. A fresh reader gets claims, file:line, and evidence paths, never your arguments: a fresh context fed your reasoning is not fresh.
+- Take any ready work whose independence rule you satisfy. Waiting on one claim, ruling, build, or review never blocks unrelated verification, composition, remedy work, or landing review.
 - Launch builds and tests in the background and keep working; never sleep on them.
 
 ## Declarations
 
 What you say about your own work, every time:
 
-- Line one names report or fix, and the mode: quick or deep for a review, plain or deep for a diagnosis.
+- Line one names the stopping policy and the mode: quick or deep for a review, plain or deep for a diagnosis.
 - Every claim names its certainty step. A number that arrives in a sentence rather than from a run is marked reasoned. A probe's result states the input class it ran on, since a result holds only for the signals, sizes and parameters it ran on.
 - A skipped pass or an unrun probe is named, with why. Report mode is never the reason.
 - The answer ends with a validation line: what built and ran, with results, and that the workspace is restored when temporary edits were made.
 
-## Permissions
+## Stopping policy
 
-Every task either reports or fixes.
+Assurance and delivery are separate. Quick, plain, and deep say how much evidence to gather. The stopping policy says how far verified work may travel:
 
-- **Report.** Review and diagnosis report by default: findings, verdicts, and fixes landed as shelves with their red and green runs, nothing checked in. Check-in starts only on the user's go, from the report's ready rows and nothing else. Reporting withholds only the check-in; every test, probe and landing a fix needs still runs. A landed change is not a temporary change: it stays applied in the fixer's tree until check-in or the user drops it, and the rules below govern probes, not landings.
-- **Fix.** The user asked for a change. Change what the request needs and nothing else; a wider change is proposed under Report. Build and run the owning tests per batch of independent changes and before the answer; a doc-only edit needs no rerun.
+- **Report**, the default for review and diagnosis: verify claims, make the decisions the evidence supports, and draft remedies where the owner needs them. Make no lasting code change.
+- **Prepare:** take selected remedies through review until they are fixable, with their sites, test seam, cost, and rulings checked. Do not land them.
+- **Land**, the default when the user asks for a fix: implement selected remedies, keep their red and green runs, and review the landing. Do not check it in.
+- **Check in:** deliver only landings the user explicitly approved.
 
-In either case, temporary changes that gather evidence are allowed, and encouraged whenever a reproduction settles what argument cannot: probes, tagged logs, temporary tests, compiled replicas, off-design parameters through existing helpers. One rule set governs them:
+Choose the earliest policy that satisfies the request. A later policy includes the earlier work, but it does not make unrelated findings wait for implementation. A deadline may stop before the target; report the current snapshot and name the remaining work.
+
+Under every policy, temporary changes that gather evidence are allowed, and encouraged whenever a reproduction settles what argument cannot: probes, tagged logs, temporary tests, compiled replicas, off-design parameters through existing helpers. One rule set governs them:
 
 - Tag every temporary edit with one unique token, so cleanup is one grep.
 - Never change the behavior under review or diagnosis, and never count a temporary change as a fix.
