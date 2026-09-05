@@ -78,7 +78,11 @@ test("a single quick review: pinned script, refusals with reasons, fresh diff re
   assert.match(report.out, /S-A-1 reviewed/)
   assert.ok(existsSync(join(directory, "report.md")))
   assert.match(readFileSync(join(directory, "report.md"), "utf8"), /^# Review report/)
-  expectOk(ledger("A", "timeline", "B"), /shelved-fix.review/)
+  const timeline = expectOk(ledger("A", "timeline", "B"), /shelved-fix.review/)
+  assert.match(timeline.out, /\| B \| [\d:.]+ \| [\dhms .]+ \| working: S-A-1 \|/, "B's segment names the diff review it had ready")
+  const row = expectOk(ledger("A", "timeline", "I-A-1"), /edited: trigger=one item; cause=<=; scope=all; frequency=each save; impact=crash; rank=1; marks cleared/)
+  assert.doesNotMatch(row.out, /Where the time went/, "a row's timeline is the argument on that row alone")
+  expectRefused(ledger("A", "timeline", "I-A-9"), /no events on I-A-9/)
 })
 
 test("a two-reviewer run: cold passes, import, messages, notes at handoff, master report and check-in", () => {
@@ -124,7 +128,13 @@ test("a two-reviewer run: cold passes, import, messages, notes at handoff, maste
   assert.match(report.out, /rule 3 found it/)
   expectOk(ledger("master", "check-in", "approve", "shelves=S-A-1", "approval=user said go", "executor=A"), /message for opus-reviewer: ready for you: K-M-1/)
   expectOk(ledger("A", "check-in", "record", "K-M-1", "rev=1", "changeset=cs 16"), /checked in as cs 16/)
-  expectOk(ledger("master", "report"), /\| K-M-1 \| S-A-1 \| A \| checked in \| cs 16 \|/)
+  const final = expectOk(ledger("master", "report"), /\| K-M-1 \| S-A-1 \| A \| checked in \| cs 16 \|/)
+  assert.match(final.out, /### Where the time went/)
+  assert.match(final.out, /\| A \| [\d:.]+ \| [\dhms .]+ \| checkout: fix I-A-1 \|/)
+  assert.match(final.out, /\| B \| [\d:.]+ \| [\dhms .]+ \| idle: handed off; waiting on A \|/, "B's wait on A's check-in is on the record")
+  assert.match(final.out, /\| master \| [\d:.]+ \| [\dhms .]+ \| idle: waiting on the reviewers \|/)
+  const timeline = expectOk(ledger("master", "timeline"), /### What each agent was doing or waiting on/)
+  assert.match(timeline.out, /\| A \| [\d:.]+ \| [\dhms .]+ \| cold pass \|/)
 })
 
 test("a database from another schema is refused rather than migrated", () => {
@@ -134,5 +144,5 @@ test("a database from another schema is refused rather than migrated", () => {
   database.exec("CREATE TABLE ledger (id INTEGER PRIMARY KEY, schema INTEGER NOT NULL, state TEXT NOT NULL)")
   database.exec("INSERT INTO ledger VALUES (1, 2, '{}')")
   database.close()
-  expectRefused(ledger("A", "status"), /schema 2; this script is schema 3/)
+  expectRefused(ledger("A", "status"), /schema 2; this script is schema 4/)
 })

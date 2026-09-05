@@ -7,13 +7,16 @@ import {
   rowById,
   rowsOf,
   shelvesForFix,
+  SITUATION_KINDS,
   type Actor,
   type Event,
   type Issue,
+  type Moment,
   type ProposedFix,
   type Ready,
   type Seat,
   type ShelvedFix,
+  type Situation,
   type State,
 } from "./protocol.ts"
 
@@ -200,7 +203,7 @@ function renderValidation(state: State): string {
   ].map((line) => `- ${line}`).join("\n")
 }
 
-export function renderReport(state: State, events: readonly Event[], notes: Notes): string {
+export function renderReport(state: State, events: readonly Moment[], notes: Notes): string {
   const issues = rowsOf(state, "Issue")
   const substantive = issues.filter((issue) => (issue.label === "Bug" || issue.label === "Restructure")).sort((left, right) => rank(left) - rank(right))
   const others = (label: Issue["label"]) => issues.filter((issue) => issue.label === label)
@@ -268,7 +271,96 @@ export function renderReport(state: State, events: readonly Event[], notes: Note
   ].join("\n")
 }
 
-export function renderTimeline(events: readonly Event[], actor?: Actor): string {
-  const chosen = actor ? events.filter((event) => event.actor === actor) : events
-  return table(["At", "Actor", "Command", "Row", "Note"], chosen.map((event) => [event.at, event.actor, event.command, event.row, event.note]))
+// ---------------------------------------------------------------------------
+// Timeline: derived from the recorded moments. Who did what, who waited on whom, what was argued.
+
+const ACTORS: readonly Actor[] = ["A", "B", "master"]
+
+export function isActor(value: string): value is Actor {
+  return (ACTORS as readonly string[]).includes(value)
+}
+
+function duration(ms: number): string {
+  if (ms < 1000) return `${(ms / 1000).toFixed(1)}s`
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m ${String(seconds % 60).padStart(2, "0")}s`
+}
+
+function clock(at: string): string {
+  return at.slice(11, 23)
+}
+
+interface Segment {
+  readonly actor: Actor
+  readonly from: string
+  /** Until the next change, or null when the record ends in this situation. */
+  readonly ms: number | null
+  readonly situation: Situation
+}
+
+/** One actor's situations in order, consecutive equal ones merged, each lasting until the next change or the record's end. */
+function segments(moments: readonly Moment[], actor: Actor): Segment[] {
+  const result: Segment[] = []
+  const end = moments.at(-1)?.at ?? ""
+  for (const moment of moments) {
+    const now = moment.situations[actor]
+    if (!now) continue
+    const last = result.at(-1)
+    if (last && last.situation.kind === now.kind && last.situation.detail === now.detail) continue
+    if (last) result[result.length - 1] = { ...last, ms: Date.parse(moment.at) - Date.parse(last.from) }
+    result.push({ actor, from: moment.at, ms: null, situation: now })
+  }
+  const last = result.at(-1)
+  if (last && last.from !== end) result[result.length - 1] = { ...last, ms: Date.parse(end) - Date.parse(last.from) }
+  return result
+}
+
+function eventTable(events: readonly Event[], withRow = true): string {
+  const headers = withRow ? ["At", "Actor", "Command", "Row", "Note"] : ["At", "Actor", "Command", "Note"]
+  return table(headers, events.map((event) => withRow ? [clock(event.at), event.actor, event.command, event.row, event.note] : [clock(event.at), event.actor, event.command, event.note]))
+}
+
+function renderSegments(all: readonly Segment[]): string {
+  return table(["Actor", "From", "For", "Situation"], all.map((segment) => [segment.actor, clock(segment.from), segment.ms === null ? "open" : duration(segment.ms), `${segment.situation.kind}${segment.situation.detail ? `: ${segment.situation.detail}` : ""}`]))
+}
+
+function renderTotals(moments: readonly Moment[], actors: readonly Actor[]): string {
+  const kinds = SITUATION_KINDS.filter((kind) => kind !== "done")
+  return table(["Actor", ...kinds], actors.map((actor) => {
+    const totals = new Map<string, number>()
+    for (const segment of segments(moments, actor)) if (segment.ms !== null) totals.set(segment.situation.kind, (totals.get(segment.situation.kind) ?? 0) + segment.ms)
+    return [actor, ...kinds.map((kind) => totals.has(kind) ? duration(totals.get(kind)!) : "")]
+  }))
+}
+
+/**
+ * The whole run: where the time went, what each agent was doing or waiting on,
+ * then every event. `chosen` narrows it to one actor, or to one row: the
+ * argument on that row, in order.
+ */
+export function renderTimeline(moments: readonly Moment[], chosen?: string): string {
+  if (chosen && !isActor(chosen)) return eventTable(moments.filter((moment) => moment.row === chosen), false)
+  const first = moments[0]
+  const last = moments.at(-1)
+  const actors = chosen && isActor(chosen) ? [chosen] : ACTORS.filter((actor) => moments.some((moment) => moment.situations[actor]))
+  const events = chosen ? moments.filter((moment) => moment.actor === chosen) : moments
+  const span = first && last ? `Recorded from ${first.at} to ${last.at} (${duration(Date.parse(last.at) - Date.parse(first.at))}). Each situation is read off the database at an event and lasts until the next event changes it.` : "Nothing recorded."
+  return [
+    span,
+    "",
+    "### Where the time went",
+    "",
+    renderTotals(moments, actors),
+    "",
+    "### What each agent was doing or waiting on",
+    "",
+    renderSegments(actors.flatMap((actor) => segments(moments, actor)).sort((left, right) => left.from.localeCompare(right.from))),
+    "",
+    "### Events",
+    "",
+    eventTable(events),
+  ].join("\n")
 }

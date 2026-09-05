@@ -16,7 +16,7 @@ Good code and good change are the same in every project, so one skill serves rev
 
 - **Information continuity.** The agent that investigated an issue holds the details: the code it read, the probe it ran, the dead ends. Handing the fix to another agent throws that away and makes the second agent rebuild it from a message that can never be complete. So the phases a human names, find, verify, propose, fix, check, are logically true but the wrong shape for agents. The one who understood the bug writes the test and the fix; a second reader judges the result. Judge every step by what information it moves and what it loses.
 - **Agents' limits shape the mechanisms.** They have limited attention, forget, and agree with themselves. Hence a database that remembers state, subagents for bulk, two model families that check each other, and the rule that nobody marks their own work.
-- **Keep pushing on the concepts.** The workflow is not finished. Each run's record shows where time and information were lost; the fix is to rethink the shape, not to add a step.
+- **Keep pushing on the concepts.** The workflow is not finished. Each run's record shows where time and information were lost; the fix is to rethink the shape, not to add a step. That record is the database, the one place every agent writes on one clock: it keeps what each agent was doing or waiting on at each moment and what was argued on each row, so a run is read back from its directory and never from session logs, and the reading costs the agents nothing during the run.
 
 ## What we do not do
 

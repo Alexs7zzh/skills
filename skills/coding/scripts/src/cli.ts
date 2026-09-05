@@ -20,11 +20,12 @@ import {
   type Declared,
   type Facts,
   type Label,
+  type Moment,
   type Notification,
   type Seat,
   type State,
 } from "./protocol.ts"
-import { renderReport, renderStatus, renderTimeline, summary, type Notes } from "./report.ts"
+import { isActor, renderReport, renderStatus, renderTimeline, summary, type Notes } from "./report.ts"
 import { StoreError, create, mutate, read, type Mutation } from "./store.ts"
 
 export class InputError extends Error {}
@@ -68,7 +69,7 @@ check-in approve shelves=<S-ids> approval=<the user's words> [executor=<A|B|mast
 check-in record <K-id> rev=N changeset=.. [departures=..] | check-in drop <K-id> rev=N reason=..
 import                                                                cold pass into the shared database
 handoff                                                               two-reviewer run, when ready work is empty
-status | report | timeline [A|B|master]
+status | report | timeline [A|B|master|<row-id>]      the run's record: who did and waited on what, or the argument on one row
 `
 
 // ---------------------------------------------------------------------------
@@ -228,6 +229,22 @@ function activePath(actor: Actor): string {
   if (!existsSync(shared)) throw new InputError(`no ledger at ${shared}; run init first`)
   if (!isSeat(actor) || !existsSync(coldPath(actor))) return shared
   return read(shared).state.imported[actor] ? shared : coldPath(actor)
+}
+
+/**
+ * The run's record in time order. After import, the shared database carries the
+ * run; each cold pass's events join it here so a row's history starts where the
+ * row was born. A cold moment's situations stay in its own database.
+ */
+function record(actor: Actor): Moment[] {
+  const path = activePath(actor)
+  const snapshot = read(path)
+  if (path !== sharedPath() || snapshot.state.mode !== "joint") return [...snapshot.events]
+  const merged: Moment[] = [...snapshot.events]
+  for (const seat of ["A", "B"] as const) {
+    if (existsSync(coldPath(seat))) merged.push(...read(coldPath(seat)).events.map((event) => ({ ...event, situations: {} })))
+  }
+  return merged.sort((left, right) => left.at.localeCompare(right.at))
 }
 
 function notesPath(seat: Seat): string {
@@ -499,7 +516,7 @@ function printReport(): void {
       if (state.mode === "single" || state.handedOff[seat]) checkNotes(state, seat)
     }
   }
-  const text = renderReport(state, snapshot.events, readNotes(state))
+  const text = renderReport(state, record(actor), readNotes(state))
   const destination = join(runDirectory(), "report.md")
   writeFileSync(destination, text)
   console.log(text)
@@ -520,8 +537,10 @@ export function main(argv: readonly string[]): number {
     if (noun === "report") { printReport(); return 0 }
     if (noun === "timeline") {
       const chosen = parsed.positional[0]
-      if (chosen !== undefined && chosen !== "A" && chosen !== "B" && chosen !== "master") throw new InputError("timeline takes A, B, or master")
-      console.log(renderTimeline(read(activePath(actor)).events, chosen))
+      if (parsed.positional.length > 1) throw new InputError("timeline takes one of A, B, master, or a row id")
+      const events = record(actor)
+      if (chosen !== undefined && !isActor(chosen) && !events.some((event) => event.row === chosen)) throw new InputError(`no events on ${chosen}; timeline takes A, B, master, or a row id`)
+      console.log(renderTimeline(events, chosen))
       return 0
     }
     if (noun === "import") { importCold(); return 0 }

@@ -32,7 +32,7 @@ Every file in this skill uses these words for these things.
 - **Probe.** Temporary code that answers one question about the code: a tagged log, a temporary test, a compiled replica. Removed afterwards.
 - **Red run, green run.** The new test failing on the unfixed code, then passing with the fix. Each is kept as a log file.
 - **Shelve.** A saved change outside the checked-in history. The project's doc names the form: a Plastic or Perforce shelve, a git branch, worktree, or stash.
-- **Database.** The run's shared SQLite file, kept by the `ledger` script under `scripts/` beside this file. Every issue, question, proposed fix, shelved fix, and check-in is a row in it, and the report is printed from it.
+- **Database.** The run's shared SQLite file, kept by the `ledger` script under `scripts/` beside this file. Every issue, question, proposed fix, shelved fix, and check-in is a row in it, every command lands in its record with what each agent was doing or waiting on at that moment, and the report and the timeline are printed from it.
 - **Mark.** One reviewer's recorded agreement with a row it did not write.
 
 ## Certainty

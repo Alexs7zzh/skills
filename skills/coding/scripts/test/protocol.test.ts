@@ -9,6 +9,8 @@ import {
   ready,
   rowById,
   rowsOf,
+  situation,
+  situations,
   transition,
   type Actor,
   type Command,
@@ -401,6 +403,66 @@ function invariants(state: State): void {
     assert.ok(shelves.some((shelf) => shelf.state === "reviewed"), `done with ${issue.id} fixed but not reviewed`)
   }
 }
+
+test("the record says what each agent was doing or waiting on, and what was argued on each row", () => {
+  let state = start("joint")
+  assert.deepEqual(situations(state), { A: { kind: "cold pass", detail: "" }, B: { kind: "cold pass", detail: "" }, master: { kind: "idle", detail: "waiting on the reviewers" } })
+  state = joint()
+  assert.equal(situation(state, "A").kind, "no handoff", "nothing ready and no handoff is on the record, not hidden as idle")
+
+  // The argument on a row: every event note carries the substance of what was said.
+  const notes: string[] = []
+  const say = (command: Step) => {
+    const result = transition(state, { ...command, at: at() } as Command)
+    if (!result.ok) assert.fail(`${command.type} refused: ${result.error}`)
+    notes.push(...result.events.map((event) => event.note))
+    state = result.state
+  }
+  say(addIssue("A"))
+  say({ type: "issue.verify", actor: "A", id: "I-A-1", rev: 1, certainty: 4, evidence: "p.log" })
+  say({ type: "issue.contest", actor: "B", id: "I-A-1", rev: 2, probe: "run with n=1" })
+  say({ type: "issue.set", actor: "A", id: "I-A-1", rev: 3, facts: { trigger: "n=1 and n=0" }, labelReason: "" })
+  say({ type: "issue.verify", actor: "A", id: "I-A-1", rev: 4, certainty: 4, evidence: "p.log" })
+  say({ type: "issue.contest", actor: "B", id: "I-A-1", rev: 5, probe: "run with n=0" })
+  say({ type: "issue.probe", actor: "B", id: "I-A-1", rev: 6, verdict: "disproved", certainty: 4, evidence: "probe2.log" })
+  assert.deepEqual(notes, [
+    "Bug new: off by one (a.ts:12)",
+    "verified at step 4: evidence p.log",
+    "contested by B: run with n=1",
+    "answered the contest with an edit: trigger=n=1 and n=0; marks cleared",
+    "verified at step 4: evidence p.log",
+    "contested twice; B runs the probe: run with n=0",
+    "probe ran: disproved at step 4, evidence probe2.log",
+  ])
+
+  // Who waits on whom: B wants the checkout A holds; A waits on the user; the master carries the question.
+  state = agreedIssue(joint())
+  state = ok(state, { type: "checkout.take", actor: "A", purpose: "probe I-A-1" })
+  state = ok(state, addIssue("B", "Bug", { claim: "second", site: "b.ts:1" }))
+  state = ok(state, { type: "issue.verify", actor: "B", id: "I-B-1", rev: 1, certainty: 4, evidence: "p.log" })
+  state = ok(state, { type: "issue.agree", actor: "A", id: "I-B-1", rev: 2 })
+  state = ok(state, { type: "issue.take", actor: "B", id: "I-B-1", rev: 2 })
+  state = ok(state, { type: "proposed-fix.add", actor: "B", issues: ["I-B-1"], ...shape({ origin: "attention-miss", needsMark: false }) })
+  assert.deepEqual(situation(state, "A"), { kind: "checkout", detail: "probe I-A-1" })
+  assert.deepEqual(situation(state, "B"), { kind: "waiting on checkout", detail: "held by A: probe I-A-1" }, "B's approved fix waits on the checkout A holds")
+  state = ok(state, { type: "issue.release", actor: "A", id: "I-A-1", rev: 2 })
+  assert.deepEqual(situation(state, "B"), { kind: "working", detail: "I-A-1; fixing I-B-1" }, "an issue nobody is fixing is work for B, checkout or not")
+  state = ok(state, { type: "issue.take", actor: "B", id: "I-A-1", rev: 2 })
+  state = ok(state, { type: "proposed-fix.add", actor: "B", issues: ["I-A-1"], ...shape({ origin: "attention-miss", needsMark: false }) })
+  assert.equal(situation(state, "B").kind, "waiting on checkout")
+  state = ok(state, { type: "checkout.release", actor: "A", reason: "" })
+  assert.equal(situation(state, "B").kind, "working")
+  state = ok(state, { type: "question.add", actor: "B", issues: ["I-A-1", "I-B-1"], fix: "", question: "which shape?", options: ["a", "b"], recommendation: "a", effect: "none", cost: "none" })
+  assert.deepEqual(situation(state, "master"), { kind: "waiting on user", detail: "Q-B-1" })
+  assert.equal(situation(state, "B").kind, "no handoff")
+  state = ok(state, { type: "handoff", actor: "B" })
+  assert.deepEqual(situation(state, "B"), { kind: "idle", detail: "handed off; waiting on A" })
+  state = ok(state, { type: "handoff", actor: "A" })
+  assert.deepEqual(situation(state, "A"), { kind: "waiting on user", detail: "Q-B-1" })
+  assert.deepEqual(situation(state, "B"), { kind: "waiting on user", detail: "Q-B-1" })
+  state = ok(state, { type: "question.answer", actor: "master", id: "Q-B-1", rev: 1, answer: "a" })
+  assert.equal(situation(state, "B").kind, "working", "the answer puts B back to work")
+})
 
 test("property: traces that follow ready work keep every rule and never stop with agreed work unfinished", () => {
   let finished = 0

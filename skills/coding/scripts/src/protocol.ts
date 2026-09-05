@@ -2,7 +2,7 @@
 // Every refusal here restates a sentence of the coding skill. Storage, argument
 // parsing, and rendering live elsewhere and know nothing about the rules.
 
-export const SCHEMA = 3
+export const SCHEMA = 4
 
 export type Seat = "A" | "B"
 export type Actor = Seat | "master"
@@ -261,12 +261,27 @@ export type Command =
 
 export type CommandType = Command["type"]
 
+/** One command as it happened: who ran it, on which row, and the substance of what they said. */
 export interface Event {
   readonly at: string
   readonly actor: Actor
   readonly command: CommandType | "init"
   readonly row: string
   readonly note: string
+}
+
+export const SITUATION_KINDS = ["cold pass", "working", "checkout", "waiting on checkout", "idle", "waiting on user", "no handoff", "done"] as const
+export type SituationKind = (typeof SITUATION_KINDS)[number]
+
+/** What an actor is doing or waiting on, derived from the state alone. */
+export interface Situation {
+  readonly kind: SituationKind
+  readonly detail: string
+}
+
+/** An event with every actor's situation once it had landed. The timeline is derived from these. */
+export interface Moment extends Event {
+  readonly situations: Readonly<Partial<Record<Actor, Situation>>>
 }
 
 export interface Notification {
@@ -470,6 +485,10 @@ function requireIssueSlots(issue: Issue, facts: Facts): void {
   if (missing.length > 0) refuse(`a ${issue.label} needs ${missing.join(", ")} before it is verified or assumed`)
 }
 
+function withText(text: string): string {
+  return text.trim() ? `: ${text.trim()}` : ""
+}
+
 function decide(state: State, command: Command): Draft {
   const rows: Row[] = [...state.rows]
   const events: Event[] = []
@@ -497,7 +516,7 @@ function decide(state: State, command: Command): Draft {
         rows.push(imported)
       }
       next = { ...state, imported: { ...state.imported, [seat]: true } }
-      note("run", `${seat} imported ${command.rows.length} rows`)
+      note("run", `${seat} imported ${command.rows.length} rows${command.rows.length > 0 ? `: ${command.rows.map((imported) => imported.id).join(", ")}` : ""}`)
       break
     }
 
@@ -506,7 +525,7 @@ function decide(state: State, command: Command): Draft {
       requireSharedWriter(state, command)
       const id = nextId(state, "C", seat)
       rows.push({ ...base(id, seat), kind: "Coverage", coverage: command.coverage, target: nonempty(command.target, "target"), state: command.state, note: command.note })
-      note(id, `${command.coverage} ${command.target}: ${command.state}`)
+      note(id, `${command.coverage} ${command.target}: ${command.state}${withText(command.note)}`)
       break
     }
 
@@ -516,7 +535,7 @@ function decide(state: State, command: Command): Draft {
       const coverage = target(state, command, "Coverage")
       if (coverage.author !== seat) refuse(`${coverage.id} is ${coverage.author}'s sweep`)
       revise(rows, coverage, { state: command.state, note: command.note }, seat, at)
-      note(coverage.id, command.state)
+      note(coverage.id, `${command.state}${withText(command.note)}`)
       break
     }
 
@@ -546,7 +565,7 @@ function decide(state: State, command: Command): Draft {
         placed = { ...issue, state: "accepted", reason: nonempty(command.reason, "reason") }
       }
       rows.push(placed)
-      note(id, `${placed.label} ${placed.state}${placed.state === "verified" ? ` at step ${placed.certainty}` : ""}`)
+      note(id, `${placed.label} ${placed.state}${placed.state === "verified" ? ` at step ${placed.certainty}` : ""}: ${placed.facts.claim} (${placed.facts.site})`)
       break
     }
 
@@ -573,7 +592,12 @@ function decide(state: State, command: Command): Draft {
       const revised = revise(rows, issue, changes, seat, at)
       if (isSubstantive(revised) && (revised.state === "verified" || revised.state === "assumed")) requireIssueSlots(revised, revised.facts)
       clearDownstream(rows, revised, at)
-      note(issue.id, issue.state === "contested" ? "answered the contest with an edit" : "edited; marks cleared")
+      const edits = Object.entries(command.facts).map(([key, value]) => `${key}=${value ?? ""}`)
+      if (changes.label) edits.push(`label=${changes.label} (${changes.labelReason})`)
+      if (command.certainty !== undefined) edits.push(`certainty=${command.certainty}`)
+      if (command.parents) edits.push(`parents=${command.parents.join(",")}`)
+      if (command.clusters) edits.push(`clusters=${command.clusters.join(",")}`)
+      note(issue.id, `${issue.state === "contested" ? "answered the contest with an edit" : "edited"}: ${edits.join("; ") || "nothing"}; marks cleared`)
       break
     }
 
@@ -590,7 +614,7 @@ function decide(state: State, command: Command): Draft {
         : { state: "assumed", certainty: certaintyIn(command.certainty, 1, 5, "certainty"), assumption: nonempty(command.assumption, "assumption"), reason: nonempty(command.reason, "the reason no fifteen-minute probe exists") }
       const revised = revise(rows, issue, { ...changes, mark: null, contestedBy: null, probe: "" }, seat, at)
       clearDownstream(rows, revised, at)
-      note(issue.id, command.type === "issue.verify" ? `verified at step ${command.certainty}` : "assumed")
+      note(issue.id, command.type === "issue.verify" ? `verified at step ${command.certainty}: evidence ${command.evidence}` : `assumed at step ${command.certainty}: ${command.assumption} (no probe: ${command.reason})`)
       break
     }
 
@@ -614,7 +638,7 @@ function decide(state: State, command: Command): Draft {
       if (!["new", "verified", "assumed"].includes(issue.state)) refuse(`${issue.id} is ${issue.state}`)
       const contests = issue.contests + 1
       replace(rows, { ...issue, state: "contested", probe: nonempty(command.probe, "the probe that settles it"), contestedBy: seat, contests, mark: null, rev: issue.rev + 1, updated: at })
-      note(issue.id, contests >= 2 ? `contested twice; ${seat} runs the probe` : "contested")
+      note(issue.id, `${contests >= 2 ? `contested twice; ${seat} runs the probe` : `contested by ${seat}`}: ${command.probe}`)
       break
     }
 
@@ -628,7 +652,7 @@ function decide(state: State, command: Command): Draft {
       certaintyIn(command.certainty, 4, 5, "a probe result's certainty")
       const revised = revise(rows, issue, { state: command.verdict, certainty: command.certainty, evidence: nonempty(command.evidence, "evidence"), mark: null, contestedBy: null }, seat, at)
       clearDownstream(rows, revised, at)
-      note(issue.id, `probe ran: ${command.verdict}`)
+      note(issue.id, `probe ran: ${command.verdict} at step ${command.certainty}, evidence ${command.evidence}`)
       break
     }
 
@@ -641,7 +665,7 @@ function decide(state: State, command: Command): Draft {
       certaintyIn(command.certainty, 2, 5, "a disproof's certainty")
       const revised = revise(rows, issue, { state: "disproved", certainty: command.certainty, evidence: nonempty(command.evidence, "evidence"), mark: null, taken: null }, seat, at)
       clearDownstream(rows, revised, at)
-      note(issue.id, `disproved at step ${command.certainty}`)
+      note(issue.id, `disproved by ${seat} at step ${command.certainty}: ${command.evidence}`)
       break
     }
 
@@ -666,7 +690,7 @@ function decide(state: State, command: Command): Draft {
       if (issue.label !== "Nit") refuse("only a Nit is accepted with a reason; every other label gets its steps")
       if (["disproved", "duplicate", "accepted"].includes(issue.state)) refuse(`${issue.id} is closed as ${issue.state}`)
       revise(rows, issue, { state: "accepted", reason: nonempty(command.reason, "reason") }, seat, at)
-      note(issue.id, "accepted")
+      note(issue.id, `accepted: ${command.reason}`)
       break
     }
 
@@ -699,7 +723,7 @@ function decide(state: State, command: Command): Draft {
       if (command.exit === "drop") masterOf(command)
       else seatOf(command)
       replace(rows, { ...issue, exit: { kind: command.exit, reference: nonempty(command.reference, "reference") }, taken: null, rev: issue.rev + 1, updated: at })
-      note(issue.id, `exit: ${command.exit}`)
+      note(issue.id, `exit: ${command.exit} ${command.reference}`)
       break
     }
 
@@ -724,7 +748,7 @@ function decide(state: State, command: Command): Draft {
         options, recommendation, effect: nonempty(command.effect, "effect: each option's cost in user effect"), cost: nonempty(command.cost, "cost: each option's cost in code"),
         state: "open", answer: "",
       })
-      note(id, `asked about ${command.issues.join(", ")}`)
+      note(id, `asked about ${command.issues.join(", ")}: ${command.question}; options: ${options.join(" / ")}; recommendation: ${recommendation}`)
       break
     }
 
@@ -737,7 +761,7 @@ function decide(state: State, command: Command): Draft {
         const fix = rowById(state, question.fix)
         if (fix?.kind === "Proposed fix") revise(rows, fix, { disputes: 0, state: "draft", mark: null, rejection: "" }, fix.editor, at)
       }
-      note(question.id, "answered")
+      note(question.id, `answered: ${command.answer}`)
       break
     }
 
@@ -760,7 +784,7 @@ function decide(state: State, command: Command): Draft {
         sites: command.sites, rulings: command.rulings, test: command.test, cost: nonempty(command.cost, "cost"), guardrail: command.guardrail,
         coordination: command.coordination, needsMark: command.needsMark, disputes: 0, state: "draft", rejection: "", mark: null,
       })
-      note(id, `proposed for ${command.issues.join(", ")}`)
+      note(id, `proposed for ${command.issues.join(", ")}: ${command.shape}`)
       break
     }
 
@@ -779,7 +803,9 @@ function decide(state: State, command: Command): Draft {
       const revised = revise(rows, fix, { ...shape, needsMark: nextNeedsMark, state: "draft", mark: null, rejection: "" }, seat, at)
       if (!revised.shape.trim() || !revised.cost.trim()) refuse("a proposed fix keeps its shape and cost")
       clearDownstream(rows, revised, at)
-      note(fix.id, fix.state === "rejected" ? "revised after rejection" : "edited; mark cleared")
+      const edits = Object.entries(shape).filter(([, value]) => value !== undefined).map(([key, value]) => `${key}=${value}`)
+      if (needsMark !== undefined) edits.push(`mark=${needsMark ? "yes" : "no"}`)
+      note(fix.id, `${fix.state === "rejected" ? "revised after rejection" : "edited"}: ${edits.join("; ") || "nothing"}; mark cleared`)
       break
     }
 
@@ -803,7 +829,7 @@ function decide(state: State, command: Command): Draft {
       if (fix.state !== "draft") refuse(`${fix.id} is ${fix.state}`)
       const disputes = fix.disputes + 1
       revise(rows, fix, { state: "rejected", rejection: nonempty(command.reason, "reason"), disputes, mark: null }, fix.editor, at)
-      note(fix.id, disputes >= 2 ? "rejected twice; the shape goes to the user" : "rejected")
+      note(fix.id, `${disputes >= 2 ? "rejected twice; the shape goes to the user" : `rejected by ${seat}`}: ${command.reason}`)
       break
     }
 
@@ -853,7 +879,7 @@ function decide(state: State, command: Command): Draft {
       for (const candidate of rows) {
         if (candidate.kind === "Issue" && issueIds.has(candidate.id) && candidate.taken === seat) replace(rows, { ...candidate, taken: null })
       }
-      note(id, existing ? "shelved again" : `shelved ${fixes.join(", ")}`)
+      note(id, `${existing ? "shelved again" : `shelved ${fixes.join(", ")}`} as ${artifact}; red ${red || `none, allowed by ${questionId}`}, green ${green}`)
       break
     }
 
@@ -865,7 +891,7 @@ function decide(state: State, command: Command): Draft {
       if (shelf.state !== "shelved") refuse(`${shelf.id} is ${shelf.state}`)
       const conditions = command.conditions.trim()
       revise(rows, shelf, conditions ? { state: "conditions", conditions } : { state: "reviewed", review: { by: seat, at } }, shelf.editor, at)
-      note(shelf.id, conditions ? "reviewed with conditions" : `reviewed clean by ${seat}`)
+      note(shelf.id, conditions ? `conditions from ${seat}: ${conditions}` : `reviewed clean by ${seat}`)
       break
     }
 
@@ -911,7 +937,7 @@ function decide(state: State, command: Command): Draft {
       }
       const id = nextId(state, "K", "M")
       rows.push({ ...base(id, "master"), kind: "Check-in", shelves: command.shelves, executor: command.executor, approval: nonempty(command.approval, "approval: the user's words"), state: "approved", changeset: "", departures: "", reason: "" })
-      note(id, `approved ${command.shelves.join(", ")}; ${command.executor} checks in`)
+      note(id, `approved ${command.shelves.join(", ")}; ${command.executor} checks in: ${command.approval}`)
       break
     }
 
@@ -929,7 +955,7 @@ function decide(state: State, command: Command): Draft {
       const checkIn = target(state, command, "Check-in")
       if (checkIn.state !== "approved") refuse(`${checkIn.id} is ${checkIn.state}`)
       revise(rows, checkIn, { state: "dropped", reason: nonempty(command.reason, "reason") }, "master", at)
-      note(checkIn.id, "dropped")
+      note(checkIn.id, `dropped: ${command.reason}`)
       break
     }
 
@@ -1075,6 +1101,51 @@ export function isDone(state: State): boolean {
   if (state.checkout) return false
   if (ready(state, "A").length > 0 || ready(state, "B").length > 0) return false
   return state.mode === "single" || (state.handedOff.A && state.handedOff.B)
+}
+
+// ---------------------------------------------------------------------------
+// Situations: what each actor is doing or waiting on, read off the state. Recorded
+// with every event so the timeline can say who worked, who waited, and on whom.
+
+function rowList(items: readonly Ready[]): string {
+  return [...new Set(items.map((item) => item.row || item.command))].join(", ")
+}
+
+export function situation(state: State, actor: Actor): Situation {
+  const open = rowsOf(state, "Question").filter((question) => question.state === "open").map((question) => question.id)
+  const mine = ready(state, actor)
+  if (actor === "master") {
+    if (mine.some((item) => item.command !== "question.answer")) return { kind: "working", detail: rowList(mine.filter((item) => item.command !== "question.answer")) }
+    if (open.length > 0) return { kind: "waiting on user", detail: open.join(", ") }
+    if (isDone(state)) return { kind: "done", detail: "report" }
+    return { kind: "idle", detail: "waiting on the reviewers" }
+  }
+  if (state.mode === "joint" && !state.imported[actor]) return { kind: "cold pass", detail: "" }
+  if (state.checkout?.holder === actor) return { kind: "checkout", detail: state.checkout.purpose }
+  const taken = rowsOf(state, "Issue").filter((issue) => issue.taken === actor).map((issue) => issue.id)
+  if (mine.length > 0) return { kind: "working", detail: `${rowList(mine)}${taken.length > 0 ? `; fixing ${taken.join(", ")}` : ""}` }
+  if (state.checkout && ready({ ...state, checkout: null }, actor).some((item) => item.command === "checkout.take")) {
+    return { kind: "waiting on checkout", detail: `held by ${state.checkout.holder}: ${state.checkout.purpose}` }
+  }
+  if (state.mode !== "joint") return isDone(state) ? { kind: "done", detail: "" } : { kind: "idle", detail: "nothing ready" }
+  if (!state.handedOff[actor]) return { kind: "no handoff", detail: "nothing ready and not handed off" }
+  // No count of the other's ready work here: it changes at their every command and would split one wait into many.
+  const other = otherSeat(actor)
+  if (!state.handedOff[other] || ready(state, other).length > 0) return { kind: "idle", detail: `handed off; waiting on ${other}` }
+  if (open.length > 0) return { kind: "waiting on user", detail: open.join(", ") }
+  return { kind: "done", detail: "" }
+}
+
+/** The actors a database speaks for: the cold seat alone, both seats, or both seats and the master. */
+export function actorsOf(state: State): readonly Actor[] {
+  if (state.mode === "cold") return state.seat ? [state.seat] : []
+  return state.mode === "single" ? ["A", "B"] : ["A", "B", "master"]
+}
+
+export function situations(state: State): Partial<Record<Actor, Situation>> {
+  const result: Partial<Record<Actor, Situation>> = {}
+  for (const actor of actorsOf(state)) result[actor] = situation(state, actor)
+  return result
 }
 
 // ---------------------------------------------------------------------------
