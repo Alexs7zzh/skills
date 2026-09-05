@@ -4,7 +4,7 @@ Read before proposing, writing, or reviewing a change. This file relates the cha
 
 ## Establish the outcome
 
-For a requested feature, state the goal as the user experiences it, the intended feel or behavior, and the scenarios that distinguish success from a merely completed implementation. Separate explicit human rulings from implementation choices you are making, per SKILL.md, Authority and judgment. Keep the acceptance summary short enough for the user to inspect.
+For a requested feature, state the goal as the user experiences it, the intended feel or behavior, and the scenarios that distinguish success from a merely completed implementation. Separate explicit human rulings from implementation choices you are making, per SKILL.md, Authority and judgment. For a long-lived capability or external dependency, use good-code.md, Failure paths, to establish recovery and the limits of the promise. Keep the acceptance summary short enough for the user to inspect.
 
 For a defect, identify the bad state and the mechanism that produces it. For a maintenance change, name the concrete task or failure boundary that becomes easier to reason about. Existing docs, tests, and behavior tell you where to investigate; check them against the goal and rulings before treating them as requirements.
 
@@ -14,7 +14,7 @@ Walk the relevant callers, owners, failure paths, and test seams. Record the pro
 
 - **Fix the cause within the boundary that can own it.** Find where the bad state is produced. Correct a misusing caller you control; validate external input at the boundary you own. If the origin is outside your control, name that limit and the contract your change can restore.
 - **Look for a structure that removes the failure mechanism.** Shared ownership, scattered validity checks, flag combinations, or repeated coordination suggest a structural cause. Name what an alternative deletes or makes impossible. Compare it with the contained fix in the actual code; a larger design earns its migration and regression risk.
-- **Reuse before adding.** Look for the same job in the owning module and existing libraries. Use it or explain the mismatch. Apply the deletion test in good-code.md, Values, to what you add or keep.
+- **Reuse before adding.** Look for the same job in the owning module and existing libraries. Use it or explain the mismatch. Before sharing an abstraction, check that the callers share a contract and should change together; similar lines alone do not establish that. Apply the deletion test in good-code.md, Values, to what you add or keep.
 - **Price the costs that remain expensive.** Code generation and reversible experiments are cheap. Regression risk, interface churn, integration, and the future reader's reasoning burden are not. Do not preserve a bad structure solely to minimize lines, or expand a working change solely because another architecture exists.
 - **Sweep the mechanism, not the author's presumed psychology.** Trace sibling sites that share the cause, contract, or workaround. Mirrored tests and invented constants call for an independent source of truth; lifetime defects call for tracing ownership and teardown. Expand the sweep when evidence could change the cause or fix boundary. Finish the relevant sweep before claiming that the group or bug class is resolved.
 
