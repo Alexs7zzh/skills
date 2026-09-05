@@ -77,6 +77,15 @@ Changing a candidate revision or dropping a dependency makes dependent validatio
 Check-in authorization captures the selected revisions and requires
 each dependency either in that selection or already checked in at that revision.
 
+When an observation or ruling resolves conditions without changing candidate inputs
+or invalidating evidence, the author can use `shelved-fix request-review <S-id>
+rev=N reason=...`. This returns the candidate to `shelved` and notifies its reader
+through the ready queue, preserving its revision, validation, and conditions.
+An independent reader can also use `shelved-fix review` directly from `conditions`
+to replace or clear them. Conditions alone do not queue repeated peer reviews;
+their history remains in the timeline after resolution. Actual candidate changes
+still use `shelved-fix set` with refreshed validation.
+
 Use `run set` when the user changes how far to go, such as moving a report-only
 investigation into implementation. Existing rows, evidence, and history remain.
 The command's reason records the user's instruction. An open question blocks

@@ -69,6 +69,7 @@ export function commandFor(state: State, item: Ready): string {
     case "checkout.release": return `checkout release`
     case "shelved-fix.add": return `shelved-fix add fixes=${item.row} artifact=<saved candidate> baseline=<exact base> validation=<record> dependencies=<S-id@rev,...>`
     case "shelved-fix.set": return `shelved-fix set${at} validation=<refreshed record> artifact=<saved candidate> baseline=<exact base> dependencies=<S-id@rev,...>`
+    case "shelved-fix.request-review": return `shelved-fix request-review${at} reason=<observation or ruling resolving the conditions>`
     case "shelved-fix.review": return `shelved-fix review${at} | shelved-fix review${at} conditions=<what must change>`
     case "check-in.record": return `check-in record${at} changeset=<id> departures=<none or text>`
     case "cold.import": return `import`

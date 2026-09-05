@@ -67,6 +67,7 @@ proposed-fix mark <P-id> rev=N | proposed-fix reject <P-id> rev=N reason=..   op
 proposed-fix drop <P-id> rev=N reason=<the user's instruction>        retains candidate/evidence, invalidates dependents
 shelved-fix add fixes=<P-ids> artifact=<saved candidate> baseline=<exact base> validation=<record> [dependencies=<S-id@rev,...>]
 shelved-fix set <S-id> rev=N validation=<refreshed record> [artifact= baseline= dependencies=]
+shelved-fix request-review <S-id> rev=N reason=..                     author: conditions resolved without changing candidate inputs or invalidating evidence
 shelved-fix review <S-id> rev=N [conditions=..]                       clean, or conditions for the author
 checkout take purpose=.. | checkout baseline build=<log> test=<log> | checkout release [reason=..]
 check-in approve shelves=<S-ids> approval=<the user's words> [executor=<A|B|master>]     master
@@ -493,6 +494,9 @@ function build(noun: string, verb: string, parsed: Parsed, state: State): Comman
         ...(fields.has("dependencies") ? { dependencies: dependencies(fields) } : {}),
       }
     }
+    case "shelved-fix request-review":
+      only(fields, ["rev", "reason"])
+      return { type: "shelved-fix.request-review", actor, at, id: oneId(parsed, "S"), rev: rev(fields), reason: required(fields, "reason") }
     case "shelved-fix review":
       only(fields, ["rev", "conditions"])
       return { type: "shelved-fix.review", actor, at, id: oneId(parsed, "S"), rev: rev(fields), conditions: optional(fields, "conditions") }

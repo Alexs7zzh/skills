@@ -160,6 +160,39 @@ test("a database from another schema is refused rather than migrated", () => {
   expectRefused(ledger("A", "status"), /schema 2; this script is schema 5/)
 })
 
+test("resolved conditions return to review through the pinned CLI without new validation or candidate revisions", () => {
+  const directory = fresh()
+  const ledger = runner(directory)
+  expectOk(ledger("A", "init", "--single", "--route", "write"))
+  expectOk(ledger("A", "proposed-fix", "add", "goal=delete drafts at sign-out", "origin=user experience", "shape=delete the saved draft", "sites=session.ts", "rulings=deletion policy needs confirmation", "test=sign-out persistence check", "cost=one handler"))
+  expectOk(ledger("A", "checkout", "take", "purpose=save candidate"))
+  expectOk(ledger("A", "shelved-fix", "add", "fixes=P-A-1", "artifact=delete-draft.patch", "baseline=base-sha", "validation=validation.md"))
+  expectOk(ledger("A", "checkout", "release"))
+  const before = rowsOf(read(join(directory, "ledger.db")).state, "Shelved fix")[0]!
+  expectOk(ledger("B", "shelved-fix", "review", before.id, "rev=1", "conditions=confirm deletion at sign-out with the user"))
+  expectOk(ledger("A", "status"), /shelved-fix request-review/)
+  expectOk(ledger("A", "question", "add", "fix=P-A-1", "question=delete at sign-out?", "options=keep,delete", "recommendation=delete", "effect=persistence after sign-out", "cost=one handler"))
+  expectRefused(ledger("A", "shelved-fix", "request-review", before.id, "rev=1", "reason=ready"), /waits for the user's answer/)
+  expectRefused(ledger("B", "shelved-fix", "review", before.id, "rev=1"), /waits for the user's answer/)
+  expectOk(ledger("master", "question", "answer", "Q-A-1", "rev=1", "answer=delete at sign-out"))
+  expectRefused(ledger("A", "shelved-fix", "request-review", before.id, "rev=1"), /reason/)
+  expectOk(ledger("A", "shelved-fix", "request-review", before.id, "rev=1", "reason=the user chose the behavior already covered by the retained candidate and validation"))
+  const pending = rowsOf(read(join(directory, "ledger.db")).state, "Shelved fix")[0]!
+  assert.equal(pending.conditions, "confirm deletion at sign-out with the user", "the request preserves conditions until review")
+  expectOk(ledger("B", "status"), /shelved-fix review S-A-1 rev=1/)
+  expectOk(ledger("B", "shelved-fix", "review", before.id, "rev=1", "conditions=the ruling is settled; check the cancellation path"))
+  expectOk(ledger("B", "shelved-fix", "review", before.id, "rev=1"), /reviewed clean/)
+  const after = read(join(directory, "ledger.db"))
+  const shelf = rowsOf(after.state, "Shelved fix")[0]!
+  assert.deepEqual(shelf, { ...before, state: "reviewed", review: shelf.review, updated: shelf.updated })
+  assert.equal(after.events.filter((event) => event.command === "shelved-fix.set").length, 0)
+  assert.ok(after.events.some((event) => event.command === "shelved-fix.request-review" && event.note.includes("the user chose")))
+  const timeline = expectOk(ledger("A", "timeline", before.id))
+  assert.match(timeline.out, /confirm deletion at sign-out with the user/)
+  assert.match(timeline.out, /check the cancellation path/)
+  expectOk(ledger("A", "report"), /The run is done/)
+})
+
 test("a feature continues from report-only to a reviewed candidate with retained, refreshed validation", () => {
   const directory = fresh()
   const ledger = runner(directory)

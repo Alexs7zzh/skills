@@ -258,6 +258,7 @@ export type Command =
   | (Envelope<"proposed-fix.drop"> & Target & { readonly reason: string })
   | (Envelope<"shelved-fix.add"> & { readonly fixes: readonly string[]; readonly artifact: string; readonly baseline: string; readonly dependencies: readonly Dependency[]; readonly validation: string; readonly validationDigest: string })
   | (Envelope<"shelved-fix.set"> & Target & { readonly artifact?: string; readonly baseline?: string; readonly dependencies?: readonly Dependency[]; readonly validation: string; readonly validationDigest: string })
+  | (Envelope<"shelved-fix.request-review"> & Target & { readonly reason: string })
   | (Envelope<"shelved-fix.review"> & Target & { readonly conditions: string })
   | (Envelope<"checkout.take"> & { readonly purpose: string })
   | (Envelope<"checkout.baseline"> & { readonly build: string; readonly test: string })
@@ -946,12 +947,26 @@ function decide(state: State, command: Command): Draft {
       break
     }
 
+    case "shelved-fix.request-review": {
+      const seat = seatOf(command)
+      requireShared(state, command)
+      const shelf = target(state, command, "Shelved fix")
+      if (shelf.author !== seat) refuse(`only its author requests re-review of ${shelf.id}`)
+      if (shelf.state !== "conditions") refuse(`${shelf.id} is ${shelf.state}; re-review requests resolve outstanding conditions`)
+      requireNoOpenQuestion(state, issuesOfShelf(state, shelf), shelf.fixes)
+      requireDependencies(state, shelf.dependencies, shelf.id)
+      const reason = nonempty(command.reason, "reason: what resolves the conditions without changing candidate inputs or invalidating its evidence")
+      replace(rows, { ...shelf, state: "shelved", review: null, updated: at })
+      note(shelf.id, `re-review requested by ${seat}: ${reason}`)
+      break
+    }
+
     case "shelved-fix.review": {
       const seat = seatOf(command)
       requireShared(state, command)
       const shelf = target(state, command, "Shelved fix")
       if (shelf.author === seat) refuse(`nobody marks their own work: ${shelf.id} is yours`)
-      if (shelf.state !== "shelved") refuse(`${shelf.id} is ${shelf.state}`)
+      if (!["shelved", "conditions"].includes(shelf.state)) refuse(`${shelf.id} is ${shelf.state}`)
       requireNoOpenQuestion(state, issuesOfShelf(state, shelf), shelf.fixes)
       requireDependencies(state, shelf.dependencies, shelf.id)
       const conditions = command.conditions.trim()
@@ -968,7 +983,7 @@ function decide(state: State, command: Command): Draft {
           replace(rows, { ...fix, state: "marked", mark: { by: seat, at }, rejection: "", updated: at })
         }
       }
-      replace(rows, { ...shelf, ...(conditions ? { state: "conditions" as const, conditions } : { state: "reviewed" as const, review: { by: seat, at } }), updated: at })
+      replace(rows, { ...shelf, conditions, ...(conditions ? { state: "conditions" as const, review: null } : { state: "reviewed" as const, review: { by: seat, at } }), updated: at })
       note(shelf.id, conditions ? `conditions from ${seat}: ${conditions}` : `reviewed clean by ${seat}`)
       break
     }
@@ -1176,6 +1191,7 @@ export function ready(state: State, actor: Actor): readonly Ready[] {
     if (!isActiveShelf(state, shelf) || shelfBlocked(state, shelf)) continue
     if (shelf.state === "shelved" && shelf.author !== seat) add(list, seat, "shelved-fix.review", shelf.id, "review the current claim, candidate, failure paths, and applicable evidence together")
     if (state.howFar !== "report-only" && ["conditions", "stale"].includes(shelf.state) && shelf.author === seat) {
+      if (shelf.state === "conditions") add(list, seat, "shelved-fix.request-review", shelf.id, `if an observation or ruling resolves the conditions with candidate inputs and evidence unchanged, request re-review: ${shelf.conditions}`)
       if (!state.checkout) add(list, seat, "checkout.take", shelf.id, `take the checkout and meet the conditions: ${shelf.conditions}`)
       else if (state.checkout.holder === seat) add(list, seat, "shelved-fix.set", shelf.id, `meet the conditions and shelve again: ${shelf.conditions}`)
     }

@@ -125,7 +125,7 @@ test("two reviewers carry an issue from cold import to a reviewed shelve and a c
   state = ok(state, { type: "checkout.release", actor: "A", reason: "" })
   refused(state, { type: "shelved-fix.review", actor: "A", id: "S-A-1", rev: 1, conditions: "" }, "nobody marks their own work")
   state = ok(state, { type: "shelved-fix.review", actor: "B", id: "S-A-1", rev: 1, conditions: "error path swallows the failure" })
-  assert.equal(ready(state, "A")[0]?.command, "checkout.take", "conditions send the author back to the checkout")
+  assert.ok(ready(state, "A").some((item) => item.command === "checkout.take"), "conditions requiring code changes send the author back to the checkout")
   state = ok(state, { type: "checkout.take", actor: "A", purpose: "meet conditions" })
   state = ok(state, { type: "shelved-fix.set", actor: "A", id: "S-A-1", rev: 1, ...evidence(), artifact: "stash@1" })
   state = ok(state, { type: "checkout.release", actor: "A", reason: "" })
@@ -346,6 +346,7 @@ test("feature candidates carry dependency revisions, invalidate downstream only,
   assert.equal(rowsOf(state, "Shelved fix")[1]?.state, "stale")
   assert.equal(rowsOf(state, "Shelved fix")[2]?.state, "reviewed", "an unrelated candidate keeps its review")
   refused(state, { type: "shelved-fix.review", actor: "B", id: "S-A-2", rev: 1, conditions: "" }, "stale")
+  refused(state, { type: "shelved-fix.request-review", actor: "A", id: "S-A-2", rev: 1, reason: "the concern was resolved" }, "stale")
   refused(state, { type: "shelved-fix.set", actor: "A", id: "S-A-2", rev: 1, ...evidence(), dependencies: [{ id: "S-A-1", rev: 1 }] }, "refresh its dependency revision")
   state = ok(state, { type: "shelved-fix.review", actor: "B", id: "S-A-1", rev: 2, conditions: "" })
   state = ok(state, { type: "shelved-fix.set", actor: "A", id: "S-A-2", rev: 1, ...evidence(), dependencies: [{ id: "S-A-1", rev: 2 }] })
@@ -406,7 +407,7 @@ test("narrowing to report-only stops candidate revision work and later implement
   assert.deepEqual(ready(state, "A"), [])
   assert.equal(rowsOf(state, "Shelved fix")[0]?.state, "conditions")
   state = ok(state, { type: "run.set", actor: "A", howFar: "fix", reason: "user: implement the remaining correction" })
-  assert.equal(ready(state, "A")[0]?.command, "checkout.take")
+  assert.ok(ready(state, "A").some((item) => item.command === "checkout.take"))
   assert.equal(rowsOf(state, "Shelved fix")[0]?.artifact, "draft.patch")
   state = ok(state, { type: "checkout.take", actor: "A", purpose: "retry correction" })
   state = ok(state, { type: "shelved-fix.set", actor: "A", id: "S-A-1", rev: 1, ...evidence() })
@@ -498,6 +499,72 @@ test("review-only invalidation cannot erase outstanding conditions or stale depe
   refused(state, { type: "shelved-fix.review", actor: "B", id: "S-A-2", rev: 1, conditions: "" }, "stale")
 })
 
+test("resolved conditions can be independently re-reviewed without revising candidates or their dependents", () => {
+  let state = reviewedChain()
+  state = ok(state, { type: "proposed-fix.set", actor: "A", id: "P-A-1", rev: 1, cost: "one comparison" })
+  state = ok(state, { type: "shelved-fix.review", actor: "B", id: "S-A-1", rev: 1, conditions: "the user must decide whether to include the final item" })
+  const before = rowsOf(state, "Shelved fix")
+  state = ok(state, { type: "question.add", actor: "A", issues: [], fix: "P-A-1", question: "include the final item?", options: ["include", "exclude"], recommendation: "include", effect: "visible item count", cost: "boundary contract" })
+  refused(state, { type: "shelved-fix.review", actor: "B", id: "S-A-1", rev: 1, conditions: "" }, "waits for the user's answer")
+  state = ok(state, { type: "question.answer", actor: "master", id: "Q-A-1", rev: 1, answer: "include; the saved candidate already does this" })
+  assert.equal(rowsOf(state, "Shelved fix")[0]?.state, "conditions", "a ruling does not automatically clear review conditions")
+  state = ok(state, { type: "shelved-fix.review", actor: "B", id: "S-A-1", rev: 1, conditions: "" })
+  const after = rowsOf(state, "Shelved fix")
+  assert.deepEqual(after[0], { ...before[0], state: "reviewed", conditions: "", review: after[0]!.review, updated: after[0]!.updated })
+  for (let index = 1; index < 4; index += 1) assert.deepEqual(after[index], { ...before[index], updated: after[index]!.updated }, "review resolution does not stale dependent validation")
+  for (const id of ["S-A-2", "S-A-3"]) state = ok(state, { type: "shelved-fix.review", actor: "B", id, rev: 1, conditions: "" })
+  assert.deepEqual(ready(state, "A"), [], "no checkout or reshelving is needed")
+})
+
+test("a reviewer can replace or retract conditions without scheduling repeated reviews", () => {
+  for (const mode of ["single", "joint"] as const) {
+    let state = mode === "single" ? start("single") : joint()
+    state = ok(state, { type: "proposed-fix.add", actor: "A", issues: [], ...shape({ goal: "save the draft" }) })
+    state = ok(state, { type: "checkout.take", actor: "A", purpose: "candidate" })
+    state = ok(state, { type: "shelved-fix.add", actor: "A", fixes: ["P-A-1"], artifact: "draft.patch", ...evidence() })
+    state = ok(state, { type: "checkout.release", actor: "A", reason: "" })
+    const before = rowsOf(state, "Shelved fix")[0]!
+    state = ok(state, { type: "shelved-fix.review", actor: "B", id: before.id, rev: 1, conditions: "check persistence and focus" })
+    assert.deepEqual(ready(state, "B"), [], "an unresolved condition must not keep its reviewer busy")
+    if (mode === "joint") state = ok(state, { type: "handoff", actor: "B" })
+    refused(state, { type: "shelved-fix.review", actor: "A", id: before.id, rev: 1, conditions: "" }, "nobody marks their own work")
+    refused(state, { type: "shelved-fix.review", actor: "B", id: before.id, rev: 2, conditions: "" }, "read it again")
+    state = ok(state, { type: "shelved-fix.review", actor: "B", id: before.id, rev: 1, conditions: "the code walk settles persistence; focus remains to check" })
+    assert.match(rowsOf(state, "Shelved fix")[0]!.conditions, /focus remains/)
+    assert.deepEqual(ready(state, "B"), [])
+    state = ok(state, { type: "run.set", actor: mode === "single" ? "A" : "master", howFar: "report-only", reason: "user: report without further code changes" })
+    state = ok(state, { type: "shelved-fix.review", actor: "B", id: before.id, rev: 1, conditions: "" })
+    const after = rowsOf(state, "Shelved fix")[0]!
+    assert.deepEqual(after, { ...before, state: "reviewed", review: after.review, updated: after.updated })
+  }
+})
+
+test("an author requests an independent re-review while retaining conditions and candidate inputs", () => {
+  let state = joint()
+  state = ok(state, { type: "proposed-fix.add", actor: "A", issues: [], ...shape({ goal: "save the draft" }) })
+  state = ok(state, { type: "checkout.take", actor: "A", purpose: "candidate" })
+  state = ok(state, { type: "shelved-fix.add", actor: "A", fixes: ["P-A-1"], artifact: "draft.patch", ...evidence() })
+  state = ok(state, { type: "checkout.release", actor: "A", reason: "" })
+  state = ok(state, { type: "shelved-fix.review", actor: "B", id: "S-A-1", rev: 1, conditions: "confirm the persistence contract" })
+  state = ok(state, { type: "handoff", actor: "B" })
+  const before = rowsOf(state, "Shelved fix")[0]!
+  assert.ok(ready(state, "A").some((item) => item.command === "shelved-fix.request-review"))
+  refused(state, { type: "shelved-fix.request-review", actor: "B", id: before.id, rev: 1, reason: "checked" }, "author")
+  refused(state, { type: "shelved-fix.request-review", actor: "A", id: before.id, rev: 2, reason: "checked" }, "read it again")
+  refused(state, { type: "shelved-fix.request-review", actor: "A", id: before.id, rev: 1, reason: "" }, "reason")
+  state = ok(state, { type: "shelved-fix.request-review", actor: "A", id: before.id, rev: 1, reason: "provider contract and retained code walk settle persistence; candidate inputs unchanged" }, (messages) => {
+    assert.ok(messages.some((message) => message.to === "B" && /ready for you/.test(message.message)), "the idle reviewer is notified")
+  })
+  assert.deepEqual(rowsOf(state, "Shelved fix")[0], { ...before, state: "shelved", updated: rowsOf(state, "Shelved fix")[0]!.updated })
+  assert.deepEqual(ready(state, "A"), [], "the author can wait without a checkout hold")
+  assert.ok(ready(state, "B").some((item) => item.command === "shelved-fix.review"))
+  refused(state, { type: "shelved-fix.request-review", actor: "A", id: before.id, rev: 1, reason: "checked again" }, "is shelved")
+  state = ok(state, { type: "handoff", actor: "A" })
+  refused(state, { type: "check-in.approve", actor: "master", shelves: [before.id], executor: "A", approval: "ship" }, "only a reviewed shelve")
+  state = ok(state, { type: "shelved-fix.review", actor: "B", id: before.id, rev: 1, conditions: "" })
+  assert.equal(rowsOf(state, "Shelved fix")[0]?.conditions, "")
+})
+
 test("re-review requires a complete current proposal without forcing a new candidate", () => {
   let state = reviewedChain()
   const before = rowsOf(state, "Shelved fix")[0]!
@@ -572,6 +639,7 @@ function concrete(state: State, actor: Actor, item: { command: string; row: stri
     case "checkout.release": return { type: "checkout.release", actor, reason: "" }
     case "shelved-fix.add": return { type: "shelved-fix.add", actor, fixes: [id], artifact: "s", ...evidence() }
     case "shelved-fix.set": return { type: "shelved-fix.set", actor, id, rev: revOf, ...evidence(), artifact: `s${pick}` }
+    case "shelved-fix.request-review": return { type: "shelved-fix.request-review", actor, id, rev: revOf, reason: "the retained code walk resolves the concern without candidate changes" }
     case "shelved-fix.review":
       return { type: "shelved-fix.review", actor, id, rev: revOf, conditions: pick % 3 === 0 ? "fix the error path" : "" }
     case "check-in.record": return { type: "check-in.record", actor, id, rev: revOf, changeset: "cs", departures: "none" }
