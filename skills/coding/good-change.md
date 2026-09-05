@@ -5,7 +5,7 @@ Properties of a change relative to its cause. Read before proposing or writing a
 - **Fix at the origin.** A fix lands where the bad state is produced, never where it is read. A guard that swallows bad input in a shared path hides the misusing caller. Ask why until the mechanism is in hand, not the symptom, then sweep the siblings for the same pattern.
 - **Restructure-first.** The best output is spotting a structure that invites a class of bugs, and proposing the structure that deletes the class. The bar: name what the new structure deletes. Invalid states made unrepresentable, scattered checks collapsed, a bug class that can no longer be written. Nothing deleted means style preference, so downgrade or drop. Several bugs in one area usually share a structural cause, so report the Restructure as primary and the bugs as evidence.
 - **Restructure triggers.** A lock added to fix a race. A fix that adds one more flag to a pile of booleans. A poll watching for a condition another system causes. Scattered validity checks. A new ad-hoc conditional inserted into an unrelated flow.
-- **Reuse before adding.** A new helper, type, mode, or file is one more thing to maintain. Before writing one, look for the same job in the owning module and in the libraries the project already depends on. Re-implementing what lives a few files over is the commonest way a change grows. Use what you find, or say why it does not fit.
+- **Reuse before adding.** A new helper, type, mode, or file is one more thing to maintain. Before writing one, look for the same job in the owning module and in the libraries the project already depends on. Re-implementing what lives a few files over is the commonest way a change grows. Use what you find, or say why it does not fit. Before keeping one, run the deletion test in good-code.md, Values.
 
 ## Origin decides the shape
 
@@ -22,7 +22,7 @@ A group of related issues is settled when the sibling sweep its origin calls for
 - **Ownership before protocol.** Before proposing tokens, generations or flags on shared mutable state, answer why the state is shared. One owner object per lifetime, created with its scope and dying with it, taking its callbacks and buffers along, deletes the coordination protocol and every future bug in it. Strengthening a protocol without answering "why is this shared?" patches the mechanism and keeps the class.
 - **Structure wins at agent economics.** Agents write and re-review code cheaply, so diff size is not a cost worth weighing. The real costs are regression risk and interface churn. When a structural fix deletes the class and a spot fix only closes the instance, recommend the structure and buy the risk down with tests. Reserve spot fixes for attention-misses.
 - **Restore the invariant when it is cheap.** A benign observed instance does not close a broken invariant, because the hole that admitted it admits bugs nobody caught. When restoring the invariant is cheap, recommend it outright.
-- **Lock a fix down.** A fix ships with a regression test at the right place, where the test exercises the real bug pattern as it occurs, written first and run red on the unfixed code, then green with the fix, both runs kept as logs. A test that passes before the fix asserts the state after the fix rather than what separates fix from bug: rewrite it. When there is no place a correct test can reach, that is an issue about the architecture: record it.
+- **Lock a fix down.** A fix ships with a regression test at the right place, where the test exercises the real bug pattern as it occurs, written first and run red on the unfixed code, then green with the fix, both runs kept as logs. The red run reaches the shipped code, not a replica. A test that passes before the fix asserts the state after the fix rather than what separates fix from bug: rewrite it. When there is no place a correct test can reach, that is an issue about the architecture: record it, and shelve the fix without a red log only on the user's answer to a question that says so.
 - **A fix that departs from the approved shape states its measured reason.**
 
 ## Before writing the fix
@@ -41,3 +41,7 @@ Never recommend a fix you only reasoned about. A proposal is a change, so review
 - When two fix shapes compete, patch against restructure or structure A against structure B, investigate both in the actual code: who owns the state today, what each shape changes, its cost and its risk. Then recommend one with the reasoning, or hand the user the mapped choice per findings.md.
 
 A fix only its author examined is unreviewed code.
+
+## Reviewing the diff
+
+The reviewer did not write the fix and reads it in a fresh context: the diff, the issue, and where the test goes, and none of the author's reasoning. Two checks on every hunk: the Failure paths lens in good-code.md, and the test per Lock a fix down, with both logs open and the red run traced into the shipped code. A defect is a condition for the author. Wording, labels, and log layout are never conditions.

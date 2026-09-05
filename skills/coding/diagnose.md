@@ -28,7 +28,7 @@ When the input is telemetry or crash reports from shipped builds, the loop is a 
 2. **Hypothesise in threes.** 3 to 5 ranked falsifiable hypotheses before testing any, each with its prediction: "if X is the cause, changing Y makes it disappear". Show the ranking.
 3. **Instrument one variable at a time**, probes mapped to predictions, under the probe rules in SKILL.md. For performance: measure baseline first, then bisect; logs are usually the wrong tool.
 4. **Shape the fix at the origin.** Read good-change.md. Classify the origin, finish the sibling sweep it calls for, and read related causes together per findings.md before choosing the shape. Report only stops here, with the proposed fix written.
-5. **Shelve the fix.** The red loop becomes the regression test at the right place per good-change.md. Run it red on the unfixed code, apply the fix, build, run it green, keep both logs, shelve, remove every tagged probe. State the confirmed hypothesis in the shelve comment. A fresh subagent reviews the diff with the two questions in deep.md step 7.
+5. **Shelve the fix.** The red loop becomes the regression test at the right place per good-change.md. Run it red on the unfixed code, apply the fix, build, run it green, keep both logs, shelve, remove every tagged probe. State the confirmed hypothesis in the shelve comment. A fresh subagent reviews the diff per good-change.md, Reviewing the diff.
 
 ## Database
 

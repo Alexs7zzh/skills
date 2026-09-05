@@ -59,11 +59,12 @@ Standing rulings on labels:
 - A missing place to put a correct test is an architecture issue.
 - Your own worse measurement is an issue, not a note.
 - A clean claim that fails an audit becomes an issue.
+- A mechanism no requirement asks for is a Restructure whose proposal is its deletion; when keeping it turns on a value the user has not recorded, it is a question.
 - An open issue in the report is printed as open, never as clean.
 
 ## Related issues
 
-When two verified issues together mean something neither means alone, a new failure, a shared root cause, or a higher severity, write that as a new issue linked to both and verify it like any issue. When two proposed fixes overlap, conflict, share a structure, or must go in an order, note that on both before either is shelved. Reconsider only the issues linked to the one that changed.
+When two verified issues together mean something neither means alone, a new failure, a shared root cause, or a higher severity, write that as a new issue linked to both and verify it like any issue. A defense removed at one site with its replacement inert at another is one regression, not two harmless changes. When two proposed fixes overlap, conflict, share a structure, or must go in an order, note that on both before either is shelved. Reconsider only the issues linked to the one that changed.
 
 ## Severity
 
