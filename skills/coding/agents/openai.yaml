@@ -1,4 +1,4 @@
 interface:
   display_name: "Coding"
-  short_description: "Review, diagnose, or change code: good code, fix shape, verification, and context rules"
+  short_description: "Review, diagnose, and implement with evidence, independent checks, and retained context"
   default_prompt: "Use $coding for this code task."

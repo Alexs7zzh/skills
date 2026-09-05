@@ -1,98 +1,105 @@
 # Findings
 
-From issue to check-in: how an issue is proved, what it is labeled, how severe it is, whose call it is, and how it leaves the run. Read at your first issue, dismissal, disputed issue, or proposed fix. The words are defined in SKILL.md, the certainty steps too.
+The shared rules for evidence, records, decisions, and completion. Read Evidence for every coding task that makes a judgment; read the remaining sections when recording or resolving work. Terms are defined in SKILL.md.
 
-## Rows in the database
+## Evidence
 
-Six kinds of row. Each has its own revision; Issue, Proposed fix, and Shelved fix are the rows that receive independent-review marks:
+**Choose evidence by what the claim says.** State the claim and a plausible alternative that would make it wrong. Choose a check whose result could distinguish them, using the actual boundary, inputs, and environment the claim covers. A check that cannot distinguish them adds no support. Agreement, a test name, or repetition of the implementation is not independent evidence.
 
-| Row | It answers | States |
-|---|---|---|
-| **Coverage** | Did the run look at this hunk, symptom, cluster, or scenario? | open, covered, gap |
-| **Issue** | What is wrong, where, and how sure are we? | new, verified with its step, assumed, contested with its probe, disproved, duplicate, accepted (Nit only) |
-| **Question** | What must the user decide? | open, answered |
-| **Proposed fix** | Which change answers which issues, in what shape? | draft, marked, rejected |
-| **Shelved fix** | Did the fix work? | shelved with its red and green logs, conditions, reviewed |
-| **Check-in** | Did it ship? | approved, checked in, dropped |
+A validation record contains the claim and alternative; method and exact invocation or code/contract walk; inputs, environment, baseline, and candidate; observed result with artifact paths; and the limits or remaining uncertainty. Keep the full record on disk and its useful conclusion in the issue or report. For a code proof, retain the relevant paths, assumptions, and contracts so another reader can challenge them.
 
-An edit to an issue clears the marks on its proposed fixes and shelved fixes. An edit to a proposed fix clears only its own mark and its shelved fix. An edit to a shelved fix clears only its review. Never reopen an agreed issue because its cost, wording, shape, or code changed.
+Examples of this principle, not an exhaustive set of cases:
 
-Verified means step 4 or 5 with an evidence path. Contested names the probe that settles it. A Bug or Restructure's proposed fix is complete only with its shape, the sites walked, the rulings checked, where its test goes, and its cost; the script refuses a shelved fix on an incomplete one.
+| Claim | Evidence that can distinguish it |
+|---|---|
+| A defect occurs and the change removes it | A reproducer on the actual affected code before and after the change, with the inputs and both results retained |
+| Behavior is preserved while structure changes | Checks of the relevant observable behavior on both versions, plus a code argument for the changed ownership or invariant; passing both times can be the expected result |
+| A feature meets its goal | Acceptance scenarios derived from the user's experience and rulings, including affected failure paths; a demo when experience cannot be judged from code |
+| A path meets a performance budget | Measurements on the relevant path and workload against the budget, with the target environment and scaling assumptions |
+| A state cannot occur | A code or contract proof covering the ways it could arise, with evidence for its premises; a stress run without failures establishes only what was observed |
 
-## Proving an issue
+When a practical probe can settle the uncertainty, run it instead of extending the argument. Choose its inputs independently of the design's convenient constants or symmetries. A fifteen-minute probe is a useful prompt to try the experiment, not a universal limit on worthwhile investigation. Test through shipped code when the claim includes its wiring; a replica establishes only the mechanism it reproduces.
 
-- When a fifteen-minute probe exists, run it instead of arguing, and parameterize it in physical units rather than the design's own units. No issue closes that a probe could have settled.
-- Prefer a test through the shipped code to a replica: a temporary test that drives the real code proves the wiring, and a replica proves only the algorithm.
-- A test's existence never closes an issue: verify the property, not the test's name.
-- Doc and comment claims are claims to verify against the code, coverage claims included: a named test must exercise the shipped path.
-- Dismissals are conclusions to prove: "not our fault", "engine noise", and "by design" close nothing until evidence per occurrence backs them, and engine, plugin, and vendored code count as the project's own for this purpose.
-- A probe's verdict inherits its inputs. Two probes that disagree about one mechanism have usually differed in inputs rather than in correctness, so sweep the input class instead of preferring a run.
-- Match the evidence to the claim. Running code proves "it can happen" with one counterexample, and measures "how often" and "how much"; it never proves "it cannot happen" unless the run covers every case the claim spans, so a stress run with zero failures is a frequency result and closes no never-claim. To close "never", read the code and walk every path that could reach the bad state, or cite the contract that forbids it. Correctness is proved by reading; likelihood is measured by running. A release-gating never-claim still needs its step-4 evidence: probe the facts the walk depends on, not the outcome.
-- Numbers that lower severity get the least challenge, so check them hardest.
-- Audit against the real thing rather than proxies, and that includes a record's own claims: a provenance or coverage claim is verified against the external source it names and never against the changeset's own hashes, names or constants. When a verification fails, suspect the observation method before the system.
-- Disassembly of a prebuilt dependency is a probe too: the headers state the contract, the archive shows what shipped, so read the artifact instead of arguing from a config flag.
-- Probes run in waves: design every probe the diff suggests, then one build and one test run with the owning suite in the filter. A probe designed from another probe's output starts the next wave. Design each probe yourself.
-- Within one run, evidence transfers and arguments do not. An issue closed at step 4 or 5 with its evidence in the run directory stays closed. A new reader re-walks an issue closed below step 4 before it suppresses anything new. Across runs, a past report and its files are testimony: verify against the current code or run it again.
+When a result surprises you, check the observation method and inputs as well as the system. Disagreeing probes may have exercised different cases. Batch independent probes under one stable build; an experiment that depends on an earlier result belongs in the next batch.
 
-## Verdicts
+If no available check can distinguish the alternatives, narrow the claim or leave the uncertainty open, with what would resolve it and why it is unavailable. Choose another method when it can answer the question. Do not manufacture a failing test, call every missing test seam an architecture defect, or ask the user to waive an arbitrary log requirement. A testability problem is an issue when it prevents a needed assurance about the project.
 
-Findings and verdicts are decisions.
+The ledger's certainty steps identify the basis of a claim, not a probability or a total ordering of evidence:
+1. Unsupported assertion.
+2. Checked source or observed fact, with its relevance still to establish.
+3. Code or contract proof of the stated claim under recorded assumptions.
+4. Executed check or measurement, with its input class and artifacts.
+5. Direct observation in the running target system, with its context and artifacts.
 
-- Lead with user impact.
-- Severity follows the investigated trigger: how the condition arises, at what scope, roughly how often.
-- A claimed failure that cannot realistically occur, because the build catches it or the state is unreachable, is downgraded or rejected with that evidence and stays closed until new evidence.
-- An issue whose fix hinges on an unrecorded product stance keeps its facts and opens a question for the user, phrased so the user can answer it without reading code.
-- Recorded deliberate choices suppress issues unless new evidence challenges them, and a ruling suppresses only the claims its rationale addresses: check what it ruled on, not what it is near.
+A verified issue needs a retained evidence path and a supported claim at step 3, 4, or 5. A higher number does not expand what the evidence proves. A dismissal has the same burden as the claim it makes: “by design,” “engine noise,” and “not our fault” need the applicable ruling or evidence. Engine, plugin, and vendored code remain investigation targets when they determine the outcome.
 
-## Labels
+## Change records
 
-- **Bug.** A defect with an investigated trigger. Its proposed fix names the test that would have caught it and where that test goes.
-- **Restructure.** A structure that invites a class of bugs, proposed with what the new structure deletes. Several bugs sharing a structural cause report as one Restructure with the bugs as evidence.
-- **Hardening.** A real defect with low current impact. Fixed in the same touch as the substantive work in that file or subsystem, where the risk is already being tested, and never gates a release on its own. It does not use the Nit-only accepted exit.
-- **Nit.** One run of life: fixed when its file is next modified, or marked **accepted** with its reason and dropped from the open list.
-- **telemetry-quality.** A defect in what the telemetry says rather than in what the product does: a wrong or missing field, a misleading message, misgrouping, a symbol or release gap. Fixed as a logging or pipeline change under the project's logging policy, and never release-gating on its own.
+The database separates claims from implementations so changing one does not erase the other. The row names are:
 
-Standing rulings on labels:
+| Row | It records |
+|---|---|
+| Coverage | A hunk, symptom, cluster, or scenario, and whether it is covered, open, or a named gap |
+| Issue | The claim, site, trigger, user impact, evidence and certainty step, and disposition |
+| Question | The consequential decision, options, recommendation, affected work, and the user's answer |
+| Proposed fix | The issues or feature goal it answers, origin as a mechanism or requirement, shape, sites walked, rulings checked, validation plan, and cost |
+| Shelved fix | The recoverable candidate, exact baseline, dependency candidates and revisions, and a validation record for that version |
+| Check-in | The user's selection and authorization, executor, and resulting changeset or drop |
 
-- A document contradicting its own release contract is a Bug, not a nit.
-- An unjustified magic number in changed code is an issue on its own.
-- A missing place to put a correct test is an architecture issue.
-- Your own worse measurement is an issue, not a note.
-- A clean claim that fails an audit becomes an issue.
-- A mechanism no requirement asks for is a Restructure whose proposal is its deletion; when keeping it turns on a value the user has not recorded, it is a question.
-- An open issue in the report is printed as open, never as clean.
+For an issue, investigate how the trigger arises, its scope and rough frequency where relevant; distinguish observations from estimates. For a maintenance finding, name the concrete future task or failure class affected. A proposed fix's validation plan may be a test, measurement, demonstration, or code proof; say what it must distinguish. Missing fields make a direction incomplete, not permission to invent values.
 
-## Related issues
+Write new or contested issues while investigating. Their author can take the work and develop a proposed fix before another reviewer agrees. For report-only work, a proposal can be independently marked after its sites and evidence are examined. Proposal discussion never gates a candidate; an open question still blocks its dependent work.
 
-When two verified issues together mean something neither means alone, a new failure, a shared root cause, or a higher severity, write that as a new issue linked to both and verify it like any issue. A defense removed at one site with its replacement inert at another is one regression, not two harmless changes. When two proposed fixes overlap, conflict, share a structure, or must go in an order, note that on both before either is shelved. Reconsider only the issues linked to the one that changed.
+A candidate's clean independent review covers the current claim, implementation, and validation together per good-change.md, Review the result. Nobody marks a revision they wrote. Keep supported issue conclusions when a patch needs revision; do not turn disagreement about a shape into a new dispute about an unchanged fact.
 
-## Severity
+## Labels and impact
 
-Record an impact rank on every verified or assumed issue: 1 is highest user impact and 5 is lowest. The report uses it to rank substantive issues; Hardening, telemetry-quality, and Nit stay in their own batches after them.
+- **Bug.** A defect with an investigated trigger or a supported proof that the contract is violated.
+- **Restructure.** A concrete maintenance cost or failure mechanism that a structural change removes. Related bugs can be its evidence; deletion is justified by the requirement investigation in good-code.md.
+- **Hardening.** A real defect with low current impact. Prefer fixing it alongside substantive work where its risk is already being exercised. It never gates a release on its own.
+- **Nit.** A minor improvement with no substantive impact. Fix it in the same touch, or accept it with a reason; do not keep returning it as open work.
+- **telemetry-quality.** A defect in what telemetry reports. Judge it against the logging or pipeline contract; it is not release-gating on its own.
 
-Impact bounds downgrade the instance, never the issue. "Harmless as observed" is a severity note, not a disposition. Release-gating issues need step 4; a release-gating issue may stay assumed only after stating why no fifteen-minute probe exists, and it stays visible.
+Record impact from 1, highest, to 5, lowest. Lead with the user consequence; keep Hardening, telemetry-quality, and Nit in separate batches. A low measured impact can lower severity without proving the underlying invariant sound. Investigate numbers that lower severity as carefully as numbers that raise it.
+
+A technical document contradicting an actual release contract is a defect; first establish that contract per SKILL.md, Authority. An unverified constant, a misleading detector, or a failed coverage claim earns an issue when its unsupported assumption affects a concrete obligation. A deliberate human choice suppresses only claims its rationale addresses. New evidence can justify challenging it through a question.
+
+## Related work
+
+When issues combine into a new failure, common cause, or different impact, record the combined claim and its links. Verify the new claim rather than stamping the same report again. Walk interactions between overlapping candidates before treating them as independent.
+
+Keep baseline and dependency revisions with every candidate and its evidence. Batch builds when useful, but name the combination tested. File overlap alone does not make changes inseparable; combine candidates when they depend on each other and record that reason.
+
+## Continuity
+
+A material edit to a checked claim, proposal, candidate, or dependency invalidates reviews that rely on it, downstream only. Use notes for additional rationale or presentation changes that leave the checked content intact. A claim or proposal edit reopens the affected review without making an unchanged candidate's validation stale. An answered question also reopens affected reviews so they account for the ruling; the answer alone does not require a candidate edit. Keep outstanding review conditions and already-stale validation until resolved.
+
+Refresh the validation record when the candidate, baseline, or dependency candidates change, including when a dependency is dropped, explaining what was rerun and what remains applicable. Clearing a review is not a candidate revision and does not by itself require new validation content. The reviewer checks whether retained evidence supports the current claim and rulings; record a concrete condition if it does not. A filename pointing at an old green log is not fresh evidence.
+
+Continue the same run when the task resumes, including after a session or context reset or a request to implement the reported result. When the user changes how far to go, update that setting in the existing record with its reason; the pinned helper's help supplies the command. Before handing off, retain the current candidate, baseline and dependencies, validation record, unfinished work, questions, and brief reasons for rejected alternatives. The next reader checks what changed and resumes from that material.
+
+A separate run may inspect earlier artifacts. Reuse a conclusion only after checking that its code, inputs, environment, and relevant assumptions still apply; rerun or re-walk the changed parts. A previous report points to evidence and never substitutes for it. Do not restart discovery merely because the session is new, or freeze a conclusion merely because the run is the same.
+
+If an older pinned helper cannot express the resumed work, create a compatible record linked to the old one and carry forward its applicable evidence, candidates, and open decisions. Preserve the original record and helper. Changing the record format does not require repeating the investigation.
 
 ## Whose call
 
-A choice the user must make is written as a question the user can answer alone:
+Apply SKILL.md, Authority and judgment, before opening a question. Missing spec detail and competing engineering options are not automatically user decisions. Choose within the known goals and rulings, record a consequential assumption, and make the result reviewable.
 
-- what happens, when, and roughly how often, in plain user-experience words;
-- how the triggering condition actually arises, investigated in the code and environment rather than hypothesized;
-- each option's cost in code impact, measured against the actual code, and in user effect;
-- and a recommendation.
+For a choice that does need the user, show:
+- the goal or ruling at stake and the concrete experience each option produces;
+- what is known, how the condition arises, and any uncertainty that matters to the choice;
+- feasible options with code impact, user effect, and a recommendation;
+- why the choice needs the user's judgment or authority.
 
-Three rules on the question:
+When new evidence challenges a ruling, identify that evidence and the consequence; do not silently discard the ruling or suppress the evidence. A user should not need to read code or a long spec to understand the choice. Keep the question open until answered, preserve its candidate, and continue independent work.
 
-- When two fix shapes compete and you genuinely cannot pick, that is still a result with a required shape: name the value the choice turns on, say why it is the user's call, and map it, as in "if you weight X take the narrow fix, if you weight Y take the restructure". An unmapped choice handed to the user is work in progress, not a result.
-- Check every option against recorded rulings first, since an option a ruling closes is withdrawn rather than offered, and reopening one takes new evidence.
-- A question the user cannot answer from what is written is unfinished work, not a question.
+## Completion
 
-The issue behind a question waits for the answer. Every other issue moves.
+A run is ready to report when its scoped obligations have been checked or explicitly left open, candidates have their current review states, and remaining questions or evidence gaps say what would resolve them. Empty ready work permits a report; it does not turn unresolved work into clean work. Further passes need a remaining uncertainty or uncovered obligation, not a quota of repeated clean reviews.
 
-## Closing a run
+In fix mode, retain independently reviewed candidates until the user selects, changes, or drops them. Record a user-authorized drop of a proposed fix and its candidate with the reason, retaining its evidence and invalidating affected dependents. This is a terminal disposition, distinct from a reviewer's rejection during engineering discussion, and needs no check-in authorization. In report-only mode, retain the proposal and useful experiments for continuation. Neither mode needs a commit to finish its report.
 
-The database and its directory belong to one run. A later run does not read them; its agents treat the past report as testimony.
+Before checking in a selected candidate, verify its reviewed revision and dependency selection. A dependency must already be present or included in the authorized selection; otherwise explain the concrete choice. A drop or revision reopens only affected dependents. Record each authorized changeset and departure from the reviewed shape, then revalidate anything that departure changes.
 
-- Every issue leaves through one exit: a check-in with its regression test, red before the fix and green after; a comment or assert at the site, for code that looks like a bug but is not and for an invariant no test can reach; a ruling or a one-line baseline in the owning feature doc, for a decision and for a measurement no later run could re-derive once the events expire; a todo, for a probe nobody can run yet; or an explicit drop by the user.
-- Closing is part of a check-in: record the changeset on the row in the same touch, record every departure from the marked shape, and fix or accept each Nit with its reason.
-- Two consecutive passes with nothing new is saturation for this input. Say so in the report; it does not erase open questions or missing external evidence.
+Keep decisions and evidence where later work can find them: a regression test or invariant at the owning boundary, a ruling with its rationale in the feature doc, a retained measurement, or an explicit open item for unavailable evidence. Do not add comments, asserts, or tests merely to manufacture an exit for a disproved finding.

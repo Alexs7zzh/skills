@@ -1,57 +1,50 @@
 # Review
 
-The procedure for judging a change. Read for a diff, branch, changeset, PR, or uncommitted changes. The review mode, quick or deep, changes the amount of evidence you gather, not the standard for an issue.
+The route for judging a diff, branch, changeset, PR, or uncommitted changes. Quick and deep change the coverage and coordination, not what counts as evidence.
 
 ## Choose the review
 
-Name quick or deep beside how far you go in your first line, so the user can redirect either choice in one word.
+State quick or deep and how far you are going so the user can redirect.
 
-| The change | What to do |
+| The change | Mode |
 |---|---|
-| A few lines, one or two files, and no risk surface | Quick review. Follow the four steps below. |
-| Release-gating, many files, or any risk surface | Deep review. Read [deep.md](./deep.md) and choose your role at the top. |
-| The user asked for a deep or thorough review | Deep review. Read that same file. |
-| The user asked for a focus, structure only or performance only | Quick or deep by the rows above. The focus names the lenses to run; you still account for every changed hunk, and the validation line names the lenses not applied. |
-| You cannot tell | Ask, in one line: "quick pass, or deep review?" |
+| A bounded change without a risk surface | Quick |
+| Release-gating, too much material for one judgment context, or a risk surface | Deep; read [deep.md](./deep.md) and choose your role |
+| The user asks for a deep or thorough review | Deep |
+| The user names a focus | Use the relevant mode within that scope; report which lenses were applied |
 
-Risk surfaces are listed in good-code.md. In either mode, account for every changed hunk before deciding what deserves deeper investigation. If the material would crowd the context needed for judgment, delegate the bulk reading per Attention, or escalate to deep review.
+Risk surfaces are listed in good-code.md. If the scope is unclear, inspect the change before choosing; ask only when a missing user choice would materially change the review. Escalate when new evidence exposes a risk surface or coverage that needs deep coordination. Retain gathered evidence and identify what additional coverage is needed.
+
+## Gather the input
+
+Inventory the requested revision or working-tree change, including existing local edits. Identify its goal, relevant rulings, files, and changed hunks without judging them. Record the baseline and where callers, owners, and project contracts can be found. A master gathers this input; reviewers determine whether it is correct and sufficient.
 
 ## Scope of judgment
 
-Inventory everything the change touches. Read the changed files plus enough surrounding, calling, and owned code to judge structure, because structure problems rarely show in the diff alone. Code the change promotes, to sole path, realtime duty, universal gate, or reference input, is a review target rather than context, even when it is unchanged. Quality issues judge changed code only; bug issues judge changed and promoted code.
+Read the changed files plus enough calling and owned code to understand behavior and structure. Code promoted to sole path, realtime duty, universal gate, or reference input is a review target even when unchanged. Within a change review, quality findings concern changed or newly imposed structure; do not turn unrelated pre-existing style into work. A defect in context is relevant when the change depends on or exposes it.
 
 ## Quick review
 
-1. Read the diff, then the callers and the code it owns.
-2. Apply the lenses in good-code.md that the change actually touches, and good-change.md to any fix under review.
-3. Run the owning tests. Classify any failure as a regression or as documented pre-existing noise.
-4. Report issues ranked by user impact, in the format under Report. Nothing wrong: say so in one line and name what you checked. Nits go in one line at the end, or get dropped.
+1. Establish the goal in the user's terms and read the diff, callers, and owners within scope.
+2. Apply the relevant good-code.md lenses. Judge a fix or feature against good-change.md and evidence against findings.md.
+3. Run checks that discriminate the relevant claims. Investigate failures and distinguish regressions from established baseline failures.
+4. Record findings and coverage. In fix mode, continue directly through good-change.md, Develop the candidate and Review the result. Report-only mode retains examined proposals and experiments.
 
-When you go as far as fix, each Bug or Restructure gets its test and fix per good-change.md, shelved with its red and green logs, and a fresh subagent reviews the diff per good-change.md, Reviewing the diff.
-
-Escalate mid-review if a change you took as small turns out to touch a risk surface. Say you are escalating, run `"$LEDGER_DIR/bin/ledger.ts" run escalate hunks=<changed-hunks>` if the quick run already has a database, then read [deep.md](./deep.md). Never run a deep review's judgment on a quick review's evidence.
+Once a review has substantive findings or candidates, create its record per deep.md, Run directory and setup, using a single-seat review route for quick mode. A quick review that finds no issue needs only its scoped result and validation.
 
 ## Report
 
-The response is triage, written in the owner's language, so explain any term of art in one clause at its first use or drop it. Carry only what the owner must know, decide, or act on:
+Explain consequences in the owner's language. The record fields and dispositions are owned by findings.md; print the issues from the database when one is in use. The response contains:
+- the goal and whether the reviewed behavior meets it, with any material mismatch;
+- substantive issues ranked by user impact, with the evidence basis and uncertainty;
+- each proposed fix or candidate and its current state; do not imply that a proposal is implemented or a saved candidate is reviewed;
+- open user questions, coverage gaps, or unsupported claims;
+- minor findings in batches, and validation per SKILL.md.
 
-- Issues ranked by user impact. A quick review may leave the recommendation and the evidence path empty; the trigger stays.
-- Each open question, written per findings.md, Whose call.
-- Assumed release-gating issues, one line each.
-- Nits and Hardening issues collapsed into one batch each, never interleaved with questions; their lifecycles are in findings.md.
-- The validation line per Declarations, plus any prescribed step you skipped, named with why.
-- A deep review closes everything green in one line in the notes: "closed N issues: X by execution, Y by proof, Z by evidence." The full database, verified-clean entries (safe because <the one fact> (step N); ran against: <the shipped code | a replica | which proxy>; windows: <interleavings walked>), and audit disposition stay in the run directory rather than the response.
-- An open issue, question, or coverage gap is printed as open.
+Keep full evidence and clean coverage in the run directory. For a clean protocol claim, retain the paths or interleaving windows checked and the contracts they depend on. Each deep reviewer's notes contain Goal closure, the goal in the user's experience and whether it is met, and Domain scenarios, the relevant cases and their evidence or gaps, including what the user experiences beyond the design's convenient assumptions.
 
-Issues are database rows, and the issues section is printed from the database. A quick review that finds nothing wrong needs no database. Once a quick review has its first Bug or Restructure, create a run directory (deep.md, Run directory, says where), then `export LEDGER=<absolute path to the coding skill>/scripts/ledger.ts LEDGER_DIR=<that directory> LEDGER_ME=A` and run `"$LEDGER" init --single --route review`; `"$LEDGER" --help` lists the rest. An issue records its site; its trigger, how the condition arises in the field, cause, scope as all users, per machine, per session, or per event, and rough frequency, investigated rather than hypothesized; its impact on the user; its certainty step; and its evidence path. Its proposed fix records origin class, shape, sites walked, rulings checked, where the test goes, stated as existing at a path, new and what must be built, or none, and cost. A quick review may leave the recommendation and evidence path empty.
-
-A deep review adds two mandatory sections in each reviewer's notes, which the report appends:
-
-- **Goal closure.** The goal as the user experiences it, never in the design's vocabulary. What reality includes in that scope. Whether the design's boundary matches.
-- **Domain scenarios.** The canonical stress cases of the component's field. One row each: decision variables traced, coverage, verdict.
-
-A deep review's report ends with the **fix table**, one row per proposed fix with its issues and its state, and the open questions, each with options labeled (a), (b), (c) and a recommendation.
+For each reviewer in a deep run, the notes include a `passes:` line with sweep, lens, probe, and diff-review counts. Name skipped relevant passes with reasons. Counts describe the work; they do not establish correctness or require extra passes.
 
 ## Retrospective
 
-One line at the end of every review, kept to deltas: which rule produced each issue, or whether it was judgment, and whether each bug was human-plausible or agent-typical. A deep review adds, to the notes rather than the answer, what the diff reviews and the fresh attack each caught, so a pass that never catches anything can be dropped, and which discovery channels produced issues, produced nothing, or remained untried. For each miss surfaced later, name what would have caught it in the original run, preferring a repo-side test, assert, type or lint over a review instruction. A miss no rule names: propose the rule and ask; on yes, read [maintaining.md](./maintaining.md).
+Keep useful deltas in the notes: which discovery channel found an issue, what independent review caught, and what remained untested. A later miss names the mechanism that would have caught it, preferring a repo-side invariant, test, or lint where appropriate. Change this skill only within an authorized maintenance task, using maintaining.md.

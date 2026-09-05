@@ -32,20 +32,60 @@ npm run check        # typecheck, then the tests
 
 ## Reading a run back
 
-The database is the run's only time-aligned record. `ledger timeline` derives
-from it where the time went per agent, what each agent was doing or waiting on
-at each moment, and every event; `timeline A|B|master` narrows to one agent
-and `timeline <row-id>` prints the argument on one row, from the cold pass that
-created it onward. Situations come from the state alone: an agent with ready
-work is working, a holder of the checkout holds it, an agent whose approved fix
-waits on another's hold is waiting on the checkout, a handed-off agent is idle
-or waiting on the user, and an agent with nothing ready that has not handed off
-is shown as exactly that. The session logs are not the record.
+The database is the run's shared sequence of recorded commands. `ledger timeline`
+derives intervals from the state after each event; `timeline A|B|master` narrows
+to one agent and `timeline <row-id>` prints the argument on one row, including
+its cold-pass history. Situations are inferred: `working` means work is ready,
+not that execution was observed. A checkout hold records ownership; a candidate
+waiting on another hold is waiting on the checkout. The timeline cannot measure
+unrecorded reasoning, actual execution time, or whether a released checkout was
+cleaned up.
 
 `ledger init` copies `ledger.ts` and `src/` into `<run>/bin/`. Later commands run
 the pinned copy, so a skill update cannot change a live run's rules. A database
-written by another schema version is refused, never migrated: finish that run
-with its pinned copy.
+written by another schema version is refused, never migrated. Continue with its
+pinned copy where it supports the required transition. If an older helper cannot
+continue the authorized work, follow findings.md, Related work and continuity:
+start a compatible record linked to the preserved artifacts without repeating
+the investigation.
+
+## Candidate continuity
+
+An investigator can take a new or contested issue and develop its proposal and
+candidate before agreement. A proposal can name a feature goal without an issue.
+Proposal marks and rejections support discussion and report-only review; they
+never gate candidate development or turn repeated disagreement into a user decision.
+A clean independent candidate review also marks the supported current claims and
+proposal. A reviewer cannot mark a claim revision they wrote.
+
+Each candidate names its saved artifact, exact baseline, dependency candidates
+as `S-A-1@2`, and a validation file following findings.md, Evidence. The script
+retains a content-addressed copy of that record under the run's `validation/`
+directory. A refreshed candidate needs refreshed validation content, including
+what was rerun and what still applies. The digest detects unchanged content;
+the reviewer judges whether the record actually supports the candidate. Code
+proof at certainty 3 is valid issue evidence. Red/green runs are one evidence
+method, not required fields for every candidate. `checkout baseline` remains
+available when a build and suite baseline are relevant; it is not a required step.
+
+Only material candidate updates advance its revision; review records do not.
+Changing a claim or proposal, or answering a linked question, clears affected
+reviews downstream without forcing new validation content. Reviewed candidates
+return to `shelved`; outstanding conditions and already-stale validation remain.
+Changing a candidate revision or dropping a dependency makes dependent validation
+`stale` until refreshed. Unrelated candidates keep their reviews.
+Check-in authorization captures the selected revisions and requires
+each dependency either in that selection or already checked in at that revision.
+
+Use `run set` when the user changes how far to go, such as moving a report-only
+investigation into implementation. Existing rows, evidence, and history remain.
+The command's reason records the user's instruction. An open question blocks
+only its named issues or proposal.
+
+`proposed-fix drop` records the user's decision to abandon a proposal and its
+candidate before any check-in approval. It retains the artifacts, withdraws open
+questions tied to that proposal, and invalidates dependent reviews. An engineering
+rejection remains discussion; it is not a user-authorized drop.
 
 ## Adding or removing a rule
 

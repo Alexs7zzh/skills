@@ -1,87 +1,80 @@
 # The deep run
 
-Two reviewers from different model families, one shared checkout, one database. Read when the user asked for a deep run, when a review or diagnosis touches a risk surface, or when a master dispatched you into a two-family run. Choose your role in the Roles table before reading the steps. A subagent inside one session is not an independent reviewer.
-
-## Rules
-
-- **Nobody marks their own work.** The reviewer who did not write an issue agrees with it or disputes it. The reviewer who did not write a shelved fix reviews its diff. A question is answered by the user and nobody else.
-- **Issues, proposed fixes, and shelved fixes are separate rows.** Correcting a proposed fix never reopens the agreed issue. Fixing a diff never reopens the proposed fix. The script enforces it: an edit clears the marks on that row and on the rows built on it, and nothing else.
-- **The test comes first.** A shelved fix needs its red log and its green log, and the script refuses one without them. The one exception, a bug no test can reach, is in good-change.md, Lock a fix down.
-- **Argue twice, then stop.** A fact disputed through two back-and-forth edits gets the probe that settles it, run rather than described. A shape disputed through two edits is the user's question, per good-change.md; it is never shelved, so move to another issue.
-- **Never wait on one row.** `ledger status` lists the work you can do now. When one issue is blocked on a probe, a review, or the user, take another.
-- **Two files per shelved fix.** Normally the red log and the green log go in the run directory; the user's explicit no-red architecture exception leaves only the green log. An issue carries file:line and at most one probe output. Nothing else is written there.
-- **The script does the talking.** It tells a reviewer when their ready work goes from none to some, tells the other reviewer what awaits them at your handoff, tells the master every question and every time both reviewers have handed off with nothing ready. Each message names the row and the receiver's next command, and every command prints both reviewers' ready-work counts and your next step. Do not repeat any of it in chat.
-- **Bug and Restructure issues get every step.** A Hardening or telemetry-quality issue, when fixed, is shelved and reviewed the same way, and otherwise is listed; it never holds up the report. A Nit closes in one line.
-
-## The steps
-
-The route, review.md or diagnose.md, says how to gather the input and what the report contains. Deep adds these steps. Steps 3 to 8 run per issue, across issues in parallel, in whatever order the database offers.
-
-1. **Cover everything.** Every changed hunk sits in exactly one sweep. The sweeps together cover every object under Enumerate in good-code.md; in a diagnosis, every cluster gets its own investigator. Sweeps are mechanical: cheap subagents read every hunk and return file:line plus what they saw. Lenses, verdicts, fixes, and diff reviews are yours. Dispatch sweeps and lens passes together and let their results meet in the database. A sweep that did not return is a coverage gap in the report, never a silent clean.
-2. **Find issues cold.** Each reviewer reviews the whole input alone, in its own database (`ledger init --cold`), with no contact with the other, then imports its issues into the shared database. A cold pass is read-only against the shared checkout: record a needed code probe, then run it after both imports under the shared checkout. That import is your first report. From here on, both reviewers pull from the shared database.
-3. **Check each other's issues.** For every issue you did not write: agree, disprove it with evidence at certainty step 2 or better, mark it a duplicate, correct it, or contest it by naming the probe that settles it. Yielding without a certainty step is not agreement. After two contesting edits, the reviewer who contested takes the checkout and runs the probe.
-4. **Read related issues together**, per findings.md, Related issues. The result is a new issue linked to both, checked like any issue; an overlap between fixes is noted on both proposed fixes before either is shelved. Re-verify the top issue in code before the report, and list every dropped or downgraded issue with its reason.
-5. **Write the proposed fix.** The reviewer who verified an issue usually writes its fix, since the probe that proved the issue is the start of its test. Write it per good-change.md, Before writing the fix, with the slots findings.md lists. A fix that good-change.md says needs no prior mark goes straight to step 6, and the diff review covers it. Every other proposed fix gets the other reviewer's mark first.
-6. **Shelve the fix.** Take the checkout (Shared checkout, below). Write the test and run it on the unfixed code; keep the failing log. Apply the fix, build, run the test and the owning tests; keep the passing log. Shelve the fix's files with the issue ids in the shelve comment, remove every tagged probe, release the checkout, and record the shelve and both logs on the row. Fixes that touch the same file share one shelve. Independent fixes may share one build and one test run.
-7. **Review the diff.** The other reviewer opens the shelve in a fresh context and reviews it per good-change.md, Reviewing the diff. A defect is a condition written on the shelved fix row; the author fixes it and shelves again. An unresolved point is a condition, not open time. A clean diff gets the mark.
-8. **Ask the user.** An issue whose fix turns on a product stance, or two fix shapes that survived step 5's two edits, becomes a question per findings.md, Whose call. The script tells the master, who shows it to the user at once. That issue waits; you move to another. The user's answer, recorded on the question, goes to the reviewer who asked, and the issue is ready work again.
-9. **Report.** When your ready work is empty, release the checkout and run `ledger handoff`; it tells the other reviewer what awaits them. When both reviewers have handed off and neither has ready work, the script tells the master, who prints the report with `ledger report`. An answered question restarts the loop, and the master prints the report again when it ends. The report lists every issue with its label, certainty step, marks, fix state, and shelve; every open question; every coverage gap; and both reviewers' notes. Each has a `passes:` line of the form `passes: N sweeps, N lenses, N probes, N diff reviews`; when a count is zero, a separate `skipped:` line names that pass and why it did not run. An open item is printed as open. The marks on each row are the double check.
-10. **Check in.** Only on the user's word, and only the shelved fixes it names. Record each changeset on its row. A shelved fix the user does not name stays shelved.
-
-In a two-family run, step 3 is the fresh attack. A run with one session sends the verified issues, their evidence, the assumed issues, and the clean coverage to a fresh subagent that re-verifies them without seeing your reasoning, looking wherever a blocker could hide.
-
-## Shared checkout
-
-One checkout, many writers, one at a time. Before any edit, probe or fix, take the checkout in the database. Release it when the tree holds no probe and every shelve is recorded. `ledger status` shows who holds it and for what; held means do other work. The first holder builds once and runs the owning suite, logs in the run directory, so every later failure has a baseline. Shelved fixes stay applied in the checkout until the user checks them in or drops them. Probes never survive a release. When builds are long, batch several fixes under one hold. Never build a target the project's contract excludes without asking the user.
+Coordination for a review or diagnosis that needs broad coverage and independent investigation. The route gathers the input; good-code.md and good-change.md govern judgment; findings.md owns evidence, records, dependencies, and completion. Choose your role before starting.
 
 ## Roles
 
 | You are | Role |
 |---|---|
-| The user-facing session, and the Herdr preflight below passes | **Master** |
-| The user-facing session, and the preflight fails | **Local reviewer.** Say the runtime is unavailable, then run the steps in this session with subagents: a fresh subagent for the fresh attack and for every diff review. Never imitate a two-family exchange without the runtime. |
-| An agent a master dispatched | **Reviewer.** Run the route and the steps above. `ledger status` names your seat. |
+| The user-facing session with a working Herdr runtime | Master: gather, dispatch, carry user decisions, and present the record |
+| The user-facing session without that runtime | Local reviewer: investigate here and use fresh subagents for independent checks |
+| Dispatched by the master | Reviewer: investigate the frozen input, then work from the shared record |
+| Dispatched to check a candidate | Fresh reader: follow good-change.md, Review the result, for the named candidate |
 
-### Master
+A local run can provide a fresh non-author check without providing two model families. State which independence the run actually achieved. Do not imitate another model or reuse your own context as a fresh review.
 
-You speak for the user and touch nothing else. Never judge an issue, merge findings, or relay reviewer traffic. Every message you write to an agent follows the `agent-messaging` skill.
+## Working loop
 
-- **Gather.** Run the route's gathering steps, the ones that produce the input without judging it: the changeset inventory for a review; the export, grouping, and cluster list for a telemetry triage. Run the standard probes any reviewer would ask for and put their results in the frozen input. Read how the project makes a shelve from its doc; if the doc is silent, ask the user once and suggest recording the answer there. Freeze the input in the run directory and create the database there with `ledger init`, naming both reviewers and yourself. Send each named agent one test prompt first.
-- **Dispatch** both reviewers per the Herdr section. Tell the user in one line that questions will appear here as they come, that status is available on request, and that the report comes when both reviewers are done. Then go idle.
-- **Route questions.** A `question:` message from the script is for the user. Print it at once, with every other open question, so the user finds them all on return. Record the user's answer on the question row. Never answer one yourself and never reword one.
-- **Answer "how is it going".** Print `ledger status` in the user's words: issues by state, who is working on what, who holds the checkout, the open questions, and each agent's state from `herdr agent list`. A `blocked` agent is the first line.
-- **Present the report** when the script says both reviewers are done, or when the user asks. Print it with `ledger report`. Then stop. The user may check in, drop, answer, or ask for more. Asked where the time went, or what an agent was doing or waiting on at some moment, print `ledger timeline`, or `ledger timeline <row-id>` for what was argued on one row. The database is the record; never read a session log for it.
-- **On the user's go**, record it on the named shelved fixes. Check-ins are the user's unless the go names a reviewer to do them. Record each changeset on its row.
+1. **Cover the input.** Partition changed hunks or diagnosis clusters into scoped sweeps, covering the applicable objects in good-code.md, Enumerate. Use subagents for bulk and retain the code model and judgment in the reviewer. Missing coverage stays visible.
+2. **Discover independently.** In a two-family run, each reviewer uses its own cold database and reads the frozen revision and working-tree diff without seeing the other's conclusions. Use revision-based reads or an isolated copy so later edits cannot change that input. Read-only checks and experiments in an isolated copy can contribute evidence. Import the cold record before editing the shared checkout; the other reviewer can continue its cold pass against the frozen input.
+3. **Develop and challenge.** Pull ready work from the shared database. The investigator may develop a candidate before the issue or proposal has a mark, per good-change.md. The other reviewer can investigate a claim directly or examine it with the candidate. Reuse applicable evidence and record disagreements with the check or decision that would settle them.
+4. **Save and review.** Retain the recoverable candidate, baseline, dependencies, and validation record per findings.md. A fresh reader checks the claim and candidate together. The other reviewer arranges that fresh context; a continuing conversation cannot unsee its prior arguments. Defects return as concrete conditions for the author.
+5. **Handle decisions and interactions.** Apply findings.md to related issues, changed dependencies, and user questions. A question blocks its affected work; the investigator saves what it learned and takes another ready item. Engineering disagreement continues through evidence unless it exposes a decision only the user can make.
+6. **Handoff or report.** Keep working while you have ready work. When none remains, save unfinished state, release the checkout, and run `ledger handoff`. A report follows findings.md, Completion, and the route's reporting section. Open work stays open. A user answer or changed dependency resumes the same record.
 
-### Reviewer
+In a local deep run, use a single-seat database and omit the two-family cold/import exchange. Before reporting, send the current issues, supporting evidence, and clean coverage to a fresh subagent to look for missed obligations. Candidate checks use fresh readers as above. A broad independent pass earns its time by checking coverage and claims; it does not repeat already applicable candidate reviews merely to stamp them again.
 
-- Cold pass first, in your own database, then `ledger import`. Write `passes:` and `retrospective:` lines in `<seat>-notes.md` in the run directory; for a review, add Goal closure and Domain scenarios per review.md.
-- Then pull from `ledger status` until it is empty: issues to check, proposed fixes to mark, shelved fixes to review, conditions on your own shelved fixes, verified issues to fix. Fan out with subagents per group of related issues, each returning a verdict with evidence. Keep going in the same turn while your ready work is not empty, whatever messages went out meanwhile; if the other reviewer's issues are already in when yours import, start checking them at once.
-- A verified issue nobody is fixing is yours to take, whoever wrote it.
-- When your ready work is empty, release the checkout, run `ledger handoff`, and end your turn. Replies arrive as prompts. A pass that ends without handoff leaves the other reviewer and the master waiting for a message that never comes.
+## Shared checkout
+
+One writer holds the shared checkout at a time. Before any shared edit, take it in the database. State what you are changing; a holder finishes and records its current batch before releasing. Others take work that does not depend on reading a moving tree.
+
+Establish and retain the relevant build and test baseline before attributing later failures to a candidate. Hold the checkout while a build or test consumes its inputs, or run against an immutable copy. Readers judge a saved candidate and its baseline, never an unidentified mixture of another agent's edits.
+
+When a batch is ready, record every candidate and its validation, remove temporary instrumentation per SKILL.md, and release the checkout. Candidates can stay applied; their saved artifacts must remain separately recoverable. Batch builds when it reduces repeated work, naming the candidate combination tested. File overlap alone does not require one shelve; dependency and selection rules are in findings.md.
+
+If a question blocks the active batch, preserve it and release the checkout. Choose a supported project target; a build excluded by the project's contract needs a reason and the user's decision before changing that contract.
+
+## Run directory and setup
+
+For writing, quick review, plain diagnosis, or local deep work, initialize a single-seat record once substantive issues or a candidate need recording. Use the route `write`, `review`, or `diagnose`; add `--deep` for a local deep run. Seat A investigates and writes. A fresh reader uses seat B to record its own check; do not switch identities to mark your own work.
+
+Keep the record in the project's ignored working folder when one is specified, otherwise in a fresh temporary directory retained through the task. The directory holds the frozen input, database, evidence, candidate patches when needed, reviewer notes, and reports. Save the revision and existing local changes that define the input, rather than relying on a branch name.
+
+Set `LEDGER_DIR` to that directory and `LEDGER_ME` to your seat. Run the skill's `scripts/ledger.ts --help` to see initialization and record commands. `ledger init` pins the helper under `<run directory>/bin/`; all later commands in this document refer to that pinned `bin/ledger.ts`. Existing runs keep their pinned helper when the skill changes. Continue or reuse their evidence per findings.md, Continuity; do not delete an old run as setup for a new one.
+
+Reviewer notes keep useful pass counts and retrospective deltas; full artifacts stay on disk. There is no fixed number of files per issue or candidate. Reports summarize the record so the user can see outcomes and choices without reading the whole investigation.
+
+## Master
+
+You carry the user's goals and decisions; reviewers own code judgment. Messages to agents follow the agent-messaging skill when available.
+
+- **Gather.** Follow the route's Gather the input section. Freeze the target revision, working-tree diff, and available artifacts. Do not decide causes or design fixes while assembling input. Choose a recoverable shelve form from the project convention or supported VCS; ask only when a material constraint prevents choosing one. Initialize a joint database with both reviewers and yourself.
+- **Dispatch.** Start the reviewers per Herdr runtime. Give them the frozen input, checkout, record, and actual user constraints. Tell the user that consequential questions appear as they arise and status is available.
+- **Route questions.** Present a question from the record with the other open decisions and its recommendation. Record the user's answer and source; do not answer for them or infer approval from elapsed time. The script returns the answer to the affected reviewer.
+- **Report status.** Use `ledger status` and the runtime's agent states. Separate recorded activity from inference; ready work does not prove that an agent is executing it. Surface blocked work and what would unblock it.
+- **Present results.** Use `ledger report` when ready or requested, with open items visible. For time spent or earlier decisions, use `ledger timeline` and the retained artifacts. Do not reconstruct an authoritative history from guesses about session activity.
+- **Carry authorization.** Apply the user's selection to reviewed candidates, including dependencies, per findings.md. Record the authorized executor and changesets. A general progress question is not check-in permission.
+
+## Reviewer
+
+- In a joint run, finish independent discovery in your cold record, then import it. In a local run, investigate directly in the single-seat record.
+- Work from `ledger status`: open coverage, candidate development, claims to check, candidate reviews, and conditions on your work. Keep issue-to-candidate continuity; take another investigator's work when useful and resume from its retained evidence.
+- A fresh reader records its own assessment. Keep the author's rationale available for comparison after that assessment, and for the user.
+- Maintain notes with `passes:` counts and useful `retrospective:` deltas. For a review, include Goal closure and Domain scenarios per review.md. Counts describe work, not confidence.
+- When ready work is empty, preserve the next step, release the checkout, and hand off. A later prompt resumes the record rather than rebuilding the investigation.
 
 ## Herdr runtime
 
-Wiring for a two-family run. Read when you are the master of a deep run or were dispatched into one. The method is above; `herdr <command> --help` answers flags.
+Read for a two-family run. The method is above; `herdr <command> --help` supplies flags.
 
-**Preflight.** `test "${HERDR_ENV:-}" = 1` and a responding `herdr agent` command. Either failing makes the user-facing session the local reviewer.
+**Preflight.** Check `HERDR_ENV=1` and a responding `herdr agent` command. Otherwise use the local role and state the missing two-family capability.
 
-**Cast.** Reviewer A is Claude Opus at high effort, database seat A. Reviewer B is Codex `gpt-5.6-sol` at high effort, seat B. Each runs the work with its own subagents, and both write fixes through the shared checkout.
+**Cast.** Reviewer A is Claude Opus at high effort, database seat A. Reviewer B is Codex `gpt-5.6-sol` at high effort, seat B. Each can use subagents; both write through the checkout contract above.
 
-**Layout.** One new tab for the run, named short after the target ("review cs 15944" or "triage 2026-09-02"). One pane per reviewer, side by side, each named after its agent ("opus-reviewer", "codex-reviewer"). Rename your own agent to an addressable name first with `herdr agent rename`, since reviewers message you by that name. Start each with `herdr agent start <name> --kind claude|codex --pane <pane-id>`. Parse ids from JSON responses rather than guessing, and use `--no-focus`.
+**Layout.** Create one tab named for the task and one pane per reviewer, side by side. Give your own agent an addressable name with `herdr agent rename`. Start reviewers with `herdr agent start <name> --kind claude|codex --pane <pane-id>`. Parse returned IDs rather than guessing; use `--no-focus`.
 
-**Run directory.** The frozen input, the database and both cold databases, the reviewers' notes, the red and green logs, and the printed report live in one fresh directory. Put it under the project's ignored in-project folder when its review doc names one, otherwise under a temporary directory. `ledger init` pins the script and its schema under `<run dir>/bin/`; run every later `ledger ...` spelling in this document as `"$LEDGER_DIR/bin/ledger.ts" ...`. A past run's directory is not an input: its report is testimony, and no agent removes it.
+**Dispatch.** Carry the route and target, reviewer identity, paths for frozen input and checkout, `LEDGER_DIR`, `LEDGER_ME`, pinned helper, how far to go, and actual user constraints. Point at this skill and the Reviewer role. Carry relevant rulings and goals; do not prescribe the investigation or pre-load another reviewer's argument.
 
-**Dispatch.** Carry only what is unique to this run, and point the agent at this skill by name:
+**Messaging and idle time.** The script sends ready-work changes, handoffs, and user answers to reviewers, and questions and completion notices to the master. If delivery fails, it prints the message for you to deliver. Do not repeat successful notifications. Work until nothing is ready, hand off, then go idle and resume on a message. Avoid polling or waiting on another reviewer's work; short bounded waits for runtime control exchanges are different.
 
-```
-Deep <review|diagnosis> of <target>. You are <name>, a reviewer; read the `coding` skill (`$coding`), then deep.md, and follow the Reviewer role. Frozen input: <path>. Checkout: <path>. Database: `export LEDGER_DIR=<run directory> LEDGER_ME=<A|B>`; helper: `"$LEDGER_DIR/bin/ledger.ts"`. How far: <fix|report-only|check-in>.
-```
-
-The database already holds the agent names, the how-far setting, and the coverage partition. `ledger status` tells each agent its seat and ready work. Append constraints the user stated verbatim and invent none.
-
-**Messaging.** The script sends every message through `herdr agent prompt` to the names recorded at init. To a reviewer: your ready work went from none to some, naming the rows; the other reviewer handed off, naming what awaits you; the user answered your question. To the master: a question, and both reviewers done. Each names the receiver's next command. If delivery fails, the script prints the message: send it yourself.
-
-**Waiting.** Never poll another agent or wait on review work: no `--wait` on a reviewer, no pane peeking, no progress narration. Work until your ready work is empty, hand off, go idle, and resume on a message. A short `--wait` with a tight timeout is fine for a control exchange.
-
-**States and cleanup.** Agent states are `idle`, `done`, `blocked`, and `unknown`. Surface blocked to the user. Close only panes you created, and never stop the Herdr server.
+**Cleanup.** Surface blocked agents. Close only panes you created, and never stop the Herdr server.

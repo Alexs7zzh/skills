@@ -1,49 +1,46 @@
 # Diagnose
 
-The procedure from symptom to cause. Read when the task is to debug or diagnose.
+The route from an observed symptom to a supported cause and, when authorized, a reviewed candidate.
 
 ## Choose the mode
 
-Name plain or deep beside how far you go in your first line.
+State plain or deep beside how far you are going.
 
-| The input | What to do |
+| The investigation | Mode |
 |---|---|
-| One symptom, or one export or issue list however many symptoms it holds, and no cause on a risk surface | Plain. Follow the loop and the steps below. |
-| Several independent symptoms, exports, or issue lists; or the user asked for an exhaustive diagnosis | Deep. Read [deep.md](./deep.md) and choose your role at the top. |
-| The user asked for a deep run, or a cause sits on a risk surface | Deep. Read [deep.md](./deep.md) and choose your role at the top. |
+| A bounded symptom or coherent cluster without a risk surface | Plain |
+| Independent clusters that need separate investigators, a cause on a risk surface, or a requested deep or exhaustive diagnosis | Deep; read [deep.md](./deep.md) and choose your role |
 
-Risk surfaces are listed in good-code.md. Escalate mid-diagnosis if a cause lands on a risk surface: say you are escalating, run `"$LEDGER_DIR/bin/ledger.ts" run escalate` if the plain run already has a database, then read deep.md.
+Risk surfaces are listed in good-code.md. Choose by the work, not by whether symptoms arrived in one export or several. Escalate if new evidence requires deep coordination, retaining the investigation so far.
 
-## Build the feedback loop first
+## Gather the input
 
-A tight pass/fail signal that goes red on this bug does most of the work. Bisection, hypotheses, and instrumentation only consume it. Ways to build one: failing test at the nearest place the code can be driven, script against a running instance, replayed captured trace, throwaway harness, differential run old-vs-new, bisection harness. Then tighten it. Faster: seconds. Sharper: assert the user's exact symptom, not "didn't crash". Deterministic: pin time, seed RNG. Non-deterministic bugs: raise the reproduction rate (loop 100x, stress, narrow timing) until debuggable.
+Record the user's symptom, expected experience, affected version and environment, available traces or reports, and any reproduction steps. Group telemetry by the behavior or mechanism to investigate; retain the original artifacts. A master can gather and group input without choosing a cause.
 
-**Completion criterion:** one command, already run once, that is red-capable (asserts the exact symptom, goes green on the fix), deterministic, fast, and agent-runnable. Build it before reading code for a theory. If a loop is genuinely impossible: say so, list what you tried, ask for a captured artifact or environment access.
+## Build the feedback loop
 
-When the input is telemetry or crash reports from shipped builds, the loop is a deterministic assertion over the export: it goes red on the exact rows and cannot go green locally, the one exception to the criterion above. Say that once for the run, not once per issue, and build a local test whenever the code path admits one, because a test that drives the real code outranks the assertion.
+Find the shortest useful observation that distinguishes the symptom from expected behavior. Inspect enough code and environment to locate an entry point, replay path, or test seam. This reconnaissance does not commit you to a causal theory.
 
-## Then, in order
+When possible, produce one agent-runnable command that exposes the exact symptom and can be repeated against a candidate. Reduce irrelevant inputs, pin controllable time or randomness, and shorten the iteration. A trace replay, integration test, running-instance script, differential comparison, or harness may serve; findings.md, Evidence, decides what each establishes.
 
-1. **Reproduce and minimise.** Watch the loop go red on the user's failure mode (not a nearby one). Shrink until every remaining element is load-bearing. The minimal repro shrinks the hypothesis space and becomes the regression test.
-2. **Hypothesise in threes.** 3 to 5 ranked falsifiable hypotheses before testing any, each with its prediction: "if X is the cause, changing Y makes it disappear". Show the ranking.
-3. **Instrument one variable at a time**, probes mapped to predictions, under the probe rules in SKILL.md. For performance: measure baseline first, then bisect; logs are usually the wrong tool.
-4. **Shape the fix at the origin.** Read good-change.md. Classify the origin, finish the sibling sweep it calls for, and read related causes together per findings.md before choosing the shape. Report only stops here, with the proposed fix written.
-5. **Shelve the fix.** The red loop becomes the regression test at the right place per good-change.md. Run it red on the unfixed code, apply the fix, build, run it green, keep both logs, shelve, remove every tagged probe. State the confirmed hypothesis in the shelve comment. A fresh subagent reviews the diff per good-change.md, Reviewing the diff.
+For intermittent failures, retain the observed rate and conditions and improve reproducibility without claiming determinism you did not achieve. For telemetry from shipped builds, an assertion over captured rows can locate affected cases but cannot show that a local fix changed the shipped behavior. State that limitation and seek a code-level check when one can reach the mechanism.
 
-## Database
+If the full loop is unavailable, retain the best signal, what it establishes, and the missing input or access. Continue code or contract analysis that can narrow the uncertainty. Ask for external evidence only when it is needed for the remaining claim.
 
-A plain diagnosis writes its causes as issues in a single-seat database, the same rows a deep run writes. Create a run directory per deep.md's Run directory paragraph, then `export LEDGER=<absolute path to the coding skill>/scripts/ledger.ts LEDGER_DIR=<that directory> LEDGER_ME=A` and run `"$LEDGER" init --single --route diagnose --clusters "<the issue or cluster ids>"`. Record each cause as an issue with the clusters it explains, its certainty step, and its evidence path; record questions, proposed fixes, and shelved fixes as separate rows as they arise. `"$LEDGER" report` prints the report below and names every cluster no issue explains. `"$LEDGER" --help` lists the commands. Your `passes:` line and retrospective go in `A-notes.md` in the run directory, which the report appends.
+## Investigate and develop
+
+1. Reproduce or establish the symptom as precisely as the available evidence permits. Minimize the case without removing the failure mechanism.
+2. Form falsifiable hypotheses where alternatives remain. For each live alternative, name the observation that would distinguish it; do not invent a quota of theories when evidence already selects one.
+3. Run discriminating experiments, controlling the variables needed to interpret them. For performance, establish the relevant baseline before attributing cost. Use the probe rules in SKILL.md.
+4. Develop a candidate as understanding becomes concrete, per good-change.md. The reproducer and useful experiments stay with the change; the candidate can test a causal hypothesis before another reviewer agrees. Trace sibling mechanisms and related causes before claiming the wider problem resolved.
+5. Validate, retain, and independently review the candidate through good-change.md. Report-only work retains its examined proposal and experiments for later continuation.
+
+Create a single-seat diagnosis record per deep.md, Run directory and setup, or use the shared record in a deep run. Cover every input cluster with a supported cause or an explicit gap; an export assertion alone is not verification of a code cause.
 
 ## Report
 
-Every reported cause names its certainty step, and every cause left below step 4 names the fifteen-minute probe that would raise it, run or skipped with why. Every proposed fix carries these slots, or is marked a direction rather than a proposal:
+Use the records in findings.md. Separate supported causes from open hypotheses and show what evidence could resolve the remaining alternatives. State whether each candidate addresses the user's actual symptom and which environment was checked.
 
-- origin class and shape, per good-change.md
-- the sites it touches, walked at file:line or applied and restored
-- the recorded rulings, feature docs, and tests asserting today's behavior it was checked against, and what each said
-- the red loop or regression test that would catch the bug, and where it goes: one that exists, at its path; one that must be built, and what; or none, which is an architecture issue
-- its cost from the code it touches, never a guessed line count
+For a recurring field failure, investigate whether the project's detection or recovery policy should have exposed it, and whether that mechanism worked. A missing or inert detector is an issue when it defeats an actual diagnostic obligation, not merely because another watchdog could be added.
 
-Every cause that recurred in the field names the detector, watchdog, or health check that should have caught it and why it did not; a detector that cannot fire is an issue of its own.
-
-The report separates verified causes from open hypotheses and shows each proposed fix and shelved fix with its state. It ends with the validation line per Declarations.
+Show proposed fixes and candidates with their states, user decisions, and missing evidence. Keep relevant pass counts and useful retrospective deltas in the notes. End with validation per SKILL.md.

@@ -1,22 +1,25 @@
-# Editing this skill
+# Maintaining this skill
 
-Read this once, after the user says yes to changing their local copy. The goal is to turn a review miss into the smallest instruction that would reliably catch it next time, without growing a checklist that weakens the rest of the skill. These levers are ranked by how reliably each changed behavior when tested; prefer the top of the list.
+Read when creating, reviewing, testing, or changing the coding skill. Read GOAL.md first. In this workspace, follow the skill-authoring skill from skills/ as the source of truth.
 
-1. Output-contract slots execute reliably; process bullets asking the same thing mostly do not. Add the section that proves the behavior happened.
-2. Object sweeps, nouns to enumerate, beat activity instructions.
-3. Sharp mechanism cues are load-bearing. An absent cue produces confident false cleans, not silence.
-4. Checklist bulk beyond the cues dilutes. The codebase carries project-type facts, so docs earn lines only by stating deviations from a strong reviewer's defaults.
-5. Enumerate-then-close doubles recall for 10-20% more cost.
-6. Probes beat argument.
-7. Cheap agents never own verdicts.
-8. Noise control comes from recorded policy, not caution.
-9. One-line behavior cues fire about half the time. Enforce behaviors through levers 1 and 2.
-10. Encode lessons in structure before instructions: unrepresentable state > CI-failing lint or test > canonical helper > runtime check > doc rule.
+## Preserve the contract
 
-## Words
+Each document owns one kind of decision:
+- SKILL.md owns routing, authority, scope of action, and common terms.
+- good-code.md owns properties of code and conditional mechanism cues.
+- good-change.md owns turning a goal or issue into a reviewed change.
+- findings.md owns evidence, records, user decisions, continuity, and completion.
+- review.md and diagnose.md own how their inputs are gathered and investigated.
+- deep.md owns coordination and runtime mechanics; unreal.md owns conditional domain cues.
 
-Use the most common word that is exact: bug, issue, fix, test, build, log, shelve, check in, database, question, probe, mark. SKILL.md's Words section is the one home for a term: define it there, reuse it everywhere, and never write a synonym for a defined word. A reader who needs a glossary to run a step was given the wrong word.
+A pointer names when to read its target. Keep field definitions and decision rules at their home; do not copy them into every route. Keep project and version facts conditional and verifiable against the target.
 
-## Structure
+## Change and check
 
-Keep the split the read-set table in SKILL.md shows: one concept, one section, and one read moment, one file, because a rule copied into two places drifts; every pointer carries the trigger that sends the reader there, because a file mentioned without its trigger does not get read. The Markdown owns the rows, their dependencies, how far to go, and the evidence rules. `scripts/ledger.ts` enforces that model, with SQLite only as its durable store. Change the concept first, then make the script reject the states the concept forbids. Analysis always runs; lasting edits wait for the user's yes.
+Start from the observed miss and its expected outcome. Name the failure class and test a sibling that uses different surface details. If the change alters a value, update GOAL.md first.
+
+Prefer a checkable output, an object to enumerate, or a mechanism cue over another caution. Use the most common exact term and define it once. A numerical claim about instruction effectiveness needs actual evaluation evidence; omit unsupported percentages.
+
+Settle the document's states and evidence obligations before changing scripts. The ledger enforces durable records, dependencies, and checkable gates; it cannot determine whether evidence proves a claim or whether a design serves the user. Keep those judgments with the reviewer.
+
+Run the workspace skill validator and the nearest realistic workflow. Test the original failure class, an unseen sibling, a near negative, and a known-good path in fresh contexts. Review changed instructions for conflicting routes, repeated rules, unnecessary waiting, and information lost on resumption. Report which checks actually ran and which did not.

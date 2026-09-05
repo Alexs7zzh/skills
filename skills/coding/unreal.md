@@ -1,19 +1,22 @@
-# Unreal / C++ cues
+# C++ and Unreal cues
 
-Bug knowledge for Unreal C++: mechanisms first, then facts that are true of a specific engine version or of this fork. A mechanism outlives versions; a fact expires with them, so a fact carries its version and is verified against the fork before it closes anything.
+Read the C++ section for C++ work. Read the Unreal sections only for engine work. A mechanism points to what to investigate; provider details and version facts must be checked against the target before they settle a finding. Keep fork-specific build limits and policies in the project's documents.
 
-## Mechanisms
+## C++ mechanisms
 
-**C++ memory model and semantics**
-- Seqlock and sequence-validated copies with one-sided fences. A release store orders prior accesses only; an acquire load orders later accesses only. The writer needs a release fence between invalidate-store and data stores. The reader needs an acquire fence between data loads and recheck. The one-sided form passes every stress test on x86 TSO and tears on ARM64. Verify against the C++ memory model, never against passing stress tests.
-- In-argument `MoveTemp`, or any read of a value another argument of the same call moves from. Argument evaluation order is unspecified: works on one compiler, ships empty on another.
-- `FString` `==` folds case. Identity comparisons (IDs, keys, tokens) need `Equals(..., ESearchCase::CaseSensitive)` or a stronger key type.
-- Casts that bypass the type system (`const_cast`, unchecked downcasts, `reinterpret_cast` on live objects) are runtime crashes waiting for their input; prove the fact or refine the model instead.
+- Sequence-validated copies need a proof for payload access as well as ordering around invalidation and recheck. Fences or a later successful sequence check do not by themselves legalize a race on non-atomic payload. Walk the exact protocol against the [C++ memory model](https://eel.is/c++draft/intro.races), including the happens-before edges it requires. Passing stress tests on one architecture do not prove portability.
+- A moved value read by another argument of the same call can depend on argument evaluation order. Inspect the language version and the actual read and move; `std::move` and Unreal's `MoveTemp` do not themselves sequence the arguments.
+- For casts that bypass a static guarantee, such as `const_cast`, unchecked downcasts, or `reinterpret_cast` on live objects, establish the replacement type, lifetime, alignment, or mutability precondition at reachable inputs. The cast's spelling alone does not prove a defect.
 
-**UE lifetime and GC**
-- A raw `UObject*` member without `UPROPERTY`/`TObjectPtr` is invisible to GC and dangles without ever becoming null. Non-owned references are `TWeakObjectPtr`; the resolved-once, stashed-raw defeat from good-code.md applies across a frame or async gap.
-- `FTimerManager`, `FTSTicker`, and `FHttpRequest` completion delegates outlive careless objects; these are the highest-frequency dangling-this sources in a game client.
-- Engine async results have a supported reading context: trace data (`QueryTraceData`) is unreadable from Slate active timers; verify the documented completion context of any async query.
+## Unreal mechanisms
+
+**Identity and provider semantics**
+- For IDs, keys, and tokens, check the selected string comparison's case semantics in the target engine. Use an explicit comparison or stronger key type when identity requires it; an operator's spelling is not its contract.
+
+**Lifetime and GC**
+- Trace how a stored `UObject` reference participates in GC. A raw pointer alone neither retains its target nor guarantees nulling. In UE5, a `TObjectPtr` used as a reflected strong reference needs `UPROPERTY`; use `TWeakObjectPtr` when observing destruction without ownership. Check the target's [object-pointer contract](https://dev.epicgames.com/documentation/en-us/unreal-engine/object-pointers-in-unreal-engine). Resolving once and retaining a raw pointer across a frame or async gap defeats the weak reference.
+- `FTimerManager`, `FTSTicker`, and `FHttpRequest` completion delegates can outlive their receivers; inspect the binding and teardown paths before accepting a captured `this`.
+- Engine async results have a supported completion and reading context. For trace data (`QueryTraceData`), inspect the allowed frame phase and callback context before consuming it from a Slate active timer or another scheduler.
 - `GetWorld()` can be null during teardown and in CDOs; code reachable from editor or shutdown paths must tolerate it. Cross-PIE-session caching of world objects needs a world-teardown hook.
 - GC can run between an async request and its game-thread completion; captures across that gap follow the GC rules above.
 
@@ -24,7 +27,7 @@ Bug knowledge for Unreal C++: mechanisms first, then facts that are true of a sp
 - Painted is not visible: "the loading UI is up" claims need evidence past the first paint.
 
 **Realtime and engine threading**
-- The frame and audio-callback budgets are the contract; per-frame paths allocate nothing in steady state, and log-argument construction ahead of the verbosity check counts.
+- The frame and audio-callback budgets are the contract. Check allocation and logging costs on the actual path; log-argument construction ahead of the verbosity check counts even when no line is emitted. An allocation-free policy belongs to the paths whose latency contract requires it.
 - Game thread owns UObjects; render-state mutation goes through `ENQUEUE_RENDER_COMMAND`; SDK and task-graph callbacks name their delivery thread in their contract, not in your assumption.
 - AudioMixer source resampling is pull-model: the source advances at the mixer's output rate regardless of the asset or device rate. The mixer rate is the timebase.
 
@@ -38,4 +41,3 @@ Bug knowledge for Unreal C++: mechanisms first, then facts that are true of a sp
 - UE 5.4: `FHttpRequest::ProcessRequest()` returning false STILL fires the completion delegate. Completing manually in the false branch double-completes the flow. Verify against the fork before citing on 5.8.
 - UE 5.8: Slate active timers are widget-owned and `~SWidget` unregisters them, so widget destruction is a valid release path for a "missing" `UnRegisterActiveTimer`; suppress that finding.
 - UE 5.8: a `USoundGenerator` that does not override `GetDesiredNumSamplesToRenderPerCallback` is pulled at the engine default of 1024 samples, not the device callback size; leftover frames carry over, so some callbacks publish more than one block.
-- This fork: platform limits come from `UEBuild*.cs`, not OS or engine defaults; read the build config before any resource-exhaustion verdict.

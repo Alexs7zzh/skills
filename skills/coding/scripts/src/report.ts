@@ -51,12 +51,12 @@ export function commandFor(state: State, item: Ready): string {
   switch (item.command) {
     case "coverage.add": return `coverage add kind=<kind> target=<target> state=<covered|gap> note=<what you checked>`
     case "coverage.set": return `coverage set${at} state=<covered|gap> note=<what you checked>`
-    case "issue.verify": return `issue verify${at} certainty=<4|5> evidence=<log path> | issue assume${at} certainty=<1-5> assumption=<fact> reason=<why no probe> | issue disprove${at} certainty=<2-5> evidence=<text>`
-    case "issue.agree": return `issue agree${at} | issue contest${at} probe=<probe> | issue disprove${at} certainty=<2-5> evidence=<text> | issue duplicate${at} of=<I-id> | issue set${at} <field>=<correction>`
-    case "issue.set": return `issue set${at} <field>=<correction> | issue verify${at} certainty=<4|5> evidence=<log path>`
-    case "issue.probe": return `issue probe${at} verdict=<verified|disproved> certainty=<4|5> evidence=<log path>`
+    case "issue.verify": return `issue verify${at} certainty=<3|4|5> evidence=<record> | issue assume${at} certainty=<1-5> assumption=<fact> reason=<what remains uncertain> | issue disprove${at} certainty=<3-5> evidence=<record>`
+    case "issue.agree": return `issue agree${at} | issue contest${at} probe=<probe> | issue disprove${at} certainty=<3-5> evidence=<record> | issue duplicate${at} of=<I-id> | issue set${at} <field>=<correction>`
+    case "issue.set": return `issue set${at} <field>=<correction> | issue verify${at} certainty=<3|4|5> evidence=<record>`
+    case "issue.probe": return `issue probe${at} verdict=<verified|disproved> certainty=<3|4|5> evidence=<record>`
     case "issue.take": return `issue take${at}`
-    case "proposed-fix.add": return `proposed-fix add issues=${item.row} origin=<attention-miss|self-consistency|design-absence> shape=<shape> sites=<sites walked> rulings=<rulings checked> test=<where the test goes> cost=<cost>`
+    case "proposed-fix.add": return `proposed-fix add issues=${item.row} origin=<mechanism or requirement> shape=<shape> sites=<sites walked> rulings=<rulings checked> test=<validation plan> cost=<cost>`
     case "proposed-fix.set": return `proposed-fix set${at} <field>=<value>`
     case "proposed-fix.mark": return `proposed-fix mark${at} | proposed-fix reject${at} reason=<reason>`
     case "question.add": {
@@ -67,8 +67,8 @@ export function commandFor(state: State, item: Ready): string {
     case "checkout.take": return `checkout take purpose=<what you will do>`
     case "checkout.baseline": return `checkout baseline build=<log path> test=<log path>`
     case "checkout.release": return `checkout release`
-    case "shelved-fix.add": return `shelved-fix add fixes=${item.row} artifact=<shelve> red=<log path> green=<log path>`
-    case "shelved-fix.set": return `shelved-fix set${at} artifact=<shelve> red=<log path> green=<log path>`
+    case "shelved-fix.add": return `shelved-fix add fixes=${item.row} artifact=<saved candidate> baseline=<exact base> validation=<record> dependencies=<S-id@rev,...>`
+    case "shelved-fix.set": return `shelved-fix set${at} validation=<refreshed record> artifact=<saved candidate> baseline=<exact base> dependencies=<S-id@rev,...>`
     case "shelved-fix.review": return `shelved-fix review${at} | shelved-fix review${at} conditions=<what must change>`
     case "check-in.record": return `check-in record${at} changeset=<id> departures=<none or text>`
     case "cold.import": return `import`
@@ -198,8 +198,8 @@ function renderValidation(state: State): string {
   const shelves = rowsOf(state, "Shelved fix")
   return [
     state.baseline ? `Baseline: build ${state.baseline.build}, tests ${state.baseline.test}.` : "Baseline: not recorded.",
-    ...shelves.map((shelf) => `${shelf.id}: ${shelf.red ? `red ${shelf.red}` : `no red log, allowed by ${shelf.question}`}; green ${shelf.green}; ${shelf.state}${shelf.review ? ` by ${shelf.review.by}` : ""}.`),
-    state.checkout ? `Checkout: held by ${state.checkout.holder}; the tree may hold probes.` : "Checkout: free; every hold was released after its probes were removed.",
+    ...shelves.map((shelf) => `${shelf.id}@${shelf.rev}: baseline ${shelf.baseline}; dependencies ${shelf.dependencies.map((dependency) => `${dependency.id}@${dependency.rev}`).join(", ") || "none"}; validation ${shelf.validation} (${shelf.validationDigest}); ${shelf.state}${shelf.review ? ` by ${shelf.review.by}` : ""}.`),
+    state.checkout ? `Checkout: held by ${state.checkout.holder}; the tree may hold probes.` : "Checkout: free. Probe cleanup must be verified in the validation record; releasing the hold does not prove it.",
   ].map((line) => `- ${line}`).join("\n")
 }
 
@@ -213,7 +213,7 @@ export function renderReport(state: State, events: readonly Moment[], notes: Not
   const checkIns = rowsOf(state, "Check-in")
   const openCount = substantive.filter((issue) => !["disproved", "duplicate"].includes(issue.state) && !issue.exit && !shelvesForFix(state, fixesForIssue(state, issue.id)[0]?.id ?? "").some((shelf) => shelf.state === "reviewed")).length
   return [
-    `# ${state.route === "review" ? "Review" : "Diagnosis"} report`,
+    `# ${state.route === "review" ? "Review" : state.route === "write" ? "Implementation" : "Diagnosis"} report`,
     "",
     `${state.mode === "joint" ? `Two reviewers, ${state.names.A} (A) and ${state.names.B} (B)` : `One reviewer, ${state.names.A}`}; ${state.deep ? "deep" : state.route === "review" ? "quick" : "plain"}; how far: ${state.howFar}. ${isDone(state) ? "The run is done." : "The run is still open."} Open substantive issues: ${openCount}.`,
     "",
@@ -244,13 +244,13 @@ export function renderReport(state: State, events: readonly Moment[], notes: Not
     "## Fix table",
     "",
     table(
-      ["Fix", "Issues", "State", "Mark", "Origin", "Shape", "Sites", "Rulings", "Test", "Cost", "Guardrail", "Coordination", "Shelved"],
-      fixes.map((fix) => [fix.id, fix.issues.join(", "), isComplete(fix) ? fix.state : `direction (${fix.state})`, fix.mark?.by ?? (fix.needsMark ? "needed" : "waived: attention-miss"), fix.origin, fix.shape, fix.sites, fix.rulings, fix.test, fix.cost, fix.guardrail, fix.coordination, list(shelvesForFix(state, fix.id).map((shelf) => `${shelf.id} ${shelf.state}`))]),
+      ["Fix", "Issues or goal", "State", "Mark", "Origin", "Shape", "Sites", "Rulings", "Validation plan", "Cost", "Guardrail", "Coordination", "Shelved", "Drop reason"],
+      fixes.map((fix) => [fix.id, fix.issues.join(", ") || fix.goal, isComplete(fix) ? fix.state : `direction (${fix.state})`, fix.mark?.by ?? "optional", fix.origin, fix.shape, fix.sites, fix.rulings, fix.test, fix.cost, fix.guardrail, fix.coordination, list(shelvesForFix(state, fix.id).map((shelf) => `${shelf.id} ${shelf.state}`)), fix.dropReason]),
     ),
     "",
     "## Shelved fixes",
     "",
-    table(["Id", "Fixes", "Artifact", "Red", "Green", "State", "Review", "Conditions"], shelves.map((shelf) => [shelf.id, shelf.fixes.join(", "), shelf.artifact, shelf.red || `none, allowed by ${shelf.question}`, shelf.green, shelf.state, shelf.review?.by ?? "", shelf.conditions])),
+    table(["Id", "Rev", "Fixes", "Artifact", "Baseline", "Dependencies", "Validation", "State", "Review", "Conditions"], shelves.map((shelf) => [shelf.id, shelf.rev, shelf.fixes.join(", "), shelf.artifact, shelf.baseline, shelf.dependencies.map((dependency) => `${dependency.id}@${dependency.rev}`).join(", "), shelf.validation, shelf.state, shelf.review?.by ?? "", shelf.conditions])),
     "",
     "## Check-ins",
     "",
@@ -347,7 +347,7 @@ export function renderTimeline(moments: readonly Moment[], chosen?: string): str
   const last = moments.at(-1)
   const actors = chosen && isActor(chosen) ? [chosen] : ACTORS.filter((actor) => moments.some((moment) => moment.situations[actor]))
   const events = chosen ? moments.filter((moment) => moment.actor === chosen) : moments
-  const span = first && last ? `Recorded from ${first.at} to ${last.at} (${duration(Date.parse(last.at) - Date.parse(first.at))}). Each situation is read off the database at an event and lasts until the next event changes it.` : "Nothing recorded."
+  const span = first && last ? `Recorded from ${first.at} to ${last.at} (${duration(Date.parse(last.at) - Date.parse(first.at))}). Situations are inferred from recorded state until the next event changes it. Working means ready work, not observed execution; these intervals do not measure unrecorded reasoning or actual task duration.` : "Nothing recorded."
   return [
     span,
     "",

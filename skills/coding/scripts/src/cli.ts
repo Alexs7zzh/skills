@@ -1,5 +1,6 @@
 // Argument parsing and file checks. Builds protocol commands, stores them, prints the result.
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 
@@ -7,7 +8,6 @@ import {
   COVERAGE_KINDS,
   HOW_FAR,
   LABELS,
-  ORIGINS,
   ROUTES,
   EXIT_KINDS,
   initialState,
@@ -18,6 +18,7 @@ import {
   type Command,
   type CoverageKind,
   type Declared,
+  type Dependency,
   type Facts,
   type Label,
   type Moment,
@@ -33,36 +34,39 @@ export class InputError extends Error {}
 const HELP = `ledger: the run's database. Set LEDGER_DIR=<run directory> and LEDGER_ME=<A|B|master>.
 
 Rows carry a rev; every command on an existing row names the rev you read (rev=N).
-Log paths (evidence, red, green, build, test) are files in the run directory.
+Evidence and validation paths name retained files; validation content is fingerprinted.
+Candidate dependency references are shelf-id@revision, separated by commas.
 
-init --single | --joint | --cold [--route review|diagnose] [--how-far fix|report-only|check-in] [--deep]
+init --single | --joint | --cold [--route review|diagnose|write] [--how-far fix|report-only|check-in] [--deep]
      [--names "A=<agent> B=<agent> master=<agent>"] [--hunks a,b] [--symptoms a,b] [--clusters a,b] [--scenarios a,b]
 run escalate [hunks=..] [symptoms=..] [clusters=..] [scenarios=..]     a quick or plain run becomes deep
+run set how_far=<fix|report-only|check-in> reason=<the user's instruction>     continue this run
 coverage add kind=<hunk|symptom|cluster|scenario> target=<name> [state=covered|gap] [note=..]
 coverage set <C-id> rev=N state=<covered|gap> [note=..]
 issue add label=<Bug|Restructure|Hardening|Nit|telemetry-quality> certainty=<1-5> claim=.. site=..
           [trigger= cause= scope= frequency= impact= rank=<1-5> detector= clusters= parents=]
           [state=verified evidence=<log> | state=assumed assumption=.. reason=.. | state=accepted reason=..]
 issue set <I-id> rev=N <field>=..  [label=.. label_reason=..]       edit; clears marks here and downstream
-issue verify <I-id> rev=N certainty=<4|5> evidence=<log>
-issue assume <I-id> rev=N certainty=<1-5> assumption=.. reason=<why no fifteen-minute probe>
+issue verify <I-id> rev=N certainty=<3|4|5> evidence=<record>
+issue assume <I-id> rev=N certainty=<1-5> assumption=.. reason=<why the uncertainty remains>
 issue agree <I-id> rev=N                                              the other reviewer's mark
-issue contest <I-id> rev=N probe=<what settles it>                    twice, then the contester runs it
-issue probe <I-id> rev=N verdict=<verified|disproved> certainty=<4|5> evidence=<log>
-issue disprove <I-id> rev=N certainty=<2-5> evidence=..
+issue contest <I-id> rev=N probe=<what settles it>                    name the discriminating check
+issue probe <I-id> rev=N verdict=<verified|disproved> certainty=<3|4|5> evidence=<record>
+issue disprove <I-id> rev=N certainty=<3-5> evidence=<record>
 issue duplicate <I-id> rev=N of=<I-id>
 issue accept <I-id> rev=N reason=..                                   Nit only
 issue take <I-id> rev=N | issue release <I-id> rev=N
 issue exit <I-id> rev=N kind=<comment|ruling|todo> reference=..      how an unfixed issue leaves the run
 issue drop <I-id> rev=N reason=..                                     master, on the user's word
-question add issues=<I-ids> [fix=<P-id>] question=.. options="(a) .., (b) .." recommendation=<an option> effect=.. cost=..
+question add [issues=<I-ids>] [fix=<P-id>] question=.. options="(a) .., (b) .." recommendation=<an option> effect=.. cost=..
 question answer <Q-id> rev=N answer=..                                master, the user's words
-proposed-fix add issues=<I-ids> shape=.. cost=.. [origin=<attention-miss|self-consistency|design-absence>
-          sites= rulings= test= guardrail= coordination= mark=no]    mark=no: attention-miss only
+proposed-fix add (issues=<I-ids> | goal=<feature goal>) shape=.. cost=..
+          [origin=<mechanism or requirement> sites= rulings= test=<validation plan> guardrail= coordination=]
 proposed-fix set <P-id> rev=N <field>=..
-proposed-fix mark <P-id> rev=N | proposed-fix reject <P-id> rev=N reason=..
-shelved-fix add fixes=<P-ids> artifact=<shelve> green=<log> (red=<log> | question=<answered Q-id>)
-shelved-fix set <S-id> rev=N [artifact= red= green= question=]
+proposed-fix mark <P-id> rev=N | proposed-fix reject <P-id> rev=N reason=..   optional discussion, no writing gate
+proposed-fix drop <P-id> rev=N reason=<the user's instruction>        retains candidate/evidence, invalidates dependents
+shelved-fix add fixes=<P-ids> artifact=<saved candidate> baseline=<exact base> validation=<record> [dependencies=<S-id@rev,...>]
+shelved-fix set <S-id> rev=N validation=<refreshed record> [artifact= baseline= dependencies=]
 shelved-fix review <S-id> rev=N [conditions=..]                       clean, or conditions for the author
 checkout take purpose=.. | checkout baseline build=<log> test=<log> | checkout release [reason=..]
 check-in approve shelves=<S-ids> approval=<the user's words> [executor=<A|B|master>]     master
@@ -210,7 +214,26 @@ function facts(fields: Fields, prior?: Facts): Facts {
 }
 
 const FACT_KEYS = ["claim", "site", "trigger", "cause", "scope", "frequency", "impact", "rank", "detector"]
-const SHAPE_KEYS = ["origin", "shape", "sites", "rulings", "test", "cost", "guardrail", "coordination"]
+const SHAPE_KEYS = ["goal", "origin", "shape", "sites", "rulings", "test", "cost", "guardrail", "coordination"]
+
+function dependencies(fields: Fields): Dependency[] {
+  return tokens(optional(fields, "dependencies")).map((value) => {
+    const match = /^(S-[AB]-\d+)@(\d+)$/.exec(value)
+    if (!match || Number(match[2]) < 1) throw new InputError("dependencies name explicit candidate revisions: S-A-1@2,S-B-1@1")
+    return { id: match[1]!, rev: Number(match[2]) }
+  })
+}
+
+function validation(fields: Fields): { validation: string; validationDigest: string } {
+  const path = log(required(fields, "validation"), "validation")
+  const contents = readFileSync(resolve(runDirectory(), path))
+  if (!contents.toString("utf8").trim()) throw new InputError("the validation record must not be empty")
+  const validationDigest = createHash("sha256").update(contents).digest("hex")
+  const retained = join("validation", `${validationDigest}.txt`)
+  mkdirSync(join(runDirectory(), "validation"), { recursive: true })
+  writeFileSync(join(runDirectory(), retained), contents)
+  return { validation: retained, validationDigest }
+}
 
 // ---------------------------------------------------------------------------
 // Databases and notes
@@ -394,7 +417,7 @@ function issueCommand(verb: string, parsed: Parsed, state: State): Command {
     case "agree": only(fields, ["rev"]); return { type: "issue.agree", ...base }
     case "contest": only(fields, ["rev", "probe"]); return { type: "issue.contest", ...base, probe: required(fields, "probe") }
     case "probe": only(fields, ["rev", "verdict", "certainty", "evidence"]); return { type: "issue.probe", ...base, verdict: choice(required(fields, "verdict"), ["verified", "disproved"] as const, "verdict"), certainty: integer(fields, "certainty"), evidence: log(required(fields, "evidence"), "evidence") }
-    case "disprove": only(fields, ["rev", "certainty", "evidence"]); return { type: "issue.disprove", ...base, certainty: integer(fields, "certainty"), evidence: required(fields, "evidence") }
+    case "disprove": only(fields, ["rev", "certainty", "evidence"]); return { type: "issue.disprove", ...base, certainty: integer(fields, "certainty"), evidence: log(required(fields, "evidence"), "evidence") }
     case "duplicate": only(fields, ["rev", "of"]); return { type: "issue.duplicate", ...base, of: required(fields, "of") }
     case "accept": only(fields, ["rev", "reason"]); return { type: "issue.accept", ...base, reason: required(fields, "reason") }
     case "take": only(fields, ["rev"]); return { type: "issue.take", ...base }
@@ -417,6 +440,9 @@ function build(noun: string, verb: string, parsed: Parsed, state: State): Comman
     return command
   }
   switch (`${noun} ${verb}`) {
+    case "run set":
+      only(fields, ["how_far", "reason"])
+      return { type: "run.set", actor, at, howFar: choice(required(fields, "how_far"), HOW_FAR, "how_far"), reason: required(fields, "reason") }
     case "run escalate":
       only(fields, COVERAGE_KINDS.map((kind) => `${kind}s`))
       return { type: "run.escalate", actor, at, declared: declared(fields) }
@@ -428,23 +454,22 @@ function build(noun: string, verb: string, parsed: Parsed, state: State): Comman
       return { type: "coverage.set", actor, at, id: oneId(parsed, "C"), rev: rev(fields), state: choice(required(fields, "state"), ["covered", "gap"] as const, "state"), note: optional(fields, "note") }
     case "question add":
       only(fields, ["issues", "fix", "question", "options", "recommendation", "effect", "cost"])
-      return { type: "question.add", actor, at, issues: ids(fields, "issues", "I"), fix: optional(fields, "fix"), question: required(fields, "question"), options: options(required(fields, "options")), recommendation: required(fields, "recommendation"), effect: required(fields, "effect"), cost: required(fields, "cost") }
+      return { type: "question.add", actor, at, issues: ids(fields, "issues", "I", false), fix: optional(fields, "fix"), question: required(fields, "question"), options: options(required(fields, "options")), recommendation: required(fields, "recommendation"), effect: required(fields, "effect"), cost: required(fields, "cost") }
     case "question answer":
       only(fields, ["rev", "answer"])
       return { type: "question.answer", actor, at, id: oneId(parsed, "Q"), rev: rev(fields), answer: required(fields, "answer") }
     case "proposed-fix add":
-      only(fields, ["issues", "mark", ...SHAPE_KEYS])
+      only(fields, ["issues", ...SHAPE_KEYS])
       return {
-        type: "proposed-fix.add", actor, at, issues: ids(fields, "issues", "I"), needsMark: optional(fields, "mark", "yes") !== "no",
-        origin: fields.has("origin") ? choice(required(fields, "origin"), ORIGINS, "origin") : "", shape: optional(fields, "shape"), sites: optional(fields, "sites"), rulings: optional(fields, "rulings"),
+        type: "proposed-fix.add", actor, at, issues: ids(fields, "issues", "I", false), goal: optional(fields, "goal"),
+        origin: optional(fields, "origin"), shape: optional(fields, "shape"), sites: optional(fields, "sites"), rulings: optional(fields, "rulings"),
         test: optional(fields, "test"), cost: optional(fields, "cost"), guardrail: optional(fields, "guardrail"), coordination: optional(fields, "coordination"),
       }
     case "proposed-fix set": {
-      only(fields, ["rev", "mark", ...SHAPE_KEYS])
+      only(fields, ["rev", ...SHAPE_KEYS])
       const command: Command = { type: "proposed-fix.set", actor, at, id: oneId(parsed, "P"), rev: rev(fields) }
       const changes: Record<string, string | boolean> = {}
-      for (const key of SHAPE_KEYS) if (fields.has(key)) changes[key] = key === "origin" ? choice(required(fields, "origin"), ORIGINS, "origin") : optional(fields, key)
-      if (fields.has("mark")) changes.needsMark = optional(fields, "mark") !== "no"
+      for (const key of SHAPE_KEYS) if (fields.has(key)) changes[key] = optional(fields, key)
       return { ...command, ...changes } as Command
     }
     case "proposed-fix mark":
@@ -453,17 +478,19 @@ function build(noun: string, verb: string, parsed: Parsed, state: State): Comman
     case "proposed-fix reject":
       only(fields, ["rev", "reason"])
       return { type: "proposed-fix.reject", actor, at, id: oneId(parsed, "P"), rev: rev(fields), reason: required(fields, "reason") }
+    case "proposed-fix drop":
+      only(fields, ["rev", "reason"])
+      return { type: "proposed-fix.drop", actor, at, id: oneId(parsed, "P"), rev: rev(fields), reason: required(fields, "reason") }
     case "shelved-fix add":
-      only(fields, ["fixes", "artifact", "red", "green", "question"])
-      return { type: "shelved-fix.add", actor, at, fixes: ids(fields, "fixes", "P"), artifact: required(fields, "artifact"), red: fields.has("red") ? log(required(fields, "red"), "red") : "", green: log(required(fields, "green"), "green"), question: optional(fields, "question") }
+      only(fields, ["fixes", "artifact", "baseline", "dependencies", "validation"])
+      return { type: "shelved-fix.add", actor, at, fixes: ids(fields, "fixes", "P"), artifact: required(fields, "artifact"), baseline: required(fields, "baseline"), dependencies: dependencies(fields), ...validation(fields) }
     case "shelved-fix set": {
-      only(fields, ["rev", "artifact", "red", "green", "question"])
+      only(fields, ["rev", "artifact", "baseline", "dependencies", "validation"])
       return {
-        type: "shelved-fix.set", actor, at, id: oneId(parsed, "S"), rev: rev(fields),
+        type: "shelved-fix.set", actor, at, id: oneId(parsed, "S"), rev: rev(fields), ...validation(fields),
         ...(fields.has("artifact") ? { artifact: required(fields, "artifact") } : {}),
-        ...(fields.has("red") ? { red: optional(fields, "red") ? log(required(fields, "red"), "red") : "" } : {}),
-        ...(fields.has("green") ? { green: log(required(fields, "green"), "green") } : {}),
-        ...(fields.has("question") ? { question: optional(fields, "question") } : {}),
+        ...(fields.has("baseline") ? { baseline: required(fields, "baseline") } : {}),
+        ...(fields.has("dependencies") ? { dependencies: dependencies(fields) } : {}),
       }
     }
     case "shelved-fix review":

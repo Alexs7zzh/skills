@@ -5,6 +5,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
 import { DatabaseSync } from "node:sqlite"
+import { rowsOf } from "../src/protocol.ts"
+import { read } from "../src/store.ts"
 
 const LEDGER = join(import.meta.dirname, "..", "ledger.ts")
 
@@ -38,7 +40,7 @@ function expectRefused(run: Run, pattern: RegExp): void {
 
 function fresh(): string {
   const directory = mkdtempSync(join(tmpdir(), "ledger-"))
-  for (const name of ["probe.log", "red.log", "green.log", "build.log", "test.log"]) writeFileSync(join(directory, name), name)
+  for (const name of ["probe.log", "red.log", "green.log", "build.log", "test.log", "validation.md"]) writeFileSync(join(directory, name), name)
   return directory
 }
 
@@ -62,11 +64,11 @@ test("a single quick review: pinned script, refusals with reasons, fresh diff re
   expectOk(ledger("A", "issue", "verify", "I-A-1", "rev=2", "certainty=4", "evidence=probe.log"), /verified at step 4/)
   expectOk(ledger("A", "status"), /proposed-fix add issues=I-A-1/)
 
-  expectOk(ledger("A", "proposed-fix", "add", "issues=I-A-1", "origin=attention-miss", "shape=fix the bound", "sites=a.ts:3", "rulings=none", "test=a.test.ts", "cost=one line", "mark=no"))
-  expectRefused(ledger("A", "shelved-fix", "add", "fixes=P-A-1", "artifact=stash@0", "red=red.log", "green=green.log"), /take the checkout/)
+  expectOk(ledger("A", "proposed-fix", "add", "issues=I-A-1", "origin=attention-miss", "shape=fix the bound", "sites=a.ts:3", "rulings=none", "test=a.test.ts", "cost=one line"))
+  expectRefused(ledger("A", "shelved-fix", "add", "fixes=P-A-1", "artifact=stash@0", "baseline=base-sha + user.patch", "validation=validation.md"), /take the checkout/)
   expectOk(ledger("A", "checkout", "take", "purpose=fix I-A-1"))
   expectOk(ledger("A", "checkout", "baseline", "build=build.log", "test=test.log"))
-  expectOk(ledger("A", "shelved-fix", "add", "fixes=P-A-1", "artifact=stash@0", "red=red.log", "green=green.log"), /S-A-1: shelved P-A-1/)
+  expectOk(ledger("A", "shelved-fix", "add", "fixes=P-A-1", "artifact=stash@0", "baseline=base-sha + user.patch", "validation=validation.md"), /S-A-1: shelved P-A-1/)
   expectOk(ledger("A", "checkout", "release"), /dispatch a fresh subagent as B/)
   expectOk(ledger("B", "status"), /shelved-fix review S-A-1 rev=1/)
   expectRefused(ledger("A", "shelved-fix", "review", "S-A-1", "rev=1"), /nobody marks their own work/)
@@ -83,6 +85,17 @@ test("a single quick review: pinned script, refusals with reasons, fresh diff re
   const row = expectOk(ledger("A", "timeline", "I-A-1"), /edited: trigger=one item; cause=<=; scope=all; frequency=each save; impact=crash; rank=1; marks cleared/)
   assert.doesNotMatch(row.out, /Where the time went/, "a row's timeline is the argument on that row alone")
   expectRefused(ledger("A", "timeline", "I-A-9"), /no events on I-A-9/)
+
+  const saved = rowsOf(read(join(directory, "ledger.db")).state, "Shelved fix")[0]!
+  expectOk(ledger("A", "issue", "set", "I-A-1", "rev=3", "claim=the final item exceeds the bound"))
+  expectOk(ledger("B", "status"), /shelved-fix review S-A-1 rev=1/)
+  const reopened = rowsOf(read(join(directory, "ledger.db")).state, "Shelved fix")[0]!
+  assert.deepEqual(reopened, { ...saved, state: "shelved", review: null, updated: reopened.updated })
+  expectOk(ledger("B", "shelved-fix", "review", "S-A-1", "rev=1"), /reviewed clean by B/)
+  const resumed = read(join(directory, "ledger.db"))
+  assert.equal(rowsOf(resumed.state, "Shelved fix")[0]?.validationDigest, saved.validationDigest)
+  assert.equal(resumed.events.filter((event) => event.command.startsWith("shelved-fix.") && event.command !== "shelved-fix.review").length, 1, "re-review needs no new shelve or validation snapshot")
+  expectOk(ledger("A", "report"), /The run is done/)
 })
 
 test("a two-reviewer run: cold passes, import, messages, notes at handoff, master report and check-in", () => {
@@ -101,15 +114,15 @@ test("a two-reviewer run: cold passes, import, messages, notes at handoff, maste
   expectOk(ledger("A", "status"), /import this cold pass into the shared database/)
   expectOk(ledger("A", "import"), /imported 2 rows from A/)
   expectOk(ledger("B", "import"), /imported 1 rows from B/)
-  expectOk(ledger("B", "status"), /issue agree I-A-1 rev=1/)
+  expectOk(ledger("B", "status"))
 
-  expectOk(ledger("B", "issue", "agree", "I-A-1", "rev=1"), /message for opus-reviewer: ready for you: I-A-1/)
+  expectOk(ledger("B", "issue", "agree", "I-A-1", "rev=1"))
   expectOk(ledger("A", "issue", "take", "I-A-1", "rev=1"))
-  expectOk(ledger("A", "proposed-fix", "add", "issues=I-A-1", "origin=design-absence", "shape=one owner per save", "sites=x.ts:9,y.ts:2", "rulings=none", "test=x.test.ts", "cost=two files"), /message for codex-reviewer/)
+  expectOk(ledger("A", "proposed-fix", "add", "issues=I-A-1", "origin=design-absence", "shape=one owner per save", "sites=x.ts:9,y.ts:2", "rulings=none", "test=x.test.ts", "cost=two files"))
   expectOk(ledger("B", "proposed-fix", "mark", "P-A-1", "rev=1"))
   expectOk(ledger("A", "checkout", "take", "purpose=fix I-A-1"))
   expectRefused(ledger("B", "checkout", "take", "purpose=probe"), /held by A/)
-  expectOk(ledger("A", "shelved-fix", "add", "fixes=P-A-1", "artifact=cs 15", "red=red.log", "green=green.log"), /message for codex-reviewer: ready for you: S-A-1/)
+  expectOk(ledger("A", "shelved-fix", "add", "fixes=P-A-1", "artifact=cs 15", "baseline=base-sha + user.patch", "validation=validation.md"), /message for codex-reviewer: ready for you: S-A-1/)
   expectRefused(ledger("A", "handoff"), /release the checkout/)
   expectOk(ledger("A", "checkout", "release"))
   expectRefused(ledger("A", "handoff"), /A-notes.md/)
@@ -144,5 +157,37 @@ test("a database from another schema is refused rather than migrated", () => {
   database.exec("CREATE TABLE ledger (id INTEGER PRIMARY KEY, schema INTEGER NOT NULL, state TEXT NOT NULL)")
   database.exec("INSERT INTO ledger VALUES (1, 2, '{}')")
   database.close()
-  expectRefused(ledger("A", "status"), /schema 2; this script is schema 4/)
+  expectRefused(ledger("A", "status"), /schema 2; this script is schema 5/)
+})
+
+test("a feature continues from report-only to a reviewed candidate with retained, refreshed validation", () => {
+  const directory = fresh()
+  const ledger = runner(directory)
+  expectOk(ledger("A", "init", "--single", "--route", "write", "--how-far", "report-only"))
+  expectOk(ledger("A", "proposed-fix", "add", "goal=resume a draft without losing focus", "origin=human experience goal", "shape=restore the saved field and focus", "sites=form.ts:20", "rulings=user asked to restore focus", "test=acceptance scenario for keyboard-only resume", "cost=one local state transition"))
+  expectOk(ledger("A", "report"), /Implementation report/)
+  expectOk(ledger("A", "run", "set", "how_far=fix", "reason=user: implement that proposal"), /how far: fix/)
+  expectOk(ledger("A", "checkout", "take", "purpose=retain the implementation"))
+  const firstRecord = "Claim: restored drafts preserve focus. Alternative: value restores but focus is lost.\nMethod: keyboard resume acceptance run on form.ts, base abc123, candidate draft-v1.patch.\nObserved: focus and value restored, run.log. Limit: desktop keyboard path.\n"
+  writeFileSync(join(directory, "validation.md"), firstRecord)
+  expectOk(ledger("A", "shelved-fix", "add", "fixes=P-A-1", "artifact=draft-v1.patch", "baseline=abc123 + user.patch", "validation=validation.md"))
+  expectOk(ledger("A", "checkout", "release"))
+  expectOk(ledger("B", "shelved-fix", "review", "S-A-1", "rev=1", "conditions=preserve focus on retry too"))
+  expectOk(ledger("A", "checkout", "take", "purpose=retry correction"))
+  expectRefused(ledger("A", "shelved-fix", "set", "S-A-1", "rev=1", "artifact=draft-v2.patch", "validation=validation.md"), /refresh the validation record/)
+  writeFileSync(join(directory, "validation.md"), firstRecord.replace("draft-v1.patch", "draft-v2.patch") + "Retry scenario passes too: retry.log.\n")
+  expectOk(ledger("A", "shelved-fix", "set", "S-A-1", "rev=1", "artifact=draft-v2.patch", "validation=validation.md"))
+  expectOk(ledger("A", "checkout", "release"))
+  expectOk(ledger("B", "shelved-fix", "review", "S-A-1", "rev=2"))
+  const report = expectOk(ledger("A", "report"), /The run is done/)
+  assert.match(report.out, /resume a draft without losing focus/)
+  assert.match(report.out, /draft-v2.patch/)
+  assert.match(report.out, /abc123 \+ user.patch/)
+  const database = new DatabaseSync(join(directory, "ledger.db"))
+  const saved = JSON.parse((database.prepare("SELECT state FROM ledger WHERE id = 1").get() as { state: string }).state)
+  database.close()
+  assert.equal(saved.rows.filter((row: { kind: string }) => row.kind === "Issue").length, 0, "feature writing needs no invented defect")
+  const events = expectOk(ledger("A", "timeline", "S-A-1"))
+  const paths = [...events.out.matchAll(/validation\/([a-f0-9]+)\.txt/g)].map((match) => `validation/${match[1]}.txt`)
+  assert.ok(paths.some((path) => readFileSync(join(directory, path), "utf8") === firstRecord), "earlier validation survives when its source file is revised")
 })

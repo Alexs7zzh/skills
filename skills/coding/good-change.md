@@ -1,47 +1,43 @@
 # Good change
 
-Properties of a change relative to its cause. Read before proposing or writing any change, and when reviewing a fix.
+Read before proposing, writing, or reviewing a change. This file relates the change to its goal and governs development through independent review. Evidence standards live in findings.md, Evidence.
 
-- **Fix at the origin.** A fix lands where the bad state is produced, never where it is read. A guard that swallows bad input in a shared path hides the misusing caller. Ask why until the mechanism is in hand, not the symptom, then sweep the siblings for the same pattern.
-- **Restructure-first.** The best output is spotting a structure that invites a class of bugs, and proposing the structure that deletes the class. The bar: name what the new structure deletes. Invalid states made unrepresentable, scattered checks collapsed, a bug class that can no longer be written. Nothing deleted means style preference, so downgrade or drop. Several bugs in one area usually share a structural cause, so report the Restructure as primary and the bugs as evidence.
-- **Restructure triggers.** A lock added to fix a race. A fix that adds one more flag to a pile of booleans. A poll watching for a condition another system causes. Scattered validity checks. A new ad-hoc conditional inserted into an unrelated flow.
-- **Reuse before adding.** A new helper, type, mode, or file is one more thing to maintain. Before writing one, look for the same job in the owning module and in the libraries the project already depends on. Re-implementing what lives a few files over is the commonest way a change grows. Use what you find, or say why it does not fit. Before keeping one, run the deletion test in good-code.md, Values.
+## Establish the outcome
 
-## Origin decides the shape
+For a requested feature, state the goal as the user experiences it, the intended feel or behavior, and the scenarios that distinguish success from a merely completed implementation. Separate explicit human rulings from implementation choices you are making, per SKILL.md, Authority and judgment. Keep the acceptance summary short enough for the user to inspect.
 
-A proposal is judged by what it deletes, not just what it patches. Classify each bug's origin first, because the origin decides the fix shape and the sibling sweep to finish before writing the fix.
+For a defect, identify the bad state and the mechanism that produces it. For a maintenance change, name the concrete task or failure boundary that becomes easier to reason about. Existing docs, tests, and behavior tell you where to investigate; check them against the goal and rulings before treating them as requirements.
 
-- **Attention-miss.** A careful human would plausibly write this too: a wrong fence, a missed edge, an off-by-one. A spot fix is honest. Sweep the narrow sibling pattern and the paths that interact with it. It is not automatically a singleton.
-- **Self-consistency bug**, the agent-typical one: an unvalidated constant, a test that mirrors the code, an invented default, evidence measuring the wrong path. Sweep the mechanism that generated the inconsistency. The proposal must carry the guardrail that makes recurrence impossible or CI-visible: an assertion at the boundary against the delivered value, a physical-unit test, a lint. A spot fix alone leaves the class alive.
-- **Design-absence bug.** A known structure prevents the class: single ownership per lifetime, an explicit state machine, a pure classifier over recomputed state. Sweep every site compensating for the missing structure. This is a Restructure rather than a Bug with a patch, and the proposal names the structure.
+Walk the relevant callers, owners, failure paths, and test seams. Record the proposed fix using the slots in findings.md, Change records. A feature can name its goal directly; do not invent a bug to fit a workflow. When writing begins directly, initialize the single-seat writing route per deep.md, Run directory and setup. Otherwise continue the existing review or diagnosis record.
 
-A group of related issues is settled when the sibling sweep its origin calls for is done and no open issue inside that sweep's scope could change its cause, its severity, or the fix's boundary. Origin class chooses the sweep; finishing the sweep settles the group.
+## Choose the boundary
 
-## Rules that sharpen the choice
+- **Fix the cause within the boundary that can own it.** Find where the bad state is produced. Correct a misusing caller you control; validate external input at the boundary you own. If the origin is outside your control, name that limit and the contract your change can restore.
+- **Look for a structure that removes the failure mechanism.** Shared ownership, scattered validity checks, flag combinations, or repeated coordination suggest a structural cause. Name what an alternative deletes or makes impossible. Compare it with the contained fix in the actual code; a larger design earns its migration and regression risk.
+- **Reuse before adding.** Look for the same job in the owning module and existing libraries. Use it or explain the mismatch. Apply the deletion test in good-code.md, Values, to what you add or keep.
+- **Price the costs that remain expensive.** Code generation and reversible experiments are cheap. Regression risk, interface churn, integration, and the future reader's reasoning burden are not. Do not preserve a bad structure solely to minimize lines, or expand a working change solely because another architecture exists.
+- **Sweep the mechanism, not the author's presumed psychology.** Trace sibling sites that share the cause, contract, or workaround. Mirrored tests and invented constants call for an independent source of truth; lifetime defects call for tracing ownership and teardown. Expand the sweep when evidence could change the cause or fix boundary. Finish the relevant sweep before claiming that the group or bug class is resolved.
 
-- **Ownership before protocol.** Before proposing tokens, generations or flags on shared mutable state, answer why the state is shared. One owner object per lifetime, created with its scope and dying with it, taking its callbacks and buffers along, deletes the coordination protocol and every future bug in it. Strengthening a protocol without answering "why is this shared?" patches the mechanism and keeps the class.
-- **Structure wins at agent economics.** Agents write and re-review code cheaply, so diff size is not a cost worth weighing. The real costs are regression risk and interface churn. When a structural fix deletes the class and a spot fix only closes the instance, recommend the structure and buy the risk down with tests. Reserve spot fixes for attention-misses.
-- **Restore the invariant when it is cheap.** A benign observed instance does not close a broken invariant, because the hole that admitted it admits bugs nobody caught. When restoring the invariant is cheap, recommend it outright.
-- **Lock a fix down.** A fix ships with a regression test at the right place, where the test exercises the real bug pattern as it occurs, written first and run red on the unfixed code, then green with the fix, both runs kept as logs. The red run reaches the shipped code, not a replica. A test that passes before the fix asserts the state after the fix rather than what separates fix from bug: rewrite it. When there is no place a correct test can reach, that is an issue about the architecture: record it, and shelve the fix without a red log only on the user's answer to a question that says so.
-- **A fix that departs from the approved shape states its measured reason.**
+## Develop the candidate
 
-## Before writing the fix
+The investigator usually writes the test or experiment and the candidate while that information is in context. Start once the intended outcome, affected boundary, and a way to discriminate the claim are concrete. Issue agreement and proposal marks are not prerequisites. A candidate may expose a mistaken hypothesis; retain that result and revise the claim.
 
-Write the fix once its issues are agreed, the sibling sweep for its origin is done, its sites and the place its test goes are walked, and recorded rulings are checked. An attention-miss fix that changes no interface or ownership, touches no risk surface, and raises no question for the user needs no mark before you write it: the review of its diff covers both. Every other proposed fix gets the mark of a reviewer who did not write it first.
+Use findings.md, Evidence, to choose validation. Run a reachable defect check on the baseline before changing it, then on the candidate; preserve both results. For other claims, establish the relevant comparison or proof before interpreting the result. Do not force a failing test when no behavior is meant to change, and do not substitute a replica for untested integration.
 
-Two back-and-forth edits on a shape are the limit. Then it is a question for the user, with both shapes mapped per findings.md. Never shelve a disputed shape to save time; move to another issue.
+Save the candidate and its evidence before switching work or ending a session. Do not erase a working candidate merely to report a proposal. In report-only mode, retain a patch or experiment outside the checkout and restore only your temporary edits. Shared checkout mechanics are in deep.md.
 
-## A proposal is a change
+When an approach fails, retain the observation and the brief reason it was rejected. Continue while an experiment or code walk can resolve a concrete uncertainty. Repeated arguments without new evidence call for a discriminating check or a narrower claim, not another round of preference. A remaining user decision follows findings.md, Whose call; save the current work and move to an independent issue.
 
-Never recommend a fix you only reasoned about. A proposal is a change, so review it like one:
+## Review the result
 
-- Apply it, or walk it line by line at every site it touches. If you applied it, restore the workspace before the verdict.
-- Check it against recorded rulings, the tests that assert today's behavior, and the logging that already reports this failure.
-- State its cost from the code it touches, never from a guessed line count.
-- When two fix shapes compete, patch against restructure or structure A against structure B, investigate both in the actual code: who owns the state today, what each shape changes, its cost and its risk. Then recommend one with the reasoning, or hand the user the mapped choice per findings.md.
+A reader who did not write the candidate checks it in a fresh context per SKILL.md, Attention. Give it the goal and rulings, current issues, exact candidate and baseline, dependencies, validation record, and evidence paths. It judges the claim and implementation together.
 
-A fix only its author examined is unreviewed code.
+The review returns one assessment with:
+- whether the candidate meets the intended behavior and explicit rulings;
+- whether the evidence distinguishes the claim, exercises the relevant code, and supports the claimed scope;
+- each affected failure outcome, and any concrete regression or maintenance cost from the relevant good-code.md lenses;
+- unresolved conditions, each with the observation or decision that would close it.
 
-## Reviewing the diff
+After recording its own assessment, the reader may compare the author's rationale and investigate any difference. A preference without a concrete unmet obligation is not a condition. Rationale stays in the record for the user and the next reader.
 
-The reviewer did not write the fix and reads it in a fresh context: the diff, the issue, and where the test goes, and none of the author's reasoning. Two checks on every hunk: the Failure paths lens in good-code.md, and the test per Lock a fix down, with both logs open and the red run traced into the shipped code. A defect is a condition for the author. Wording, labels, and log layout are never conditions.
+A clean review accepts this candidate and its checked claims together. Existing issue or proposal reviews can be reused when their evidence remains applicable; no extra stamp is required merely because a logical phase has a name. A changed candidate or dependency follows findings.md, Continuity. A saved candidate without independent review is reported as unreviewed.

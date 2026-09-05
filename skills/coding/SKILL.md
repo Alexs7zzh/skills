@@ -1,86 +1,72 @@
 ---
 name: coding
-description: "Use for any task that touches code: implementing or changing it, fixing a bug, reviewing a diff, branch, changeset, PR, or uncommitted changes, or debugging or diagnosing anything broken, failing, or slow, including a bug report, a warning, telemetry or crash reports, or a fix that did not hold."
+description: "Use when implementing or changing code, reviewing a diff, branch, changeset, PR, or uncommitted changes, or investigating software bugs, performance problems, warnings, telemetry, crash reports, or a fix that did not hold."
 ---
 
 # Coding
 
-This file holds the words, definitions, and rules every task uses; each other file holds a method, read at the moment its row names. Read all of this file, then the row you are in, in the order the row gives. When the work changes kind, a review that turns into a fix, a diagnosis that reaches step 4, or a quick review that meets a risk surface, add the new row's files.
+Read this file first. It holds the shared execution contract and routes each task to its method. A dispatch names a role inside an existing run; use that row instead of starting a standalone review. When the work changes kind, add the new route's files without starting the investigation over.
+
+Every route that judges or writes code reads the Values in [good-code.md](./good-code.md) and Evidence in [findings.md](./findings.md). Read the rest when the table or the work calls for it. The motivation and tradeoffs behind this contract live in [GOAL.md](./GOAL.md); read it when discussing or changing the skill's values.
 
 | You are | Read, in order |
 |---|---|
-| Writing or changing code | [good-change.md](./good-change.md); the Values in [good-code.md](./good-code.md), and its lenses when the code sits on a risk surface or the change touches them; [findings.md](./findings.md) when you propose a change wider than the request |
-| Reviewing | [review.md](./review.md) first; it decides quick or deep and handles a stated focus. Then good-code.md and findings.md; good-change.md when the change is a fix or you propose one; [deep.md](./deep.md) when review.md says deep |
-| Diagnosing | [diagnose.md](./diagnose.md) first; it decides plain or deep. Then findings.md; good-change.md at step 4; good-code.md when a cause sits on a risk surface; deep.md when diagnose.md says deep |
-| Dispatched as a reviewer into a two-family run | deep.md first, for your role; then the route the dispatch names, review.md or diagnose.md; then good-code.md, good-change.md, findings.md |
-| Master of a two-family run | deep.md, the Roles and Herdr sections only, plus the route's gathering steps: Scope of judgment in review.md, or Build the feedback loop in diagnose.md. Nothing else: you judge no issue |
-| Editing this skill | [maintaining.md](./maintaining.md), then the file you edit |
-| Any row, on Unreal Engine or C++ code | [unreal.md](./unreal.md) as well |
-| Any row, where the project has its own review or diagnosis doc | That doc as well, before judging: it carries the project's values, recorded rulings, and repo facts |
+| Writing or changing code | [good-change.md](./good-change.md); the relevant good-code.md lenses; findings.md for records, dispositions, or user decisions |
+| Reviewing | [review.md](./review.md), which chooses quick or deep; the relevant good-code.md lenses and findings.md; good-change.md when judging or developing a change; [deep.md](./deep.md) for deep coordination |
+| Diagnosing | [diagnose.md](./diagnose.md), which chooses plain or deep; findings.md; the good-code.md lenses suggested by the symptom or mechanism; good-change.md when developing a candidate; deep.md for deep coordination |
+| Dispatched into a two-family run | deep.md for your role, then the review or diagnosis route named in the dispatch |
+| Dispatched to check an existing candidate | good-change.md, Review the result, and the relevant good-code.md lenses. Use the supplied record and return the independent assessment; the parent owns coordination |
+| Master of a two-family run | deep.md, Roles and Herdr runtime; the route's input-gathering section. You coordinate and carry user decisions; you judge no code |
+| Maintaining this skill | [maintaining.md](./maintaining.md), then the affected documents and helpers |
+| Working on C++ | The C++ mechanisms in [unreal.md](./unreal.md) |
+| Working on Unreal Engine | unreal.md's engine mechanisms as well; its version-bound facts only when relevant and verified against the project |
+| Working in a project with feature, review, or diagnosis documents | Read the relevant goals, user rulings, and contracts before judging. Apply Authority below to what the documents claim |
 
-Writing has no route file: this file and good-change.md govern it. Risk surfaces are listed at the top of good-code.md.
+## Authority and judgment
+
+Own the outcome within the user's task. Establish the feature's goal and intended experience, including how it should feel to the user, before treating an implementation plan as the target.
+
+- **Separate rulings from assumptions.** A user's answer or explicit decision is a ruling. Record what was decided and why, with the user's words or a source. Details an agent filled into a spec are implementation choices, even when the document is long or polished. A general go-ahead does not establish that the user considered every unstated corner.
+- **Use documents as a map to intent and evidence.** Check technical claims against the applicable code, provider contract, or environment. Do not dismiss an analysis solely because an agent-written spec says otherwise. Existing behavior can reveal an obligation users depend on; it is not automatically the desired behavior.
+- **Resolve choices in order.** Honor the authorized scope, explicit rulings, and real system contracts. Test the proposed behavior against the feature goal and user experience. Within those obligations, prefer understandable ownership, state, and failure paths, then reduce coordination, repeated work, and attention cost. The criteria for code and evidence are in good-code.md and findings.md.
+- **Push back with a concrete consequence.** If a ruling or plan defeats the goal, show the scenario, evidence, and a recommendation. Ask the user to resolve conflicting goals or change a ruling; do not silently override it. Make routine engineering choices yourself. A choice needs the user when it changes a material product promise, crosses the authorized scope, or depends on a value only they can choose. Questions follow findings.md, Whose call.
 
 ## Words
 
-Every file in this skill uses these words for these things.
-
-- **Issue.** One bug or finding: what is wrong, at which file and line, and how sure you are. Labels are in findings.md.
-- **Proposed fix.** The change that answers one or more issues: its shape, the sites it touches, where its test goes, and its cost.
-- **Shelved fix.** A proposed fix applied in the checkout, built, its test run red before and green after, and saved as a shelve. Not checked in.
-- **Check-in.** The commit. Only on the user's word.
-- **Question.** A choice only the user can make, written so the user can answer it without reading code.
-- **Probe.** Temporary code that answers one question about the code: a tagged log, a temporary test, a compiled replica. Removed afterwards.
-- **Red run, green run.** The new test failing on the unfixed code, then passing with the fix. Each is kept as a log file.
-- **Shelve.** A saved change outside the checked-in history. The project's doc names the form: a Plastic or Perforce shelve, a git branch, worktree, or stash.
-- **Database.** The run's shared SQLite file, kept by the `ledger` script under `scripts/` beside this file. Every issue, question, proposed fix, shelved fix, and check-in is a row in it, every command lands in its record with what each agent was doing or waiting on at that moment, and the report and the timeline are printed from it.
-- **Mark.** One reviewer's recorded agreement with a row it did not write.
-
-## Certainty
-
-What a claim rests on, by step:
-
-1. "I said so." Closes nothing.
-2. Pointed at the line or the provider's own source.
-3. Walked the failure and it cannot reach.
-4. Ran real code: probe, compiled replica, executed test, log evidence, retained logs included.
-5. Reproduced live in the running system yourself, this pass.
-
-Names, comments, docs, commit messages, and another agent's report are testimony: they say where to look and prove nothing until the code or a run confirms them. How an issue is proved, and what a dismissal needs, is in findings.md.
+- **Issue.** A claim about a defect or maintenance cost, with its site, impact, and evidence. Labels are in findings.md.
+- **Proposed fix.** A proposed change answering one or more issues or a requested feature goal. Its record is defined in findings.md.
+- **Shelved fix.** A recoverable candidate implementation of a proposed fix, with its baseline, dependencies, and validation evidence. Saved does not mean reviewed or checked in.
+- **Check-in.** A commit to the project's history, only on the user's word.
+- **Question.** A consequential choice for the user, written so they can answer without reading code.
+- **Probe.** An experiment that answers a named question about the code. Its temporary instrumentation is removed; its evidence is retained.
+- **Red run, green run.** A check exposing the defect before a change, then meeting the intended behavior afterwards. These are evidence for claims they distinguish, not a mandatory shape for every change.
+- **Shelve.** A saved change recoverable with its baseline outside checked-in project history: a Plastic or Perforce shelve, a Git stash or patch with its base, or the project's equivalent. A branch name or worktree alone does not save an uncommitted diff.
+- **Database.** The run's shared SQLite record, kept by `scripts/ledger.ts` beside this file. It holds coverage, issues, questions, proposed fixes, shelved fixes, check-ins, and the sequence of recorded work. Reports and timelines come from it.
+- **Run.** One task and its retained investigation. A new turn, context, session, or instruction to implement can continue the run. Resumption and changed baselines follow findings.md, Continuity.
+- **Mark.** A recorded review of a revision by someone who did not write it. A proposal mark is optional discussion, not permission to develop a candidate.
 
 ## Attention
 
-- Fan out per independent unit, an issue, a sweep, a lens, or a group of related issues, one subagent each, with disjoint scopes named in the dispatch. Keep the model of the change, the final verdicts, and the reading of related issues yourself. Those are the steps that cannot be delegated.
-- Delegate what arrives as bulk: file dumps, build and test output, probe transcripts. Subagents return conclusions with file:line and certainty step. Artifacts stay on disk and are referenced by path. Read a suite's summary and failure lines rather than its log. Independent commands batch inside one lane, which needs no delegation.
-- Cheap agents enumerate and flag. They never own a verdict.
-- A brief to an agent or subagent follows the `agent-messaging` skill: goal, acceptance, facts with their certainty, constraints, where to report, and no method. A fresh reader gets claims, file:line, and evidence paths, never your arguments: a fresh context fed your reasoning is not fresh.
-- Take any ready work you are allowed to do. Waiting on one issue, question, build, or review never blocks work on another issue.
-- Launch builds and tests in the background and keep working; never sleep on them.
-
-## Declarations
-
-What you say about your own work, every time:
-
-- Line one names how far you go, fix, report only, or check in, and the mode: quick or deep for a review, plain or deep for a diagnosis.
-- Every claim names its certainty step. A number that arrives in a sentence rather than from a run is marked reasoned. A probe's result states the input class it ran on, since a result holds only for the signals, sizes and parameters it ran on.
-- A skipped pass or an unrun probe is named, with why. Report-only mode is never the reason.
-- The answer ends with a validation line: what built and ran, with results, and that the checkout holds no probe when temporary edits were made.
+- Delegate independent bulk that would crowd the context needed for judgment: hunks, inventories, build output, or evidence transcripts. Name disjoint scopes. Keep the model of the change, related issues, and final judgment yourself.
+- Subagents return conclusions with sites, evidence paths, and limits. Keep large artifacts on disk; read summaries and failure lines. Batch independent commands within one lane without creating agents for each command.
+- Cheap agents enumerate and flag; they do not own final verdicts. A brief follows the `agent-messaging` skill when available: carry the goal, relevant facts, actual constraints, and what the receiver cannot know. Let it choose the method.
+- For an independent check, choose a reader who did not author the work. For a fresh check, start a new context with the claim, intended behavior, candidate, and evidence, withholding the author's argument until the reader records its own assessment. Different model families add another kind of independence. Preserve the author's rationale for later comparison and for the user.
+- Take other ready work while one issue, question, build, or review waits. Run long builds in the background and continue work that cannot alter their inputs. Before handing off, preserve enough state to resume per findings.md.
 
 ## How far to go
 
-Quick, plain, and deep say how much evidence to gather. How far to go says what happens to a verified issue:
+- **Fix**, the default unless the user asks for report only. Investigate and develop recoverable candidates within the task's scope. Follow good-change.md through validation and independent review. Intermediate agreement on an issue or shape is not a gate to writing. Check in nothing.
+- **Report only.** Investigate and assess proposed fixes; make no lasting source edits. Save useful experiments and candidate patches outside the checkout so a later implementation can continue from them.
+- **Check in.** Only the reviewed candidates and executor the user authorizes. Selection and dependency checks follow findings.md.
 
-- **Fix**, the default for every mode. Verify the issue, write the test and the fix, run the test red then green, shelve the fix, and have someone who did not write it review the diff. Check in nothing.
-- **Report only**, when the user asks for it. Verify issues and write proposed fixes. Change no code beyond probes.
-- **Check in.** After the report, only the shelved fixes the user names.
+Reversibility makes experimentation useful; it does not authorize changing unrelated work, overriding a ruling, publishing, deploying, or contacting others. A question blocks only the work that depends on its answer. Preserve its current candidate and continue other work.
 
-One issue's fix never waits for another issue. An issue that needs the user's answer waits; every other issue moves.
+## Experiments and reporting
 
-Probes are allowed under every mode, and encouraged whenever running code settles what argument cannot: tagged logs, temporary tests, compiled replicas, off-design parameters through existing helpers. One rule set governs them:
+- Before an edit, preserve the affected files and the current baseline, including existing user changes. Tag temporary instrumentation with one unique token. In a shared checkout, take it in the database first; deep.md, Shared checkout, governs the hold.
+- Record which inputs, code, and environment the experiment exercised. Distinguish the baseline from any candidate behavior; never present a changed observation target as evidence about the original.
+- Before releasing the checkout, retain the experiment's evidence and remove its temporary instrumentation. A useful test or implementation becomes part of the candidate, with the temporary tag removed. Verify cleanup without discarding candidate or user edits.
+- State the mode and how far you are going when choosing or changing them. Present consequential claims with their evidence and limits; leave large logs and routine bookkeeping in the run directory. Say what remains unverified and what would resolve it.
+- End a coding report with validation: what was checked, the result and candidate it applies to, skipped checks with reasons, and probe cleanup when temporary edits were made.
 
-- Tag every temporary edit with one unique token, so cleanup is one grep.
-- Never change the behavior under review or diagnosis, and never count a probe as a fix.
-- Back up and hash each file before editing it. Remove every tagged edit before you release the checkout. When reporting, verify the checkout against the reviewed revision rather than the SCM status line.
-- A temporary test that goes red on an issue is the start of that issue's regression test. Keep it with the proposed fix.
-- In a shared checkout, take the checkout in the database before any edit, probes included. An isolated cold pass records a needed code probe and waits until import to run it. deep.md, Shared checkout, says how.
-
-A diagnostic log meant to ship for a release cycle is not a probe. It is a logging change, and it follows the project's logging policy.
+A diagnostic log intended to ship is a logging change under the project's policy, not temporary instrumentation.
