@@ -7,7 +7,9 @@ description: "Use when implementing or changing code, reviewing a diff, branch, 
 
 Read this file first. It holds the shared execution contract and routes each task to its method. A dispatch names a role inside an existing run; use that row instead of starting a standalone review. When the work changes kind, add the new route's files without starting the investigation over.
 
-Every route that judges or writes code reads the Values in [good-code.md](./good-code.md) and Evidence in [findings.md](./findings.md). Read the rest when the table or the work calls for it. The motivation and tradeoffs behind this contract live in [GOAL.md](./GOAL.md); read it when discussing or changing the skill's values.
+Choose the workflow by the judgment needed. For a purely mechanical edit, such as correcting spelling in a comment, inspect the target and relevant repository rules, make the bounded edit, and verify that meaning and behavior are unchanged. A direct check and brief report suffice; do not load the full route, create a ledger, or require a separate candidate review just for that edit. Preserve existing work and any active shared-checkout ownership. If the change affects behavior, structure, contracts, or the meaning of instructions, or preserving them needs investigation, use the substantive route below regardless of diff size. An explicit request for deeper review still applies.
+
+Substantive routes read the Values in [good-code.md](./good-code.md) and Evidence and Working record in [findings.md](./findings.md). Read the rest when the table or the work calls for it. The motivation and tradeoffs behind this contract live in [GOAL.md](./GOAL.md); read it when discussing or changing the skill's values.
 
 | You are | Read, in order |
 |---|---|
@@ -63,7 +65,7 @@ Reversibility makes experimentation useful; it does not authorize changing unrel
 
 ## Experiments and reporting
 
-- Before an edit, preserve the affected files and the current baseline, including existing user changes. Tag temporary instrumentation with one unique token. In a shared checkout, take it in the database first; deep.md, Shared checkout, governs the hold.
+- Before an edit, preserve the affected files and the current baseline, including existing user changes. Tag temporary instrumentation with one unique token. In a shared checkout, take it in the database first; [ledger.md, Shared checkout](./ledger.md#shared-checkout), governs the hold.
 - Record which inputs, code, and environment the experiment exercised. Distinguish the baseline from any candidate behavior; never present a changed observation target as evidence about the original.
 - Before releasing the checkout, retain the experiment's evidence and remove its temporary instrumentation. A useful test or implementation becomes part of the candidate, with the temporary tag removed. Verify cleanup without discarding candidate or user edits.
 - State the mode and how far you are going when choosing or changing them. Present consequential claims with their evidence and limits; leave large logs and routine bookkeeping in the run directory. Say what remains unverified and what would resolve it.

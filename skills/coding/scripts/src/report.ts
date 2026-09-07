@@ -1,9 +1,12 @@
 // Status and report rendering. Reads state, prints Markdown, decides nothing.
 import {
   fixesForIssue,
+  freshReviews,
   isDone,
   isComplete,
+  isHistoricalShelf,
   ready,
+  reviewBasis,
   rowById,
   rowsOf,
   shelvesForFix,
@@ -12,6 +15,7 @@ import {
   type Event,
   type Issue,
   type Moment,
+  type Mark,
   type ProposedFix,
   type Ready,
   type Seat,
@@ -42,23 +46,34 @@ function list(values: readonly string[]): string {
   return values.length === 0 ? "-" : values.join(", ")
 }
 
+function markText(mark: Mark | null): string {
+  return mark ? `${mark.by}${mark.reader ? ` (${mark.reader}; ${mark.assessment})` : ""}` : ""
+}
+
+function shelfState(state: State, shelf: ShelvedFix): string {
+  return isHistoricalShelf(state, shelf) ? `${shelf.state} (historical bundle)` : shelf.state
+}
+
 // ---------------------------------------------------------------------------
 // The exact next command for each piece of ready work.
 
 export function commandFor(state: State, item: Ready): string {
   const row = item.row ? rowById(state, item.row) : undefined
   const at = row ? ` ${row.id} rev=${row.rev}` : ""
+  const assessment = ["issue.agree", "proposed-fix.mark", "shelved-fix.review"].includes(item.command)
+    ? ` basis=${reviewBasis(state, item.row)}${item.actor === "reader" ? " reader=<fresh context name> assessment=<retained file>" : ""}` : ""
   switch (item.command) {
     case "coverage.add": return `coverage add kind=<kind> target=<target> state=<covered|gap> note=<what you checked>`
     case "coverage.set": return `coverage set${at} state=<covered|gap> note=<what you checked>`
     case "issue.verify": return `issue verify${at} certainty=<3|4|5> evidence=<record> | issue assume${at} certainty=<1-5> assumption=<fact> reason=<what remains uncertain> | issue disprove${at} certainty=<3-5> evidence=<record>`
-    case "issue.agree": return `issue agree${at} | issue contest${at} probe=<probe> | issue disprove${at} certainty=<3-5> evidence=<record> | issue duplicate${at} of=<I-id> | issue set${at} <field>=<correction>`
+    case "issue.agree": return `issue agree${at}${assessment} | issue contest${at} probe=<probe> | issue disprove${at} certainty=<3-5> evidence=<record> | issue duplicate${at} of=<I-id> | issue set${at} <field>=<correction>`
     case "issue.set": return `issue set${at} <field>=<correction> | issue verify${at} certainty=<3|4|5> evidence=<record>`
     case "issue.probe": return `issue probe${at} verdict=<verified|disproved> certainty=<3|4|5> evidence=<record>`
     case "issue.take": return `issue take${at}`
     case "proposed-fix.add": return `proposed-fix add issues=${item.row} origin=<mechanism or requirement> shape=<shape> sites=<sites walked> rulings=<rulings checked> test=<validation plan> cost=<cost>`
     case "proposed-fix.set": return `proposed-fix set${at} <field>=<value>`
-    case "proposed-fix.mark": return `proposed-fix mark${at} | proposed-fix reject${at} reason=<reason>`
+    case "proposed-fix.take": return `proposed-fix take${at}`
+    case "proposed-fix.mark": return `proposed-fix mark${at}${assessment} | proposed-fix reject${at} reason=<reason>${assessment}`
     case "question.add": {
       const fix = row as ProposedFix | undefined
       return `question add issues=${fix ? fix.issues.join(",") : "<I-ids>"}${fix ? ` fix=${fix.id}` : ""} question=<text> options="(a) ..., (b) ..." recommendation=<one option> effect=<user effect per option> cost=<code cost per option>`
@@ -70,7 +85,7 @@ export function commandFor(state: State, item: Ready): string {
     case "shelved-fix.add": return `shelved-fix add fixes=${item.row} artifact=<saved candidate> baseline=<exact base> validation=<record> dependencies=<S-id@rev,...>`
     case "shelved-fix.set": return `shelved-fix set${at} validation=<refreshed record> artifact=<saved candidate> baseline=<exact base> dependencies=<S-id@rev,...>`
     case "shelved-fix.request-review": return `shelved-fix request-review${at} reason=<observation or ruling resolving the conditions>`
-    case "shelved-fix.review": return `shelved-fix review${at} | shelved-fix review${at} conditions=<what must change>`
+    case "shelved-fix.review": return `shelved-fix review${at}${assessment} | shelved-fix review${at} conditions=<what must change>${assessment}`
     case "check-in.record": return `check-in record${at} changeset=<id> departures=<none or text>`
     case "cold.import": return `import`
     default: return item.command.replace(".", " ")
@@ -87,13 +102,16 @@ function pinned(command: string): string {
 function nextStep(state: State, actor: Actor): string {
   const mine = ready(state, actor)
   if (mine.length > 0) return "take any item above; waiting on one never blocks another"
+  if (actor === "reader") return "no fresh assessment pending"
+  const arranging = freshReviews(state).filter((review) => review.arranger === actor)
+  if (arranging.length > 0) return `check your working note for ${arranging.map((review) => `${review.row}@${review.rev} basis=${reviewBasis(state, review.row)}`).join(", ")}; give changed inputs to an existing child for reassessment, without starting a duplicate; only you arrange these fresh contexts with LEDGER_ME=reader. Continue other work or hand off while they run`
   if (state.mode === "cold") return `${LEDGER} import`
   if (actor === "master") {
     if (isDone(state)) return `${LEDGER} report`
     return state.mode === "joint" ? "wait: questions arrive here; the script says when both reviewers are done" : "wait for the reviewer"
   }
   if (state.mode === "single") {
-    if (actor === "A" && ready(state, "B").length > 0) return "dispatch a fresh subagent as B to review the shelved fix"
+    if (actor === "A" && ready(state, "B").length > 0) return `check your working note for ${ready(state, "B").map((item) => `${item.row} basis=${reviewBasis(state, item.row)}`).join(", ")}; update an existing B reader's inputs for reassessment, or dispatch a fresh subagent as B if none exists`
     return actor === "A" ? `${LEDGER} report` : "nothing to review"
   }
   if (state.checkout?.holder === actor) return `${LEDGER} checkout release`
@@ -103,7 +121,7 @@ function nextStep(state: State, actor: Actor): string {
 
 export function summary(state: State, actor: Actor): string {
   return [
-    `ready work: A ${ready(state, "A").length}, B ${ready(state, "B").length}${state.mode === "joint" ? `, master ${ready(state, "master").length}` : ""}`,
+    `ready work: A ${ready(state, "A").length}, B ${ready(state, "B").length}${state.mode === "joint" ? `, master ${ready(state, "master").length}` : ""}${ready(state, "reader").length > 0 ? `, fresh reader ${ready(state, "reader").length}` : ""}`,
     `next for ${actor}: ${nextStep(state, actor)}`,
   ].join("\n")
 }
@@ -111,13 +129,16 @@ export function summary(state: State, actor: Actor): string {
 export function renderStatus(state: State, actor: Actor): string {
   const counts = new Map<string, number>()
   for (const row of state.rows) {
-    const key = `${row.kind}: ${row.state}`
+    const key = `${row.kind}: ${row.kind === "Shelved fix" ? shelfState(state, row) : row.state}`
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
   const issues = rowsOf(state, "Issue")
   const taken = issues.filter((issue) => issue.taken)
   const open = rowsOf(state, "Question").filter((question) => question.state === "open")
   const mine = ready(state, actor)
+  const assessments = state.mode === "single"
+    ? ready(state, "B").filter((item) => item.command === "shelved-fix.review").map((item) => ({ row: item.row, rev: rowById(state, item.row)!.rev, arranger: "A" }))
+    : freshReviews(state)
   return [
     `# Status (${state.mode}${state.seat ? ` ${state.seat}` : ""}, ${state.route}, ${state.deep ? "deep" : state.route === "review" ? "quick" : "plain"}, ${state.howFar})`,
     "",
@@ -133,6 +154,10 @@ export function renderStatus(state: State, actor: Actor): string {
     table(["Id", "Rev", "Label", "State", "Step", "Mark", "Taken", "Claim"], issues.map((issue) => [issue.id, issue.rev, issue.label, issue.state, issue.certainty, issue.mark?.by ?? "", issue.taken ?? "", issue.facts.claim])),
     taken.length > 0 ? `\nTaken: ${taken.map((issue) => `${issue.id} by ${issue.taken}`).join(", ")}` : "",
     "",
+    "## Proposal ownership",
+    "",
+    table(["Id", "Rev", "Owner", "Contributors", "Candidate"], rowsOf(state, "Proposed fix").map((fix) => [fix.id, fix.rev, fix.owner ?? "released", fix.contributors.join(", "), shelvesForFix(state, fix.id).map((shelf) => `${shelf.id}@${shelf.rev}${isHistoricalShelf(state, shelf) ? " (historical bundle)" : ""}`).join(", ")])),
+    "",
     "## Open questions",
     "",
     table(["Id", "Rev", "Issues", "Question", "Options", "Recommendation"], open.map((question) => [question.id, question.rev, question.issues.join(", "), question.question, question.options.join(" / "), question.recommendation])),
@@ -141,6 +166,14 @@ export function renderStatus(state: State, actor: Actor): string {
     "",
     mine.length === 0 ? "Nothing." : mine.map((item) => `- ${item.row ? `${item.row}: ` : ""}${item.reason}. ${pinned(commandFor(state, item))}`).join("\n"),
     "",
+    ...(assessments.length > 0 ? [
+      "## Pending fresh assessments",
+      "",
+      table(["Target", "Rev", "Basis", "Arranger"], assessments.map((review) => [review.row, review.rev, reviewBasis(state, review.row), review.arranger])),
+      "",
+      "Only the named arranger starts each reader. Retain the basis with the child's target. If it changes, give the existing child the changed inputs for reassessment; do not start a duplicate reader. The working note records child activity; this table lists assessments still needed.",
+      "",
+    ] : []),
     summary(state, actor),
   ].filter((line) => line !== null).join("\n")
 }
@@ -157,7 +190,7 @@ function fixState(state: State, issue: Issue): string {
   if (fixes.length === 0) return issue.exit ? `exit: ${issue.exit.kind} ${issue.exit.reference}` : "no fix"
   return fixes.map((fix) => {
     const shelves = shelvesForFix(state, fix.id)
-    const shelf = shelves.map((candidate) => `${candidate.id} ${candidate.state}${checkedIn(state, candidate)}`).join(", ")
+    const shelf = shelves.map((candidate) => `${candidate.id} ${shelfState(state, candidate)}${checkedIn(state, candidate)}`).join(", ")
     return `${fix.id} ${isComplete(fix) ? fix.state : "direction"}${fix.mark ? ` (mark ${fix.mark.by})` : ""}${shelf ? `; ${shelf}` : ""}`
   }).join("; ")
 }
@@ -199,7 +232,7 @@ function renderValidation(state: State): string {
   const shelves = rowsOf(state, "Shelved fix")
   return [
     state.baseline ? `Baseline: build ${state.baseline.build}, tests ${state.baseline.test}.` : "Baseline: not recorded.",
-    ...shelves.map((shelf) => `${shelf.id}@${shelf.rev}: baseline ${shelf.baseline}; dependencies ${shelf.dependencies.map((dependency) => `${dependency.id}@${dependency.rev}`).join(", ") || "none"}; validation ${shelf.validation} (${shelf.validationDigest}); ${shelf.state}${shelf.review ? ` by ${shelf.review.by}` : ""}.`),
+    ...shelves.map((shelf) => `${shelf.id}@${shelf.rev}: baseline ${shelf.baseline}; dependencies ${shelf.dependencies.map((dependency) => `${dependency.id}@${dependency.rev}`).join(", ") || "none"}; validation ${shelf.validation} (${shelf.validationDigest}); ${shelfState(state, shelf)}${shelf.review ? ` by ${shelf.review.by}` : ""}.`),
     state.checkout ? `Checkout: held by ${state.checkout.holder}; the tree may hold probes.` : "Checkout: free. Probe cleanup must be verified in the validation record; releasing the hold does not prove it.",
   ].map((line) => `- ${line}`).join("\n")
 }
@@ -212,11 +245,11 @@ export function renderReport(state: State, events: readonly Moment[], notes: Not
   const fixes = rowsOf(state, "Proposed fix")
   const shelves = rowsOf(state, "Shelved fix")
   const checkIns = rowsOf(state, "Check-in")
-  const openCount = substantive.filter((issue) => !["disproved", "duplicate"].includes(issue.state) && !issue.exit && !shelvesForFix(state, fixesForIssue(state, issue.id)[0]?.id ?? "").some((shelf) => shelf.state === "reviewed")).length
+  const openCount = substantive.filter((issue) => !["disproved", "duplicate"].includes(issue.state) && !issue.exit && !fixesForIssue(state, issue.id).some((fix) => shelvesForFix(state, fix.id).some((shelf) => !isHistoricalShelf(state, shelf) && shelf.state === "reviewed"))).length
   return [
     `# ${state.route === "review" ? "Review" : state.route === "write" ? "Implementation" : "Diagnosis"} report`,
     "",
-    `${state.mode === "joint" ? `Two reviewers, ${state.names.A} (A) and ${state.names.B} (B)` : `One reviewer, ${state.names.A}`}; ${state.deep ? "deep" : state.route === "review" ? "quick" : "plain"}; how far: ${state.howFar}. ${isDone(state) ? "The run is done." : "The run is still open."} Open substantive issues: ${openCount}.`,
+    `${state.mode === "joint" ? `Two reviewers, ${state.names.A} (A) and ${state.names.B} (B)` : `One reviewer, ${state.names.A}`}; ${state.deep ? "deep" : state.route === "review" ? "quick" : "plain"}; how far: ${state.howFar}. ${isDone(state) ? "Ready to report; unresolved work is listed below." : "The run is still open."} Open substantive issues: ${openCount}.`,
     "",
     "## Coverage",
     "",
@@ -245,13 +278,13 @@ export function renderReport(state: State, events: readonly Moment[], notes: Not
     "## Fix table",
     "",
     table(
-      ["Fix", "Issues or goal", "State", "Mark", "Origin", "Shape", "Sites", "Rulings", "Validation plan", "Cost", "Guardrail", "Coordination", "Shelved", "Drop reason"],
-      fixes.map((fix) => [fix.id, fix.issues.join(", ") || fix.goal, isComplete(fix) ? fix.state : `direction (${fix.state})`, fix.mark?.by ?? "optional", fix.origin, fix.shape, fix.sites, fix.rulings, fix.test, fix.cost, fix.guardrail, fix.coordination, list(shelvesForFix(state, fix.id).map((shelf) => `${shelf.id} ${shelf.state}`)), fix.dropReason]),
+      ["Fix", "Issues or goal", "State", "Mark", "Owner", "Contributors", "Origin", "Shape", "Sites", "Rulings", "Validation plan", "Cost", "Guardrail", "Coordination", "Shelved", "Drop reason"],
+      fixes.map((fix) => [fix.id, fix.issues.join(", ") || fix.goal, isComplete(fix) ? fix.state : `direction (${fix.state})`, markText(fix.mark) || "optional", fix.owner ?? "released", fix.contributors.join(", "), fix.origin, fix.shape, fix.sites, fix.rulings, fix.test, fix.cost, fix.guardrail, fix.coordination, list(shelvesForFix(state, fix.id).map((shelf) => `${shelf.id} ${shelfState(state, shelf)}`)), fix.dropReason]),
     ),
     "",
     "## Shelved fixes",
     "",
-    table(["Id", "Rev", "Fixes", "Artifact", "Baseline", "Dependencies", "Validation", "State", "Review", "Conditions"], shelves.map((shelf) => [shelf.id, shelf.rev, shelf.fixes.join(", "), shelf.artifact, shelf.baseline, shelf.dependencies.map((dependency) => `${dependency.id}@${dependency.rev}`).join(", "), shelf.validation, shelf.state, shelf.review?.by ?? "", shelf.conditions])),
+    table(["Id", "Rev", "Fixes", "Artifact", "Baseline", "Dependencies", "Validation", "State", "Review", "Contributors", "Conditions"], shelves.map((shelf) => [shelf.id, shelf.rev, shelf.fixes.join(", "), shelf.artifact, shelf.baseline, shelf.dependencies.map((dependency) => `${dependency.id}@${dependency.rev}`).join(", "), shelf.validation, shelfState(state, shelf), markText(shelf.review), shelf.contributors.join(", "), shelf.conditions])),
     "",
     "## Check-ins",
     "",
@@ -275,7 +308,7 @@ export function renderReport(state: State, events: readonly Moment[], notes: Not
 // ---------------------------------------------------------------------------
 // Timeline: derived from the recorded moments. Who did what, who waited on whom, what was argued.
 
-const ACTORS: readonly Actor[] = ["A", "B", "master"]
+const ACTORS: readonly Actor[] = ["A", "B", "master", "reader"]
 
 export function isActor(value: string): value is Actor {
   return (ACTORS as readonly string[]).includes(value)

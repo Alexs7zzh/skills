@@ -8,7 +8,7 @@ For a requested feature, state the goal as the user experiences it, the intended
 
 For a defect, identify the bad state and the mechanism that produces it. For a maintenance change, name the concrete task or failure boundary that becomes easier to reason about. Existing docs, tests, and behavior tell you where to investigate; check them against the goal and rulings before treating them as requirements.
 
-Walk the relevant callers, owners, failure paths, and test seams. Record the proposed fix using the slots in findings.md, Change records. A feature can name its goal directly; do not invent a bug to fit a workflow. When writing begins directly, initialize the single-seat writing route per deep.md, Run directory and setup. Otherwise continue the existing review or diagnosis record.
+Walk the relevant callers, owners, failure paths, and test seams. Keep the investigation in findings.md's Working record and record the proposed fix using Change records as its direction becomes concrete. A feature can name its goal directly; do not invent a bug to fit a workflow. Continue the existing review or diagnosis record when developing its candidate.
 
 ## Choose the boundary
 
@@ -24,13 +24,13 @@ The investigator usually writes the test or experiment and the candidate while t
 
 Use findings.md, Evidence, to choose validation. Run a reachable defect check on the baseline before changing it, then on the candidate; preserve both results. For other claims, establish the relevant comparison or proof before interpreting the result. Do not force a failing test when no behavior is meant to change, and do not substitute a replica for untested integration.
 
-Save the candidate and its evidence before switching work or ending a session. Do not erase a working candidate merely to report a proposal. In report-only mode, retain a patch or experiment outside the checkout and restore only your temporary edits. Shared checkout mechanics are in deep.md.
+Save the candidate and its evidence before switching work or ending a session. Do not erase a working candidate merely to report a proposal. In report-only mode, retain a patch or experiment outside the checkout and restore only your temporary edits. Shared checkout mechanics are in ledger.md.
 
 When an approach fails, retain the observation and the brief reason it was rejected. Continue while an experiment or code walk can resolve a concrete uncertainty. Repeated arguments without new evidence call for a discriminating check or a narrower claim, not another round of preference. A remaining user decision follows findings.md, Whose call; save the current work and move to an independent issue.
 
 ## Review the result
 
-A reader who did not write the candidate checks it in a fresh context per SKILL.md, Attention. Give it the goal and rulings, current issues, exact candidate and baseline, dependencies, validation record, and evidence paths. It judges the claim and implementation together.
+A reader who did not write the candidate checks it in a fresh context per SKILL.md, Attention. Give it the goal and rulings, current issues, exact candidate and baseline, dependencies, validation record, evidence paths, and the captured review basis per findings.md, Continuity. It judges the claim and implementation together.
 
 The review returns one assessment with:
 - whether the candidate meets the intended behavior and explicit rulings;

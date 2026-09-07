@@ -1,11 +1,13 @@
 // The run's rules as a pure reducer: (state, command) -> state, events, notifications.
 // Every refusal here restates a sentence of the coding skill. Storage, argument
 // parsing, and rendering live elsewhere and know nothing about the rules.
+import { createHash } from "node:crypto"
 
-export const SCHEMA = 5
+export const SCHEMA = 7
 
 export type Seat = "A" | "B"
-export type Actor = Seat | "master"
+export type Reviewer = Seat | "reader"
+export type Actor = Reviewer | "master"
 export type Mode = "single" | "joint" | "cold"
 export type Route = "review" | "diagnose" | "write"
 export type HowFar = "fix" | "report-only" | "check-in"
@@ -19,8 +21,10 @@ export const EXIT_KINDS = ["comment", "ruling", "todo", "drop"] as const
 export type ExitKind = (typeof EXIT_KINDS)[number]
 
 export interface Mark {
-  readonly by: Seat
+  readonly by: Reviewer
   readonly at: string
+  readonly reader?: string
+  readonly assessment?: string
 }
 
 interface Base {
@@ -104,6 +108,9 @@ export interface Shape {
 
 export interface ProposedFix extends Base, Shape {
   readonly kind: "Proposed fix"
+  readonly owner: Seat | null
+  readonly releasedBy?: Seat // Absent while owned, or when an older record lacks release provenance.
+  readonly contributors: readonly Seat[]
   readonly issues: readonly string[]
   readonly disputes: number
   readonly state: "draft" | "marked" | "rejected" | "dropped"
@@ -114,6 +121,7 @@ export interface ProposedFix extends Base, Shape {
 
 export interface ShelvedFix extends Base {
   readonly kind: "Shelved fix"
+  readonly contributors: readonly Seat[]
   readonly fixes: readonly string[]
   readonly artifact: string
   readonly baseline: string
@@ -172,7 +180,7 @@ export function initialState(options: {
   deep?: boolean
   route: Route
   howFar: HowFar
-  names: Readonly<Record<Actor, string>>
+  names: Readonly<Record<Seat | "master", string> & Partial<Record<"reader", string>>>
   declared: readonly Declared[]
 }): State {
   return {
@@ -182,7 +190,7 @@ export function initialState(options: {
     deep: options.mode !== "single" || options.deep === true,
     route: options.route,
     howFar: options.howFar,
-    names: options.names,
+    names: { reader: "fresh reader", ...options.names },
     declared: options.declared,
     rows: [],
     checkout: null,
@@ -203,6 +211,11 @@ interface Envelope<T extends string> {
 interface Target {
   readonly id: string
   readonly rev: number
+}
+interface Assessment {
+  readonly basis?: string
+  readonly reader?: string
+  readonly assessment?: string
 }
 
 export type Command =
@@ -232,7 +245,7 @@ export type Command =
     })
   | (Envelope<"issue.verify"> & Target & { readonly certainty: number; readonly evidence: string })
   | (Envelope<"issue.assume"> & Target & { readonly certainty: number; readonly assumption: string; readonly reason: string })
-  | (Envelope<"issue.agree"> & Target)
+  | (Envelope<"issue.agree"> & Target & Assessment)
   | (Envelope<"issue.contest"> & Target & { readonly probe: string })
   | (Envelope<"issue.probe"> & Target & { readonly verdict: "verified" | "disproved"; readonly certainty: number; readonly evidence: string })
   | (Envelope<"issue.disprove"> & Target & { readonly certainty: number; readonly evidence: string })
@@ -253,13 +266,14 @@ export type Command =
   | (Envelope<"question.answer"> & Target & { readonly answer: string })
   | (Envelope<"proposed-fix.add"> & Shape & { readonly issues: readonly string[] })
   | (Envelope<"proposed-fix.set"> & Target & Partial<Shape>)
-  | (Envelope<"proposed-fix.mark"> & Target)
-  | (Envelope<"proposed-fix.reject"> & Target & { readonly reason: string })
+  | (Envelope<"proposed-fix.release" | "proposed-fix.take"> & Target)
+  | (Envelope<"proposed-fix.mark"> & Target & Assessment)
+  | (Envelope<"proposed-fix.reject"> & Target & Assessment & { readonly reason: string })
   | (Envelope<"proposed-fix.drop"> & Target & { readonly reason: string })
   | (Envelope<"shelved-fix.add"> & { readonly fixes: readonly string[]; readonly artifact: string; readonly baseline: string; readonly dependencies: readonly Dependency[]; readonly validation: string; readonly validationDigest: string })
   | (Envelope<"shelved-fix.set"> & Target & { readonly artifact?: string; readonly baseline?: string; readonly dependencies?: readonly Dependency[]; readonly validation: string; readonly validationDigest: string })
   | (Envelope<"shelved-fix.request-review"> & Target & { readonly reason: string })
-  | (Envelope<"shelved-fix.review"> & Target & { readonly conditions: string })
+  | (Envelope<"shelved-fix.review"> & Target & Assessment & { readonly conditions: string })
   | (Envelope<"checkout.take"> & { readonly purpose: string })
   | (Envelope<"checkout.baseline"> & { readonly build: string; readonly test: string })
   | (Envelope<"checkout.release"> & { readonly reason: string })
@@ -303,6 +317,13 @@ export interface Ready {
   readonly command: CommandType
   readonly row: string
   readonly reason: string
+}
+
+export interface FreshReview {
+  readonly row: string
+  readonly rev: number
+  readonly arranger: Seat
+  readonly command: "shelved-fix.review" | "proposed-fix.mark"
 }
 
 export type Result =
@@ -355,12 +376,51 @@ export function shelvesForFix(state: State, fixId: string): readonly ShelvedFix[
   return rowsOf(state, "Shelved fix").filter((shelf) => shelf.fixes.includes(fixId))
 }
 
+/** A drop retires the old bundle, while its surviving proposals can continue. */
+export function isHistoricalShelf(state: State, shelf: ShelvedFix): boolean {
+  return shelf.fixes.some((id) => row(state, id, "Proposed fix").state === "dropped")
+}
+
+function currentShelvesForFix(state: State, fixId: string): readonly ShelvedFix[] {
+  return shelvesForFix(state, fixId).filter((shelf) => !isHistoricalShelf(state, shelf))
+}
+
 export function issuesOfShelf(state: State, shelf: ShelvedFix): readonly string[] {
   return [...new Set(shelf.fixes.flatMap((fixId) => rowById(state, fixId)?.kind === "Proposed fix" ? (rowById(state, fixId) as ProposedFix).issues : []))]
 }
 
-export function openQuestionFor(state: State, issueId: string): Question | undefined {
-  return rowsOf(state, "Question").find((question) => question.state === "open" && question.issues.includes(issueId))
+/** One saved candidate is handed over as a whole; its dependencies keep their owners. */
+function bundledFixes(state: State, fix: ProposedFix): readonly ProposedFix[] {
+  const shelf = currentShelvesForFix(state, fix.id)[0]
+  return shelf ? shelf.fixes.map((id) => row(state, id, "Proposed fix")) : [fix]
+}
+
+function canTakeReleased(state: State, fix: ProposedFix, seat: Seat): boolean {
+  if (state.mode === "joint" && !state.imported[seat]) return false
+  return bundledFixes(state, fix).every((item) => item.owner === null && item.state !== "dropped"
+    && !rowsOf(state, "Question").some((question) => question.state === "open" && question.fix === item.id)
+    && item.issues.every((id) => { const issue = row(state, id, "Issue"); return (!issue.taken || issue.taken === seat) && !openQuestionFor(state, id) }))
+}
+
+function ownsShelf(state: State, shelf: ShelvedFix, seat: Seat): boolean {
+  return shelf.fixes.every((id) => row(state, id, "Proposed fix").owner === seat)
+}
+
+function contributed(work: ProposedFix | ShelvedFix, actor: Actor): boolean {
+  return isSeat(actor) && work.contributors.includes(actor)
+}
+
+export function openQuestionFor(state: State, issueId: string, visited = new Set<string>()): Question | undefined {
+  if (visited.has(issueId)) return undefined
+  visited.add(issueId)
+  const direct = rowsOf(state, "Question").find((question) => question.state === "open" && question.issues.includes(issueId))
+  if (direct) return direct
+  const issue = row(state, issueId, "Issue")
+  for (const parent of issue.parents) {
+    const question = openQuestionFor(state, parent, visited)
+    if (question) return question
+  }
+  return undefined
 }
 
 export function isSubstantive(issue: Issue): boolean {
@@ -382,7 +442,7 @@ export function isActiveFix(state: State, fix: ProposedFix): boolean {
 }
 
 function isActiveShelf(state: State, shelf: ShelvedFix): boolean {
-  return shelf.fixes.some((id) => isActiveFix(state, row(state, id, "Proposed fix")))
+  return !isHistoricalShelf(state, shelf) && shelf.fixes.some((id) => isActiveFix(state, row(state, id, "Proposed fix")))
 }
 
 const FACT_SLOTS = ["trigger", "cause", "scope", "frequency", "impact"] as const
@@ -410,6 +470,16 @@ function nextId(state: State, prefix: string, owner: string): string {
 function seatOf(command: Command): Seat {
   if (!isSeat(command.actor)) refuse(`${command.type} is a reviewer's command; LEDGER_ME must be A or B`)
   return command.actor
+}
+
+function reviewMark(state: State, command: Command & Target & Assessment): Mark {
+  if (command.actor === "master") refuse("the master does not review code")
+  const basis = nonempty(command.basis ?? "", "basis: retain the helper's review basis before assessing")
+  if (basis !== reviewBasis(state, command.id)) refuse(`${command.id} review inputs changed; inspect the changed inputs and reassess before submitting their new basis`)
+  if (command.actor !== "reader") return { by: command.actor, at: command.at }
+  const reader = nonempty(command.reader ?? "", "reader: the fresh non-author context's name")
+  if (["A", "B", "master", state.names.A, state.names.B, state.names.master].includes(reader)) refuse("the fresh reader must be a different context from either writer or the master")
+  return { by: "reader", at: command.at, reader, assessment: nonempty(command.assessment ?? "", "assessment: the fresh reader's retained assessment file") }
 }
 
 function masterOf(command: Command): "master" {
@@ -440,11 +510,17 @@ function revise<R extends Row>(rows: Row[], current: R, changes: Partial<R>, edi
 }
 
 /** Review changes propagate without pretending the saved candidate inputs changed. */
-function clearDownstream(rows: Row[], from: Row, at: string, invalidation: "review" | "validation" = from.kind === "Shelved fix" ? "validation" : "review"): void {
+function clearDownstream(rows: Row[], from: Row, at: string, invalidation: "review" | "validation" = from.kind === "Shelved fix" ? "validation" : "review", visited = new Set<string>()): void {
+  if (visited.has(from.id)) return
+  visited.add(from.id)
   if (from.kind === "Issue") {
+    for (const issue of rows.filter((candidate): candidate is Issue => candidate.kind === "Issue" && candidate.parents.includes(from.id))) {
+      replace(rows, { ...issue, mark: null, updated: at })
+      clearDownstream(rows, issue, at, invalidation, visited)
+    }
     for (const fix of rows.filter((candidate): candidate is ProposedFix => candidate.kind === "Proposed fix" && candidate.issues.includes(from.id))) {
       if (fix.mark) revise(rows, fix, { mark: null, state: "draft" } as Partial<ProposedFix>, fix.editor, at)
-      clearDownstream(rows, fix, at, invalidation)
+      clearDownstream(rows, fix, at, invalidation, visited)
     }
   }
   if (from.kind === "Proposed fix" || from.kind === "Shelved fix") {
@@ -454,10 +530,72 @@ function clearDownstream(rows: Row[], from: Row, at: string, invalidation: "revi
     for (const shelf of dependents) {
       replace(rows, { ...shelf, review: null,
         state: invalidation === "validation" ? "stale" : shelf.state === "reviewed" ? "shelved" : shelf.state,
-        conditions: invalidation === "validation" ? `${from.id} changed or was dropped; refresh dependencies and validation` : shelf.conditions,
         updated: at })
-      clearDownstream(rows, shelf, at, invalidation)
+      clearDownstream(rows, shelf, at, invalidation, visited)
     }
+  }
+}
+
+function requireParents(state: State, parents: readonly string[], self: string, visited = new Set<string>()): void {
+  for (const id of parents) {
+    if (id === self) refuse("issue proof dependencies must not form a cycle")
+    const parent = row(state, id, "Issue")
+    if (!visited.has(id)) {
+      visited.add(id)
+      requireParents(state, parent.parents, self, visited)
+    }
+  }
+}
+
+function proofIssues(state: State, issueIds: readonly string[], visited = new Set<string>()): Issue[] {
+  const issues: Issue[] = []
+  for (const id of issueIds) {
+    if (visited.has(id)) continue
+    visited.add(id)
+    const issue = row(state, id, "Issue")
+    issues.push(issue, ...proofIssues(state, issue.parents, visited))
+  }
+  return issues
+}
+
+/** The recorded material inputs of an assessment, independent of review and ownership bookkeeping. */
+export function reviewBasis(state: State, id: string): string {
+  const inputs = new Map<string, unknown>()
+  const issues = new Set<string>()
+  const fixes = new Set<string>()
+  const visit = (targetId: string): void => {
+    if (inputs.has(targetId)) return
+    const target = rowById(state, targetId)
+    if (!target || !["Issue", "Proposed fix", "Shelved fix"].includes(target.kind)) refuse(`${targetId} is not an issue, proposal, or candidate assessment target`)
+    if (target.kind === "Issue") {
+      const { author: _author, editor: _editor, created: _created, updated: _updated, mark: _mark, taken: _taken, ...claim } = target
+      inputs.set(target.id, claim)
+      issues.add(target.id)
+      for (const parent of target.parents) visit(parent)
+    } else if (target.kind === "Proposed fix") {
+      const { author: _author, editor: _editor, created: _created, updated: _updated, rev: _rev, owner: _owner, releasedBy: _releasedBy, contributors: _contributors, mark: _mark, disputes: _disputes, rejection: _rejection, state: status, ...proposal } = target
+      inputs.set(target.id, { ...proposal, dropped: status === "dropped" })
+      fixes.add(target.id)
+      for (const issue of target.issues) visit(issue)
+    } else if (target.kind === "Shelved fix") {
+      const { author: _author, editor: _editor, created: _created, updated: _updated, contributors: _contributors, state: _state, review: _review, conditions: _conditions, ...candidate } = target
+      inputs.set(target.id, candidate)
+      for (const fix of target.fixes) visit(fix)
+      for (const dependency of target.dependencies) visit(dependency.id)
+    }
+  }
+  visit(id)
+  for (const question of rowsOf(state, "Question")) {
+    if (!fixes.has(question.fix) && !question.issues.some((issue) => issues.has(issue))) continue
+    const { author: _author, editor: _editor, created: _created, updated: _updated, ...ruling } = question
+    inputs.set(question.id, ruling)
+  }
+  return `sha256:${createHash("sha256").update(JSON.stringify({ target: id, inputs: [...inputs].sort(([left], [right]) => left.localeCompare(right)) })).digest("hex")}`
+}
+
+function requireSupportedClaim(issue: Issue): void {
+  if (!["verified", "assumed"].includes(issue.state) || issue.exit?.kind === "drop") {
+    refuse(`${issue.id} is ${issue.exit?.kind === "drop" ? "dropped" : issue.state}; support or resolve the claim before a clean review`)
   }
 }
 
@@ -536,6 +674,9 @@ function withText(text: string): string {
 }
 
 function decide(state: State, command: Command): Draft {
+  if ((command.actor === "reader" || state.mode === "single" && command.actor === "B") && !["issue.agree", "proposed-fix.mark", "proposed-fix.reject", "shelved-fix.review"].includes(command.type)) {
+    refuse("the fresh reader records assessments only; it cannot write or take work")
+  }
   const rows: Row[] = [...state.rows]
   const events: Event[] = []
   let next: State = state
@@ -565,11 +706,16 @@ function decide(state: State, command: Command): Draft {
       const seat = seatOf(command)
       if (state.mode !== "joint") refuse("cold passes import into the shared two-reviewer database")
       if (state.imported[seat]) refuse(`${seat} already imported`)
+      const unfinished = command.rows.filter((item) => item.kind === "Coverage" && item.state === "open").map((item) => item.id)
+      const missing = state.declared.filter((declared) => !command.rows.some((item) => item.kind === "Coverage" && item.coverage === declared.coverage && item.target === declared.target && item.state !== "open"
+        || declared.coverage === "cluster" && item.kind === "Issue" && item.clusters.includes(declared.target) && !["disproved", "duplicate"].includes(item.state)))
+      if (unfinished.length || missing.length) refuse(`finish cold coverage before importing: ${[...unfinished, ...missing.map((item) => `${item.coverage} ${item.target}`)].join(", ")}`)
       for (const imported of command.rows) {
         if (imported.kind !== "Coverage" && imported.kind !== "Issue") continue
         if (rows.some((candidate) => candidate.id === imported.id)) refuse(`${imported.id} already exists in the shared database`)
         rows.push(imported)
       }
+      for (const imported of command.rows) if (imported.kind === "Issue") requireParents({ ...state, rows }, imported.parents, imported.id)
       next = { ...state, imported: { ...state.imported, [seat]: true } }
       note("run", `${seat} imported ${command.rows.length} rows${command.rows.length > 0 ? `: ${command.rows.map((imported) => imported.id).join(", ")}` : ""}`)
       break
@@ -599,8 +745,8 @@ function decide(state: State, command: Command): Draft {
       requireSharedWriter(state, command)
       if (!LABELS.includes(command.label)) refuse(`label must be one of ${LABELS.join(", ")}`)
       certaintyIn(command.certainty, 1, 5, "certainty")
-      for (const parent of command.parents) row(state, parent, "Issue")
       const id = nextId(state, "I", seat)
+      requireParents(state, command.parents, id)
       const issue: Issue = {
         ...base(id, seat), kind: "Issue", label: command.label, labelReason: "", state: "new", certainty: command.certainty,
         facts: { ...command.facts, claim: nonempty(command.facts.claim, "claim"), site: nonempty(command.facts.site, "site") },
@@ -640,7 +786,7 @@ function decide(state: State, command: Command): Draft {
           ? certaintyIn(command.certainty, 3, 5, "a verified issue's certainty")
           : certaintyIn(command.certainty, 1, 5, "certainty")
       }
-      if (command.parents) { for (const parent of command.parents) row(state, parent, "Issue"); changes.parents = command.parents }
+      if (command.parents) { requireParents(state, command.parents, issue.id); changes.parents = command.parents }
       if (command.clusters) changes.clusters = command.clusters
       if (issue.state === "contested") { changes.state = "new"; changes.contestedBy = null; changes.probe = "" }
       changes.mark = null
@@ -673,14 +819,16 @@ function decide(state: State, command: Command): Draft {
     }
 
     case "issue.agree": {
-      const seat = seatOf(command)
+      const mark = reviewMark(state, command)
+      const seat = mark.by
       requireSharedWriter(state, command)
       const issue = target(state, command, "Issue")
       if (issue.editor === seat) refuse(`nobody marks their own work: ${issue.id} rev ${issue.rev} is yours`)
       if (issue.state !== "verified" && issue.state !== "assumed") refuse(`${issue.id} is ${issue.state}; agree with a verified or assumed issue, or verify, disprove, duplicate, correct, or contest it`)
+      for (const parent of proofIssues(state, issue.parents)) requireSupportedClaim(parent)
       if (issue.mark) refuse(`${issue.id} already carries ${issue.mark.by}'s mark`)
-      replace(rows, { ...issue, mark: { by: seat, at }, updated: at })
-      note(issue.id, `agreed by ${seat}`)
+      replace(rows, { ...issue, mark, updated: at })
+      note(issue.id, `agreed by ${seat}${mark.reader ? ` (${mark.reader}; assessment ${mark.assessment})` : ""}; basis ${command.basis}`)
       break
     }
 
@@ -794,6 +942,7 @@ function decide(state: State, command: Command): Draft {
       if (!options.includes(recommendation)) refuse("the recommendation is one of the options, spelled the same")
       if (command.fix) {
         const fix = row(state, command.fix, "Proposed fix")
+        if (fix.state === "dropped") refuse(`${fix.id} was dropped; a changed goal uses a new proposal`)
         if (!command.issues.every((id) => fix.issues.includes(id))) refuse(`${fix.id} does not answer every issue this question names`)
       }
       const id = nextId(state, "Q", seat)
@@ -814,11 +963,16 @@ function decide(state: State, command: Command): Draft {
       if (question.fix) {
         const fix = rowById(state, question.fix)
         if (fix?.kind === "Proposed fix") {
+          if (fix.state === "dropped") refuse(`${fix.id} was dropped; an answer cannot revive it`)
           const revised = revise(rows, fix, { disputes: 0, state: "draft", mark: null, rejection: "" }, fix.editor, at)
           clearDownstream(rows, revised, at)
         }
       }
-      for (const id of question.issues) clearDownstream(rows, row(state, id, "Issue"), at)
+      for (const id of question.issues) {
+        const issue = row(state, id, "Issue")
+        replace(rows, { ...issue, mark: null, updated: at })
+        clearDownstream(rows, issue, at)
+      }
       note(question.id, `answered: ${command.answer}`)
       break
     }
@@ -835,7 +989,7 @@ function decide(state: State, command: Command): Draft {
       requireTakes(state, seat, command.issues)
       const id = nextId(state, "P", seat)
       rows.push({
-        ...base(id, seat), kind: "Proposed fix", issues: command.issues, goal: command.goal, origin: command.origin, shape: nonempty(command.shape, "shape"),
+        ...base(id, seat), kind: "Proposed fix", owner: seat, contributors: [seat], issues: command.issues, goal: command.goal, origin: command.origin, shape: nonempty(command.shape, "shape"),
         sites: command.sites, rulings: command.rulings, test: command.test, cost: nonempty(command.cost, "cost"), guardrail: command.guardrail,
         coordination: command.coordination, disputes: 0, state: "draft", rejection: "", dropReason: "", mark: null,
       })
@@ -847,11 +1001,11 @@ function decide(state: State, command: Command): Draft {
       const seat = seatOf(command)
       requireShared(state, command)
       const fix = target(state, command, "Proposed fix")
-      if (fix.author !== seat) refuse(`${fix.id} is ${fix.author}'s proposal; reject it with a reason instead`)
+      if (fix.owner !== seat) refuse(`${fix.id} is owned by ${fix.owner ?? "nobody"}; take its released proposal before editing, or reject it with a reason`)
       if (fix.state === "dropped") refuse(`${fix.id} was dropped on the user's word; retain it and create a new proposal if the goal changes`)
       requireNoOpenQuestion(state, fix.issues, [fix.id])
       const { type: _type, actor: _actor, at: _at, id: _id, rev: _rev, ...shape } = command
-      const revised = revise(rows, fix, { ...shape, state: "draft", mark: null, rejection: "" }, seat, at)
+      const revised = revise(rows, fix, { ...shape, contributors: [...new Set([...fix.contributors, seat])], state: "draft", mark: null, rejection: "" }, seat, at)
       if (!revised.shape.trim() || !revised.cost.trim()) refuse("a proposed fix keeps its shape and cost")
       if (!revised.goal.trim() && revised.issues.length === 0) refuse("a proposed fix keeps its issues or feature goal")
       clearDownstream(rows, revised, at)
@@ -860,27 +1014,62 @@ function decide(state: State, command: Command): Draft {
       break
     }
 
-    case "proposed-fix.mark": {
+    case "proposed-fix.release":
+    case "proposed-fix.take": {
       const seat = seatOf(command)
       requireShared(state, command)
       const fix = target(state, command, "Proposed fix")
-      if (fix.author === seat) refuse(`nobody marks their own work: ${fix.id} is yours`)
+      const group = bundledFixes(state, fix)
+      const releasing = command.type === "proposed-fix.release"
+      if (releasing && state.checkout?.holder === seat) refuse("save the candidate and release the checkout before releasing its proposal")
+      for (const item of group) {
+        if (item.state === "dropped") refuse(`${item.id} was dropped; its candidate is retained as history`)
+        if (releasing ? item.owner !== seat : item.owner !== null) refuse(`${item.id} is ${item.owner ? `owned by ${item.owner}; only its owner releases it` : "already released"}`)
+      }
+      const issueIds = [...new Set(group.flatMap((item) => item.issues))]
+      if (!releasing) {
+        requireNoOpenQuestion(state, issueIds, group.map((item) => item.id))
+        for (const id of issueIds) {
+          const issue = row(state, id, "Issue")
+          if (issue.taken && issue.taken !== seat) refuse(`${id} is taken by ${issue.taken}; wait for its release`)
+        }
+      }
+      for (const item of group) {
+        const { releasedBy: _releasedBy, ...retained } = item
+        replace(rows, { ...retained, owner: releasing ? null : seat, ...(releasing ? { releasedBy: seat } : {}), updated: at })
+        note(item.id, releasing ? `released by ${seat}; candidate and evidence retained` : `taken by ${seat}; authorship, candidate and evidence retained`)
+      }
+      for (const id of issueIds) {
+        const issue = row(state, id, "Issue")
+        if (releasing && issue.taken === seat) replace(rows, { ...issue, taken: null, updated: at })
+        if (!releasing && !issue.exit && ["new", "verified", "assumed", "contested"].includes(issue.state)) replace(rows, { ...issue, taken: seat, updated: at })
+      }
+      break
+    }
+
+    case "proposed-fix.mark": {
+      const mark = reviewMark(state, command)
+      const seat = mark.by
+      requireShared(state, command)
+      const fix = target(state, command, "Proposed fix")
+      if (contributed(fix, seat)) refuse(`nobody marks their own work: ${fix.id} retains your contribution`)
       if (fix.state !== "draft") refuse(`${fix.id} is ${fix.state}`)
       requireNoOpenQuestion(state, fix.issues, [fix.id])
-      revise(rows, fix, { state: "marked", mark: { by: seat, at } }, fix.editor, at)
-      note(fix.id, `marked by ${seat}`)
+      revise(rows, fix, { state: "marked", mark }, fix.editor, at)
+      note(fix.id, `marked by ${seat}${mark.reader ? ` (${mark.reader}; assessment ${mark.assessment})` : ""}; basis ${command.basis}`)
       break
     }
 
     case "proposed-fix.reject": {
-      const seat = seatOf(command)
+      const mark = reviewMark(state, command)
+      const seat = mark.by
       requireShared(state, command)
       const fix = target(state, command, "Proposed fix")
-      if (fix.author === seat) refuse(`${fix.id} is yours; edit it instead`)
+      if (contributed(fix, seat)) refuse(`${fix.id} retains your contribution; edit it instead`)
       if (fix.state !== "draft") refuse(`${fix.id} is ${fix.state}`)
       const disputes = fix.disputes + 1
       revise(rows, fix, { state: "rejected", rejection: nonempty(command.reason, "reason"), disputes, mark: null }, fix.editor, at)
-      note(fix.id, `rejected by ${seat}: ${command.reason}`)
+      note(fix.id, `rejected by ${seat}${mark.reader ? ` (${mark.reader}; assessment ${mark.assessment})` : ""}: ${command.reason}; basis ${command.basis}`)
       break
     }
 
@@ -895,7 +1084,7 @@ function decide(state: State, command: Command): Draft {
       }
       for (const id of fix.issues) {
         const issue = row(state, id, "Issue")
-        if (issue.taken === fix.author) replace(rows, { ...issue, taken: null })
+        if (issue.taken === fix.owner) replace(rows, { ...issue, taken: null })
       }
       note(fix.id, `dropped on the user's word: ${command.reason}`)
       break
@@ -908,7 +1097,7 @@ function decide(state: State, command: Command): Draft {
       if (state.howFar === "report-only") refuse("report only: verify issues and write proposed fixes, change no code beyond probes")
       if (state.checkout?.holder !== seat) refuse("take the checkout before shelving; every edit in the shared checkout goes through it")
       const existing = command.type === "shelved-fix.set" ? target(state, command, "Shelved fix") : null
-      if (existing && existing.author !== seat) refuse(`${existing.id} is ${existing.author}'s shelve`)
+      if (existing && !ownsShelf(state, existing, seat)) refuse(`${existing.id} is owned through its proposals; take their released work before editing`)
       const fixes = command.type === "shelved-fix.add" ? command.fixes : existing!.fixes
       if (fixes.length === 0) refuse("a shelved fix names the proposed fixes it applies")
       const artifact = nonempty(command.artifact ?? existing?.artifact ?? "", "artifact: a saved candidate patch or shelve")
@@ -923,19 +1112,19 @@ function decide(state: State, command: Command): Draft {
       for (const fixId of fixes) {
         const fix = row(state, fixId, "Proposed fix")
         if (fix.state === "dropped") refuse(`${fix.id} was dropped; its candidate is retained as history`)
-        if (fix.author !== seat) refuse(`${fix.id} is ${fix.author}'s proposal; its author shelves it`)
+        if (fix.owner !== seat) refuse(`${fix.id} is owned by ${fix.owner ?? "nobody"}; its owner shelves it`)
         if (!isComplete(fix)) {
           refuse(`${fix.id} is a direction, not a proposal: it needs origin, shape, sites, rulings, test, and cost before it is shelved`)
         }
-        const other = shelvesForFix(state, fix.id).find((shelf) => shelf.id !== existing?.id)
+        const other = currentShelvesForFix(state, fix.id).find((shelf) => shelf.id !== existing?.id)
         if (other) refuse(`${fix.id} is already shelved as ${other.id}`)
         for (const id of fix.issues) issueIds.add(id)
       }
       requireNoOpenQuestion(state, [...issueIds], fixes)
       if (!existing) requireTakes(state, seat, [...issueIds])
       const shelf: ShelvedFix = {
-        ...(existing ?? base(id, seat)), kind: "Shelved fix", fixes, artifact, baseline, dependencies, validation, validationDigest,
-        state: "shelved", conditions: "", review: null, editor: seat, rev: (existing?.rev ?? 0) + 1, updated: at,
+        ...(existing ?? base(id, seat)), kind: "Shelved fix", contributors: [...new Set([...(existing?.contributors ?? []), seat])], fixes, artifact, baseline, dependencies, validation, validationDigest,
+        state: "shelved", conditions: existing?.conditions ?? "", review: null, editor: seat, rev: (existing?.rev ?? 0) + 1, updated: at,
       }
       replace(rows, shelf)
       if (existing) clearDownstream(rows, shelf, at)
@@ -951,7 +1140,7 @@ function decide(state: State, command: Command): Draft {
       const seat = seatOf(command)
       requireShared(state, command)
       const shelf = target(state, command, "Shelved fix")
-      if (shelf.author !== seat) refuse(`only its author requests re-review of ${shelf.id}`)
+      if (!ownsShelf(state, shelf, seat)) refuse(`only its owner requests re-review of ${shelf.id}`)
       if (shelf.state !== "conditions") refuse(`${shelf.id} is ${shelf.state}; re-review requests resolve outstanding conditions`)
       requireNoOpenQuestion(state, issuesOfShelf(state, shelf), shelf.fixes)
       requireDependencies(state, shelf.dependencies, shelf.id)
@@ -962,29 +1151,31 @@ function decide(state: State, command: Command): Draft {
     }
 
     case "shelved-fix.review": {
-      const seat = seatOf(command)
+      const mark = reviewMark(state, command)
+      const seat = mark.by
       requireShared(state, command)
       const shelf = target(state, command, "Shelved fix")
-      if (shelf.author === seat) refuse(`nobody marks their own work: ${shelf.id} is yours`)
+      if (contributed(shelf, seat)) refuse(`nobody marks their own work: ${shelf.id} retains your contribution`)
+      if (state.mode === "joint" && seat !== "reader") refuse("joint candidate reviews require a fresh context with LEDGER_ME=reader; status names its arranger")
       if (!["shelved", "conditions"].includes(shelf.state)) refuse(`${shelf.id} is ${shelf.state}`)
       requireNoOpenQuestion(state, issuesOfShelf(state, shelf), shelf.fixes)
       requireDependencies(state, shelf.dependencies, shelf.id)
       const conditions = command.conditions.trim()
       if (!conditions) {
-        for (const id of issuesOfShelf(state, shelf)) {
-          const issue = row(state, id, "Issue")
-          if (!["verified", "assumed"].includes(issue.state)) refuse(`${id} is ${issue.state}; support or resolve the claim before a clean review`)
-          if (issue.editor === seat && !issue.mark) refuse(`${id} rev ${issue.rev} was written by you; it needs an independent issue review`)
-          if (!issue.mark) replace(rows, { ...issue, mark: { by: seat, at }, updated: at })
+        for (const issue of proofIssues(state, issuesOfShelf(state, shelf))) {
+          requireSupportedClaim(issue)
+          if (issue.editor === seat && !issue.mark) refuse(`${issue.id} rev ${issue.rev} was written by you; it needs an independent issue review`)
+          if (!issue.mark) replace(rows, { ...issue, mark, updated: at })
         }
         for (const id of shelf.fixes) {
           const fix = row(state, id, "Proposed fix")
           if (!isComplete(fix)) refuse(`${fix.id} is a direction, not a proposal: it needs origin, shape, sites, rulings, test, and cost before a clean review`)
-          replace(rows, { ...fix, state: "marked", mark: { by: seat, at }, rejection: "", updated: at })
+          if (contributed(fix, seat) && !fix.mark) refuse(`${fix.id} retains your contribution; it needs an independent proposal review`)
+          if (!fix.mark) replace(rows, { ...fix, state: "marked", mark, rejection: "", updated: at })
         }
       }
-      replace(rows, { ...shelf, conditions, ...(conditions ? { state: "conditions" as const, review: null } : { state: "reviewed" as const, review: { by: seat, at } }), updated: at })
-      note(shelf.id, conditions ? `conditions from ${seat}: ${conditions}` : `reviewed clean by ${seat}`)
+      replace(rows, { ...shelf, conditions, ...(conditions ? { state: "conditions" as const, review: null } : { state: "reviewed" as const, review: mark }), updated: at })
+      note(shelf.id, `${conditions ? `conditions from ${seat}: ${conditions}` : `reviewed clean by ${seat}`}${mark.reader ? ` (${mark.reader}; assessment ${mark.assessment})` : ""}; basis ${command.basis}`)
       break
     }
 
@@ -1020,6 +1211,7 @@ function decide(state: State, command: Command): Draft {
 
     case "check-in.approve": {
       masterOf(command)
+      if (state.mode === "single" && command.executor === "B") refuse("the single run's B records assessments only; choose A or master as executor")
       if (state.howFar === "report-only") refuse("report only: nothing is checked in")
       if (command.shelves.length === 0) refuse("a check-in names the shelved fixes the user approved")
       requireSelection(state, command.shelves)
@@ -1103,8 +1295,28 @@ function add(list: Ready[], actor: Actor, command: CommandType, row: string, rea
 function shelfBlocked(state: State, shelf: ShelvedFix, visited = new Set<string>()): boolean {
   if (visited.has(shelf.id)) return false
   visited.add(shelf.id)
-  return rowsOf(state, "Question").some((question) => question.state === "open" && (shelf.fixes.includes(question.fix) || question.issues.some((id) => issuesOfShelf(state, shelf).includes(id))))
+  return rowsOf(state, "Question").some((question) => question.state === "open" && shelf.fixes.includes(question.fix))
+    || issuesOfShelf(state, shelf).some((id) => openQuestionFor(state, id))
     || shelf.dependencies.some((dependency) => shelfBlocked(state, row(state, dependency.id, "Shelved fix"), visited))
+}
+
+/** Pending assessments, not child activity. Ownership-only transfers keep the revision's editor. */
+export function freshReviews(state: State): readonly FreshReview[] {
+  if (state.mode !== "joint") return []
+  const reviews: FreshReview[] = []
+  const addReview = (work: ShelvedFix | ProposedFix, command: FreshReview["command"]) => {
+    if (!isSeat(work.editor)) refuse(`${work.id} has no reviewer editor`)
+    reviews.push({ row: work.id, rev: work.rev, arranger: otherSeat(work.editor), command })
+  }
+  for (const shelf of rowsOf(state, "Shelved fix")) {
+    if (shelf.state === "shelved" && isActiveShelf(state, shelf) && !shelfBlocked(state, shelf)) addReview(shelf, "shelved-fix.review")
+  }
+  if (state.howFar === "report-only") {
+    for (const fix of rowsOf(state, "Proposed fix")) {
+      if (fix.contributors.length > 1 && fix.state === "draft" && isActiveFix(state, fix) && currentShelvesForFix(state, fix.id).length === 0 && !fix.issues.some((id) => openQuestionFor(state, id)) && !rowsOf(state, "Question").some((question) => question.state === "open" && question.fix === fix.id)) addReview(fix, "proposed-fix.mark")
+    }
+  }
+  return reviews
 }
 
 export function ready(state: State, actor: Actor): readonly Ready[] {
@@ -1124,13 +1336,17 @@ export function ready(state: State, actor: Actor): readonly Ready[] {
     }
     return list
   }
+  if (actor === "reader") {
+    for (const review of freshReviews(state)) add(list, actor, review.command, review.row, `a fresh non-author context records its named assessment; arranger ${review.arranger}`)
+    return list
+  }
   const seat = actor
   const single = state.mode === "single"
 
   // Single mode: B is the fresh subagent that reviews diffs and nothing else.
   if (single && seat === "B") {
     for (const shelf of rowsOf(state, "Shelved fix")) {
-      if (shelf.state === "shelved" && shelf.author !== seat && isActiveShelf(state, shelf) && !shelfBlocked(state, shelf)) add(list, seat, "shelved-fix.review", shelf.id, "review the claim, candidate, and validation in a fresh context")
+      if (shelf.state === "shelved" && !contributed(shelf, seat) && isActiveShelf(state, shelf) && !shelfBlocked(state, shelf)) add(list, seat, "shelved-fix.review", shelf.id, "review the claim, candidate, and validation in a fresh context")
     }
     return list
   }
@@ -1150,7 +1366,7 @@ export function ready(state: State, actor: Actor): readonly Ready[] {
     if (!isSubstantive(issue) || issue.exit) continue
     if (openQuestionFor(state, issue.id)) continue
     if (issue.state === "new" && issue.editor === seat) add(list, seat, "issue.verify", issue.id, "verify, assume, or drop your issue")
-    const needsClaimReview = state.howFar === "report-only" || fixesForIssue(state, issue.id).some((fix) => shelvesForFix(state, fix.id).some((shelf) => shelf.author === seat && issue.editor !== seat))
+    const needsClaimReview = state.howFar === "report-only" || single && fixesForIssue(state, issue.id).some((fix) => currentShelvesForFix(state, fix.id).some((shelf) => ownsShelf(state, shelf, seat) && issue.editor !== seat))
     if (state.mode !== "cold" && needsClaimReview && ["new", "verified", "assumed"].includes(issue.state) && issue.editor !== seat && !issue.mark) {
       add(list, seat, "issue.agree", issue.id, "check the other reviewer's issue: agree, disprove, duplicate, correct, or contest")
     }
@@ -1169,14 +1385,26 @@ export function ready(state: State, actor: Actor): readonly Ready[] {
   for (const fix of rowsOf(state, "Proposed fix")) {
     if (!isActiveFix(state, fix)) continue
     if (fix.issues.some((id) => openQuestionFor(state, id)) || rowsOf(state, "Question").some((question) => question.state === "open" && question.fix === fix.id)) continue
-    const mine = fix.author === seat
-    const shelves = shelvesForFix(state, fix.id)
+    const mine = fix.owner === seat
+    const shelves = currentShelvesForFix(state, fix.id)
+    const yieldedToPeer = state.mode === "joint" && fix.releasedBy === seat && canTakeReleased(state, fix, otherSeat(seat))
+    if (canTakeReleased(state, fix, seat) && !yieldedToPeer) {
+      add(list, seat, "proposed-fix.take", fix.id, "resume the released proposal and its retained candidate and evidence")
+    }
     if (state.howFar === "report-only" && fix.state === "rejected") {
       if (mine) add(list, seat, "proposed-fix.set", fix.id, `revise: ${fix.rejection}`)
       continue
     }
-    if (state.howFar === "report-only" && fix.state === "draft" && !mine && state.mode === "joint") add(list, seat, "proposed-fix.mark", fix.id, "assess the proposed change and its evidence")
+    if (state.howFar === "report-only" && shelves.length === 0 && fix.state === "draft" && !contributed(fix, seat) && state.mode === "joint") add(list, seat, "proposed-fix.mark", fix.id, "assess the proposed change and its evidence")
     if (state.howFar === "report-only" || shelves.length > 0) continue
+    if (mine && state.mode === "joint") {
+      for (const id of fix.issues) {
+        const issue = row(state, id, "Issue")
+        if (isSubstantive(issue) && !issue.taken && !issue.exit && ["new", "verified", "assumed", "contested"].includes(issue.state) && !list.some((item) => item.command === "issue.take" && item.row === id)) {
+          add(list, seat, "issue.take", id, "resume the investigation before recording its replacement candidate")
+        }
+      }
+    }
     const owner = mine && (single || fix.issues.every((id) => { const issue = rowById(state, id) as Issue; return !isSubstantive(issue) || issue.taken === seat }))
     if (!owner) continue
     if (!isComplete(fix)) {
@@ -1189,11 +1417,11 @@ export function ready(state: State, actor: Actor): readonly Ready[] {
 
   for (const shelf of rowsOf(state, "Shelved fix")) {
     if (!isActiveShelf(state, shelf) || shelfBlocked(state, shelf)) continue
-    if (shelf.state === "shelved" && shelf.author !== seat) add(list, seat, "shelved-fix.review", shelf.id, "review the current claim, candidate, failure paths, and applicable evidence together")
-    if (state.howFar !== "report-only" && ["conditions", "stale"].includes(shelf.state) && shelf.author === seat) {
+    if (state.howFar !== "report-only" && ["conditions", "stale"].includes(shelf.state) && ownsShelf(state, shelf, seat)) {
       if (shelf.state === "conditions") add(list, seat, "shelved-fix.request-review", shelf.id, `if an observation or ruling resolves the conditions with candidate inputs and evidence unchanged, request re-review: ${shelf.conditions}`)
-      if (!state.checkout) add(list, seat, "checkout.take", shelf.id, `take the checkout and meet the conditions: ${shelf.conditions}`)
-      else if (state.checkout.holder === seat) add(list, seat, "shelved-fix.set", shelf.id, `meet the conditions and shelve again: ${shelf.conditions}`)
+      const work = shelf.state === "stale" ? `refresh dependencies and validation${withText(shelf.conditions)}` : `meet the conditions: ${shelf.conditions}`
+      if (!state.checkout) add(list, seat, "checkout.take", shelf.id, `take the checkout and ${work}`)
+      else if (state.checkout.holder === seat) add(list, seat, "shelved-fix.set", shelf.id, `${work}; shelve again`)
     }
   }
 
@@ -1206,7 +1434,7 @@ export function ready(state: State, actor: Actor): readonly Ready[] {
 export function isDone(state: State): boolean {
   if (state.mode === "cold") return false
   if (state.checkout) return false
-  if (ready(state, "A").length > 0 || ready(state, "B").length > 0) return false
+  if (ready(state, "A").length > 0 || ready(state, "B").length > 0 || ready(state, "reader").length > 0) return false
   return state.mode === "single" || (state.handedOff.A && state.handedOff.B)
 }
 
@@ -1221,6 +1449,7 @@ function rowList(items: readonly Ready[]): string {
 export function situation(state: State, actor: Actor): Situation {
   const open = rowsOf(state, "Question").filter((question) => question.state === "open").map((question) => question.id)
   const mine = ready(state, actor)
+  if (actor === "reader") return mine.length > 0 ? { kind: "working", detail: rowList(mine) } : { kind: "idle", detail: "no fresh assessment pending" }
   if (actor === "master") {
     if (mine.some((item) => item.command !== "question.answer")) return { kind: "working", detail: rowList(mine.filter((item) => item.command !== "question.answer")) }
     if (open.length > 0) return { kind: "waiting on user", detail: open.join(", ") }
@@ -1246,7 +1475,9 @@ export function situation(state: State, actor: Actor): Situation {
 /** The actors a database speaks for: the cold seat alone, both seats, or both seats and the master. */
 export function actorsOf(state: State): readonly Actor[] {
   if (state.mode === "cold") return state.seat ? [state.seat] : []
-  return state.mode === "single" ? ["A", "B"] : ["A", "B", "master"]
+  const actors: Actor[] = state.mode === "single" ? ["A", "B"] : ["A", "B", "master"]
+  if (freshReviews(state).length > 0 || state.rows.some((item) => (item.kind === "Proposed fix" || item.kind === "Shelved fix") && item.contributors.length > 1 || "mark" in item && item.mark?.by === "reader" || item.kind === "Shelved fix" && (state.mode === "joint" || item.review?.by === "reader"))) actors.push("reader")
+  return actors
 }
 
 export function situations(state: State): Partial<Record<Actor, Situation>> {
@@ -1270,11 +1501,19 @@ function notify(before: State, after: State, command: Command): Notification[] {
       messages.push({ to: seat, message: `ready for you: ${now.map((item) => item.row || item.reason).join(", ")}. Next: ${LEDGER} status` })
     }
   }
+  const previousReviews = freshReviews(before)
+  for (const seat of ["A", "B"] as const) {
+    const pending = freshReviews(after).filter((review) => review.arranger === seat && !previousReviews.some((previous) => previous.row === review.row && previous.rev === review.rev && previous.arranger === seat && reviewBasis(before, previous.row) === reviewBasis(after, review.row)))
+    if (pending.length > 0 && command.actor !== seat) messages.push({ to: seat, message: `fresh assessments for you to arrange or update: ${pending.map((review) => `${review.row}@${review.rev} basis=${reviewBasis(after, review.row)}`).join(", ")}. Check your working note for an existing child. Give changed inputs and their basis to that child for reassessment; do not start a duplicate reader. If no child exists, arrange a fresh context with LEDGER_ME=reader. Next: ${LEDGER} status` })
+  }
   if (command.type === "handoff" && isSeat(command.actor)) {
     const other = otherSeat(command.actor)
     const awaiting = ready(after, other)
+    const assessments = freshReviews(after).filter((review) => review.arranger === other)
     if (!isDone(after)) {
-      messages.push({ to: other, message: `${command.actor} handed off. ${awaiting.length === 0 ? "Nothing awaits you; hand off when your ready work is empty." : `Awaiting you: ${awaiting.map((item) => item.row || item.reason).join(", ")}.`} Next: ${LEDGER} status` })
+      const work = awaiting.length > 0 ? `Awaiting you: ${awaiting.map((item) => item.row || item.reason).join(", ")}.` : assessments.length > 0 ? "No other work awaits you." : "Nothing awaits you; hand off when your ready work is empty."
+      const fresh = assessments.length > 0 ? ` Pending fresh assessments arranged by you: ${assessments.map((review) => `${review.row}@${review.rev}`).join(", ")}. Check your working note for each child's state before starting a reader; pending does not mean no child is running.` : ""
+      messages.push({ to: other, message: `${command.actor} handed off. ${work}${fresh} Next: ${LEDGER} status` })
     }
   }
   if (command.type === "question.add") {

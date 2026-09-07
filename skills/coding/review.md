@@ -30,7 +30,7 @@ Read the changed files plus enough calling and owned code to understand behavior
 3. Run checks that discriminate the relevant claims. Investigate failures and distinguish regressions from established baseline failures.
 4. Record findings and coverage. In fix mode, continue directly through good-change.md, Develop the candidate and Review the result. Report-only mode retains examined proposals and experiments.
 
-Once a review has substantive findings or candidates, create its record per deep.md, Run directory and setup, using a single-seat review route for quick mode. A quick review that finds no issue needs only its scoped result and validation.
+Use findings.md, Working record, throughout the review, including before findings exist. A clean quick review records its scope and validation without inventing an issue or candidate.
 
 ## Report
 

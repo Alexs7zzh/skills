@@ -33,6 +33,14 @@ The ledger's certainty steps identify the basis of a claim, not a probability or
 
 A verified issue needs a retained evidence path and a supported claim at step 3, 4, or 5. A higher number does not expand what the evidence proves. A dismissal has the same burden as the claim it makes: “by design,” “engine noise,” and “not our fault” need the applicable ruling or evidence. Engine, plugin, and vendored code remain investigation targets when they determine the outcome.
 
+## Working record
+
+Use the ledger by default for substantive writing, quick review, and plain diagnosis, not only for deep or multi-agent work. Start or resume the record while gathering the goal and evidence; do not wait for a confirmed issue or candidate. Local setup is in [ledger.md](./ledger.md); two-family coordination is in deep.md when that mode is needed.
+
+Keep a short current note with the goal and rulings, live questions or hypotheses, useful evidence pointers, and the next action or blocker. Record consequential decisions and why an approach was rejected when that will prevent rediscovery. Notes can hold this working state before it fits a row. Add the rows below as real coverage, issues, decisions, and candidates arise; do not invent an issue or complete proposal merely to save a note. Recording a direction does not gate developing or testing it.
+
+Keep the note an index of current work; let rows own their recorded state, and link full logs and history instead of copying them. On resumption or a work switch, read that summary and the relevant rows and artifacts. Use a row's timeline when its history matters, rather than rereading the whole run. A note points to evidence; it does not upgrade a hypothesis, settle a user decision, or replace independent review. Update the record when useful state changes, not after every command. A clean review or inconclusive investigation can have notes and coverage without manufactured findings.
+
 ## Change records
 
 The database separates claims from implementations so changing one does not erase the other. The row names are:
@@ -68,11 +76,15 @@ A technical document contradicting an actual release contract is a defect; first
 
 When issues combine into a new failure, common cause, or different impact, record the combined claim and its links. Verify the new claim rather than stamping the same report again. Walk interactions between overlapping candidates before treating them as independent.
 
+An issue's `parents` are claims its proof depends on, not merely related topics. Reassess that claim and its downstream reviews when a parent changes; retain its evidence for the new assessment. Use clusters or notes for relationships that do not imply this dependence.
+
 Keep baseline and dependency revisions with every candidate and its evidence. Batch builds when useful, but name the combination tested. File overlap alone does not make changes inseparable; combine candidates when they depend on each other and record that reason.
 
 ## Continuity
 
 A material edit to a checked claim, proposal, candidate, or dependency invalidates reviews that rely on it, downstream only. Use notes for additional rationale or presentation changes that leave the checked content intact. A claim or proposal edit reopens the affected review without making an unchanged candidate's validation stale. An answered question also reopens affected reviews so they account for the ruling; the answer alone does not require a candidate edit. Keep outstanding review conditions and already-stale validation until resolved.
+
+An assessment identifies the inputs the reader received, not just the candidate revision. Capture the helper's review basis with the inputs supplied to the reader; the reader submits that same basis with the verdict. If a claim, proposal, ruling, proof parent, or candidate dependency changed, inspect the changed inputs and revisit the assessment before submitting a new basis. Ownership-only handoff does not change the basis. A rejected old submission requires reassessment, not a fabricated candidate edit or new validation run.
 
 Refresh the validation record when the candidate, baseline, or dependency candidates change, including when a dependency is dropped, explaining what was rerun and what remains applicable. Clearing a review is not a candidate revision and does not by itself require new validation content. The reviewer checks whether retained evidence supports the current claim and rulings; record a concrete condition if it does not. A filename pointing at an old green log is not fresh evidence.
 
@@ -101,6 +113,8 @@ When new evidence challenges a ruling, identify that evidence and the consequenc
 A run is ready to report when its scoped obligations have been checked or explicitly left open, candidates have their current review states, and remaining questions or evidence gaps say what would resolve them. Empty ready work permits a report; it does not turn unresolved work into clean work. Further passes need a remaining uncertainty or uncovered obligation, not a quota of repeated clean reviews.
 
 In fix mode, retain independently reviewed candidates until the user selects, changes, or drops them. Record a user-authorized drop of a proposed fix and its candidate with the reason, retaining its evidence and invalidating affected dependents. This is a terminal disposition, distinct from a reviewer's rejection during engineering discussion, and needs no check-in authorization. In report-only mode, retain the proposal and useful experiments for continuation. Neither mode needs a commit to finish its report.
+
+Dropping part of a bundled candidate makes that bundle historical, not its surviving proposals abandoned. Retain the old artifact; develop and review a new candidate for the surviving work. Questions and answers do not revive a dropped proposal. A changed goal uses a new proposal.
 
 Before checking in a selected candidate, verify its reviewed revision and dependency selection. A dependency must already be present or included in the authorized selection; otherwise explain the concrete choice. A drop or revision reopens only affected dependents. Record each authorized changeset and departure from the reviewed shape, then revalidate anything that departure changes.
 

@@ -10,7 +10,7 @@ Each document owns one kind of decision:
 - good-change.md owns turning a goal or issue into a reviewed change.
 - findings.md owns evidence, records, user decisions, continuity, and completion.
 - review.md and diagnose.md own how their inputs are gathered and investigated.
-- deep.md owns coordination and runtime mechanics; unreal.md owns conditional domain cues.
+- ledger.md owns common record setup and checkout mechanics; deep.md owns deep coordination and the two-family runtime; unreal.md owns conditional domain cues.
 
 A pointer names when to read its target. Keep field definitions and decision rules at their home; do not copy them into every route. Keep project and version facts conditional and verifiable against the target.
 

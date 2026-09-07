@@ -13,6 +13,7 @@ import {
   initialState,
   isSeat,
   rowById,
+  reviewBasis,
   transition,
   type Actor,
   type Command,
@@ -22,20 +23,25 @@ import {
   type Facts,
   type Label,
   type Moment,
-  type Notification,
   type Seat,
   type State,
 } from "./protocol.ts"
 import { isActor, renderReport, renderStatus, renderTimeline, summary, type Notes } from "./report.ts"
-import { StoreError, create, mutate, read, type Mutation } from "./store.ts"
+import { StoreError, create, deliveryOutcome, mutate, read, recordDelivery, unsettled, type Delivery, type Mutation } from "./store.ts"
 
 export class InputError extends Error {}
 
-const HELP = `ledger: the run's database. Set LEDGER_DIR=<run directory> and LEDGER_ME=<A|B|master>.
+const HELP = `ledger: the run's database. Set LEDGER_DIR=<run directory> and LEDGER_ME=<A|B|master|reader>.
 
 Rows carry a rev; every command on an existing row names the rev you read (rev=N).
 Evidence and validation paths name retained files; validation content is fingerprinted.
 Candidate dependency references are shelf-id@revision, separated by commas.
+Before assessing, retain the token from review-basis <I|P|S-id> or status.
+Issue agree, proposed-fix mark/reject, and shelved-fix review require basis=<that token>.
+If inputs change, reassess them before submitting a new basis; do not fetch a new token just to retry.
+The fresh reader records reviews only. Its issue agree, proposed-fix mark/reject,
+and shelved-fix review commands require reader=<fresh context name> assessment=<retained file>.
+Joint candidate reviews require LEDGER_ME=reader; status names the single arranger.
 
 init --single | --joint | --cold [--route review|diagnose|write] [--how-far fix|report-only|check-in] [--deep]
      [--names "A=<agent> B=<agent> master=<agent>"] [--hunks a,b] [--symptoms a,b] [--clusters a,b] [--scenarios a,b]
@@ -63,18 +69,23 @@ question answer <Q-id> rev=N answer=..                                master, th
 proposed-fix add (issues=<I-ids> | goal=<feature goal>) shape=.. cost=..
           [origin=<mechanism or requirement> sites= rulings= test=<validation plan> guardrail= coordination=]
 proposed-fix set <P-id> rev=N <field>=..
+proposed-fix release <P-id> rev=N | proposed-fix take <P-id> rev=N    transfer a released proposal and its bundled candidate; release checkout first
 proposed-fix mark <P-id> rev=N | proposed-fix reject <P-id> rev=N reason=..   optional discussion, no writing gate
 proposed-fix drop <P-id> rev=N reason=<the user's instruction>        retains candidate/evidence, invalidates dependents
 shelved-fix add fixes=<P-ids> artifact=<saved candidate> baseline=<exact base> validation=<record> [dependencies=<S-id@rev,...>]
 shelved-fix set <S-id> rev=N validation=<refreshed record> [artifact= baseline= dependencies=]
-shelved-fix request-review <S-id> rev=N reason=..                     author: conditions resolved without changing candidate inputs or invalidating evidence
+shelved-fix request-review <S-id> rev=N reason=..                     owner: conditions resolved without changing candidate inputs or invalidating evidence
 shelved-fix review <S-id> rev=N [conditions=..]                       clean, or conditions for the author
 checkout take purpose=.. | checkout baseline build=<log> test=<log> | checkout release [reason=..]
 check-in approve shelves=<S-ids> approval=<the user's words> [executor=<A|B|master>]     master
 check-in record <K-id> rev=N changeset=.. [departures=..] | check-in drop <K-id> rev=N reason=..
 import                                                                cold pass into the shared database
 handoff                                                               two-reviewer run, when ready work is empty
-status | report | timeline [A|B|master|<row-id>]      the run's record: who did and waited on what, or the argument on one row
+delivery show <D-id>                                                   retained notification and outcome history
+delivery retry|accept <D-id> rev=N checked=<recipient/runtime observation>   reconcile only this notification; never repeat the saved mutation
+delivery supersede <D-id> rev=N reason=<why its work no longer needs notification>
+review-basis <I|P|S-id>                         print the current material review-input token
+status | report | timeline [A|B|master|reader|<row-id>]      the run's record: who did and waited on what, or the argument on one row
 `
 
 // ---------------------------------------------------------------------------
@@ -86,8 +97,8 @@ function runDirectory(): string {
 
 function me(): Actor {
   const value = process.env.LEDGER_ME ?? ""
-  if (value === "A" || value === "B" || value === "master") return value
-  throw new InputError(`LEDGER_ME must be A, B, or master (got '${value || "unset"}')`)
+  if (isActor(value)) return value
+  throw new InputError(`LEDGER_ME must be A, B, master, or reader (got '${value || "unset"}')`)
 }
 
 function seatMe(): Seat {
@@ -116,9 +127,11 @@ function parse(tokens: readonly string[]): Parsed {
     const token = tokens[index]!
     if (token.startsWith("--")) {
       const equals = token.indexOf("=")
-      if (equals > 0) flags.set(token.slice(2, equals), token.slice(equals + 1))
-      else if (index + 1 < tokens.length && !tokens[index + 1]!.startsWith("--")) { flags.set(token.slice(2), tokens[index + 1]!); index += 1 }
-      else flags.set(token.slice(2), "true")
+      const key = equals > 0 ? token.slice(2, equals) : token.slice(2)
+      if (flags.has(key)) throw new InputError(`--${key} was given twice`)
+      if (equals > 0) flags.set(key, token.slice(equals + 1))
+      else if (index + 1 < tokens.length && !tokens[index + 1]!.startsWith("--")) { flags.set(key, tokens[index + 1]!); index += 1 }
+      else flags.set(key, "true")
       continue
     }
     const equals = token.indexOf("=")
@@ -142,6 +155,10 @@ function optional(fields: Fields, key: string, fallback = ""): string {
 
 function only(fields: Fields, allowed: readonly string[]): void {
   for (const key of fields.keys()) if (!allowed.includes(key)) throw new InputError(`unknown field ${key}=; allowed: ${allowed.join(", ")}`)
+}
+
+function noPositionals(parsed: Parsed): void {
+  if (parsed.positional.length > 0) throw new InputError(`unexpected arguments: ${parsed.positional.join(" ")}`)
 }
 
 function integer(fields: Fields, key: string): number {
@@ -226,14 +243,29 @@ function dependencies(fields: Fields): Dependency[] {
 }
 
 function validation(fields: Fields): { validation: string; validationDigest: string } {
-  const path = log(required(fields, "validation"), "validation")
+  const retained = retainRecord(required(fields, "validation"), "validation")
+  return { validation: retained.path, validationDigest: retained.digest }
+}
+
+function retainRecord(value: string, kind: "validation" | "assessment"): { path: string; digest: string } {
+  const path = log(value, kind)
   const contents = readFileSync(resolve(runDirectory(), path))
-  if (!contents.toString("utf8").trim()) throw new InputError("the validation record must not be empty")
-  const validationDigest = createHash("sha256").update(contents).digest("hex")
-  const retained = join("validation", `${validationDigest}.txt`)
-  mkdirSync(join(runDirectory(), "validation"), { recursive: true })
+  if (!contents.toString("utf8").trim()) throw new InputError(`the ${kind} record must not be empty`)
+  const digest = createHash("sha256").update(contents).digest("hex")
+  const retained = join(kind, `${digest}.txt`)
+  mkdirSync(join(runDirectory(), kind), { recursive: true })
   writeFileSync(join(runDirectory(), retained), contents)
-  return { validation: retained, validationDigest }
+  return { path: retained, digest }
+}
+
+const ASSESSMENT_KEYS = ["basis", "reader", "assessment"]
+
+function assessment(actor: Actor, fields: Fields): { basis: string; reader?: string; assessment?: string } {
+  if (actor !== "reader") {
+    if (["reader", "assessment"].some((key) => fields.has(key))) throw new InputError("a fresh context records its own assessment with LEDGER_ME=reader")
+    return { basis: required(fields, "basis") }
+  }
+  return { reader: required(fields, "reader"), assessment: retainRecord(required(fields, "assessment"), "assessment").path, basis: required(fields, "basis") }
 }
 
 // ---------------------------------------------------------------------------
@@ -251,8 +283,12 @@ function coldPath(seat: Seat): string {
 function activePath(actor: Actor): string {
   const shared = sharedPath()
   if (!existsSync(shared)) throw new InputError(`no ledger at ${shared}; run init first`)
-  if (!isSeat(actor) || !existsSync(coldPath(actor))) return shared
-  return read(shared).state.imported[actor] ? shared : coldPath(actor)
+  if (!isSeat(actor)) return shared
+  const state = read(shared).state
+  if (state.mode !== "joint" || state.imported[actor]) return shared
+  const cold = coldPath(actor)
+  if (!existsSync(cold)) throw new InputError("finish and import your cold pass before shared work; first run init --cold")
+  return cold
 }
 
 /**
@@ -302,23 +338,133 @@ function checkNotes(state: State, seat: Seat): void {
 // ---------------------------------------------------------------------------
 // Messages
 
-function deliver(notifications: readonly Notification[], names: Readonly<Record<Actor, string>>): void {
+function deliver(path: string, notifications: readonly Delivery[], checked = "initial delivery", explicit = false): boolean {
   const configured = (process.env.LEDGER_NOTIFY ?? "herdr agent prompt").trim()
+  let confirmed = true
   for (const notification of notifications) {
-    const to = names[notification.to] || notification.to
-    if (configured && configured !== "print") {
-      const [command, ...prefix] = configured.split(/\s+/)
-      const child = spawnSync(command!, [...prefix, to, notification.message], { encoding: "utf8", timeout: 10_000 })
-      if (!child.error && child.status === 0) continue
+    const to = notification.address
+    const message = notification.message
+    let current = notification
+    let attempted = false
+    const outcome = (value: "unconfirmed" | "accepted" | "printed", note: string) => {
+      current = recordDelivery(path, current.id, current.updates.length, { at: now(), actor: me(), outcome: value, note })
     }
-    console.log(`message for ${to}: ${notification.message}`)
+    try {
+      if (configured && configured !== "print") {
+        // A killed process leaves this attempt visibly unconfirmed even if the provider accepted it.
+        outcome("unconfirmed", `${checked}; transport attempt started, acceptance not yet recorded`)
+        attempted = true
+        const [command, ...prefix] = configured.split(/\s+/)
+        const child = spawnSync(command!, [...prefix, to, message], { encoding: "utf8", timeout: 10_000 })
+        if (!child.error && child.status === 0) {
+          outcome("accepted", "transport accepted delivery")
+          console.log(`delivery accepted to ${to}`)
+          continue
+        }
+        confirmed = false
+        const failure = child.error?.message ?? (child.signal ? `signal ${child.signal}` : `exit ${child.status}`)
+        console.error(`delivery not confirmed to ${to}: ${failure}`)
+        for (const diagnostic of [child.stderr, child.stdout]) if (diagnostic?.trim()) console.error(diagnostic.trim())
+        const record = JSON.stringify({
+          id: notification.id, at: now(), actor: me(), to, command: [command, ...prefix], message,
+          status: child.status, signal: child.signal, error: child.error?.message ?? null,
+          stdout: child.stdout, stderr: child.stderr,
+        }, null, 2)
+        const diagnosticPath = join(runDirectory(), "delivery", `${createHash("sha256").update(record).digest("hex")}.json`)
+        let detail = failure
+        try {
+          mkdirSync(dirname(diagnosticPath), { recursive: true })
+          writeFileSync(diagnosticPath, record)
+          console.error(`delivery diagnostic: ${diagnosticPath}`)
+          detail += `; diagnostic: ${diagnosticPath}`
+        } catch (error) {
+          detail += `; could not retain delivery diagnostic: ${error instanceof Error ? error.message : String(error)}`
+          console.error(detail)
+        }
+        outcome("unconfirmed", detail)
+      } else {
+        outcome("printed", `${checked}; LEDGER_NOTIFY intentionally disabled transport`)
+        console.log(`delivery disabled by LEDGER_NOTIFY; message not sent to ${to}`)
+      }
+    } catch (error) {
+      if (explicit && !attempted && error instanceof StoreError) throw error
+      confirmed = false
+      console.error(`delivery ${notification.id} not completed: ${error instanceof Error ? error.message : String(error)}; read status before reconciliation`)
+    }
+    console.log(`message for ${to}: ${message}`)
   }
+  return confirmed
 }
 
-function report(result: Mutation, actor: Actor, line: string): void {
-  deliver(result.notifications, result.state.names)
+function showDelivery(delivery: Delivery): string {
+  return [
+    `${delivery.id} rev=${delivery.updates.length}: ${deliveryOutcome(delivery)}; sender ${delivery.sender}; recipient ${delivery.to} (${delivery.address}); successor ${delivery.successor}`,
+    delivery.message,
+    ...delivery.updates.map((update) => `${update.at} ${update.actor}: ${update.outcome}: ${update.note}`),
+  ].join("\n")
+}
+
+function unsettledText(deliveries: readonly Delivery[]): string {
+  const pending = deliveries.filter(unsettled)
+  if (pending.length === 0) return ""
+  return [
+    "## Unsettled delivery",
+    "",
+    "The sender reconciles; its successor or master takes over if it cannot resume. Check the recipient/runtime before retrying or recording acceptance; a timeout or interruption may follow acceptance. Domain report-readiness does not settle delivery.",
+    ...pending.flatMap((delivery) => [
+      showDelivery(delivery),
+      `Next: "$LEDGER_DIR/bin/ledger.ts" delivery retry ${delivery.id} rev=${delivery.updates.length} checked=<recipient/runtime observation>, or delivery accept with evidence it was accepted. If obsolete, delivery supersede ${delivery.id} rev=${delivery.updates.length} reason=<why no notification is needed>.`,
+    ]),
+  ].join("\n")
+}
+
+function showUnsettled(path: string): void {
+  const text = unsettledText(read(path).deliveries)
+  if (text) console.log(`\n${text}`)
+}
+
+function reconcileDelivery(parsed: Parsed): number {
+  const verb = parsed.positional.shift()
+  const id = oneId(parsed, "D")
+  const path = sharedPath()
+  const state = read(path).state
+  const actor = me()
+  if (state.mode === "joint" && isSeat(actor) && !state.imported[actor]) throw new InputError("finish and import your cold pass before reading shared delivery")
+  if (verb === "show") {
+    only(parsed.fields, [])
+    const delivery = read(path).deliveries.find((item) => item.id === id)
+    if (!delivery) throw new InputError(`no delivery ${id}; read status`)
+    console.log(showDelivery(delivery))
+    return 0
+  }
+  if (verb === "supersede") {
+    only(parsed.fields, ["rev", "reason"])
+    console.log(showDelivery(recordDelivery(path, id, rev(parsed.fields), { at: now(), actor, outcome: "superseded", note: required(parsed.fields, "reason") })))
+    return 0
+  }
+  if (verb !== "retry" && verb !== "accept") throw new InputError("delivery takes show, retry, accept, or supersede")
+  only(parsed.fields, ["rev", "checked"])
+  const checked = required(parsed.fields, "checked")
+  const revision = rev(parsed.fields)
+  if (verb === "accept") {
+    console.log(showDelivery(recordDelivery(path, id, revision, { at: now(), actor: me(), outcome: "accepted", note: `recipient/runtime checked: ${checked}` })))
+    return 0
+  }
+  const delivery = read(path).deliveries.find((item) => item.id === id)
+  if (!delivery) throw new InputError(`no delivery ${id}; read status`)
+  if (delivery.updates.length !== revision) throw new InputError(`${id} is at rev ${delivery.updates.length}; read its delivery record again`)
+  const confirmed = deliver(path, [delivery], `recipient/runtime checked before retry: ${checked}`, true)
+  showUnsettled(path)
+  return confirmed ? 0 : 2
+}
+
+function report(result: Mutation, actor: Actor, line: string): number {
   console.log(line)
+  const confirmed = deliver(result.path, result.notifications)
   console.log(summary(result.state, actor))
+  showUnsettled(result.path)
+  if (!confirmed) console.error("ledger: mutation was saved; do not repeat it. Check the runtime and recipient before delivering the printed message; a timeout may have delivered it. Follow the task's stop rule before recovery.")
+  return confirmed ? 0 : 2
 }
 
 // ---------------------------------------------------------------------------
@@ -326,12 +472,18 @@ function report(result: Mutation, actor: Actor, line: string): void {
 
 function init(parsed: Parsed): void {
   const flags = parsed.flags
+  only(parsed.fields, [])
+  noPositionals(parsed)
+  for (const flag of ["single", "joint", "cold", "deep"]) {
+    if (flags.has(flag) && flags.get(flag) !== "true") throw new InputError(`--${flag} is a switch; omit it instead of supplying a value`)
+  }
   const actor = me()
   const directory = runDirectory()
   const at = now()
   const modes = ["single", "joint", "cold"].filter((mode) => flags.has(mode))
   if (modes.length !== 1) throw new InputError("init needs exactly one of --single, --joint, --cold")
   if (modes[0] === "cold") {
+    if (flags.size !== 1) throw new InputError("--cold inherits the joint run's settings; supply no other init flags")
     const seat = seatMe()
     const shared = read(sharedPath()).state
     if (shared.mode !== "joint") throw new InputError("--cold belongs to a two-reviewer run")
@@ -346,13 +498,17 @@ function init(parsed: Parsed): void {
   const mode = modes[0] as "single" | "joint"
   if (mode === "single" && actor !== "A") throw new InputError("a single run is seat A: LEDGER_ME=A")
   if (mode === "joint" && actor !== "master") throw new InputError("the master creates a two-reviewer run: LEDGER_ME=master")
-  const names: Record<Actor, string> = { A: "A", B: "B", master: "master" }
+  const names: Record<Actor, string> = { A: "A", B: "B", master: "master", reader: "fresh reader" }
+  const named = new Set<string>()
   for (const assignment of tokens(optional(flags, "names"))) {
     const [key, ...rest] = assignment.split("=")
-    if (!(key === "A" || key === "B" || key === "master") || rest.length === 0) throw new InputError("--names takes A=<agent> B=<agent> master=<agent>")
+    if (!(key === "A" || key === "B" || key === "master") || !rest.join("=")) throw new InputError("--names takes nonempty A=<agent> B=<agent> master=<agent>")
+    if (named.has(key)) throw new InputError(`--names gives ${key} twice`)
+    named.add(key)
     names[key] = rest.join("=")
   }
   if (mode === "joint" && (names.A === "A" || names.B === "B")) throw new InputError("--names must name both reviewer agents so the script can message them")
+  if (mode === "joint" && new Set([names.A, names.B, names.master]).size !== 3) throw new InputError("--names must identify three distinct agents for A, B, and master")
   const state = initialState({
     mode,
     deep: flags.get("deep") === "true",
@@ -415,7 +571,7 @@ function issueCommand(verb: string, parsed: Parsed, state: State): Command {
     }
     case "verify": only(fields, ["rev", "certainty", "evidence"]); return { type: "issue.verify", ...base, certainty: integer(fields, "certainty"), evidence: log(required(fields, "evidence"), "evidence") }
     case "assume": only(fields, ["rev", "certainty", "assumption", "reason"]); return { type: "issue.assume", ...base, certainty: integer(fields, "certainty"), assumption: required(fields, "assumption"), reason: required(fields, "reason") }
-    case "agree": only(fields, ["rev"]); return { type: "issue.agree", ...base }
+    case "agree": only(fields, ["rev", ...ASSESSMENT_KEYS]); return { type: "issue.agree", ...base, ...assessment(actor, fields) }
     case "contest": only(fields, ["rev", "probe"]); return { type: "issue.contest", ...base, probe: required(fields, "probe") }
     case "probe": only(fields, ["rev", "verdict", "certainty", "evidence"]); return { type: "issue.probe", ...base, verdict: choice(required(fields, "verdict"), ["verified", "disproved"] as const, "verdict"), certainty: integer(fields, "certainty"), evidence: log(required(fields, "evidence"), "evidence") }
     case "disprove": only(fields, ["rev", "certainty", "evidence"]); return { type: "issue.disprove", ...base, certainty: integer(fields, "certainty"), evidence: log(required(fields, "evidence"), "evidence") }
@@ -432,7 +588,9 @@ function build(noun: string, verb: string, parsed: Parsed, state: State): Comman
   const actor = me()
   const at = now()
   const fields = parsed.fields
+  if (verb === "add" || noun === "run" || noun === "checkout" || noun === "handoff" || noun === "check-in" && verb === "approve") noPositionals(parsed)
   if (noun === "handoff") {
+    only(fields, [])
     // The rules first (ready work, checkout), then the notes the report needs.
     const command: Command = { type: "handoff", actor, at }
     const dry = transition(state, command)
@@ -474,11 +632,15 @@ function build(noun: string, verb: string, parsed: Parsed, state: State): Comman
       return { ...command, ...changes } as Command
     }
     case "proposed-fix mark":
+      only(fields, ["rev", ...ASSESSMENT_KEYS])
+      return { type: "proposed-fix.mark", actor, at, id: oneId(parsed, "P"), rev: rev(fields), ...assessment(actor, fields) }
+    case "proposed-fix release":
+    case "proposed-fix take":
       only(fields, ["rev"])
-      return { type: "proposed-fix.mark", actor, at, id: oneId(parsed, "P"), rev: rev(fields) }
+      return { type: verb === "release" ? "proposed-fix.release" : "proposed-fix.take", actor, at, id: oneId(parsed, "P"), rev: rev(fields) }
     case "proposed-fix reject":
-      only(fields, ["rev", "reason"])
-      return { type: "proposed-fix.reject", actor, at, id: oneId(parsed, "P"), rev: rev(fields), reason: required(fields, "reason") }
+      only(fields, ["rev", "reason", ...ASSESSMENT_KEYS])
+      return { type: "proposed-fix.reject", actor, at, id: oneId(parsed, "P"), rev: rev(fields), reason: required(fields, "reason"), ...assessment(actor, fields) }
     case "proposed-fix drop":
       only(fields, ["rev", "reason"])
       return { type: "proposed-fix.drop", actor, at, id: oneId(parsed, "P"), rev: rev(fields), reason: required(fields, "reason") }
@@ -498,8 +660,8 @@ function build(noun: string, verb: string, parsed: Parsed, state: State): Comman
       only(fields, ["rev", "reason"])
       return { type: "shelved-fix.request-review", actor, at, id: oneId(parsed, "S"), rev: rev(fields), reason: required(fields, "reason") }
     case "shelved-fix review":
-      only(fields, ["rev", "conditions"])
-      return { type: "shelved-fix.review", actor, at, id: oneId(parsed, "S"), rev: rev(fields), conditions: optional(fields, "conditions") }
+      only(fields, ["rev", "conditions", ...ASSESSMENT_KEYS])
+      return { type: "shelved-fix.review", actor, at, id: oneId(parsed, "S"), rev: rev(fields), conditions: optional(fields, "conditions"), ...assessment(actor, fields) }
     case "checkout take":
       only(fields, ["purpose"])
       return { type: "checkout.take", actor, at, purpose: required(fields, "purpose") }
@@ -524,7 +686,7 @@ function build(noun: string, verb: string, parsed: Parsed, state: State): Comman
   }
 }
 
-function importCold(): void {
+function importCold(): number {
   const seat = seatMe()
   const cold = coldPath(seat)
   if (!existsSync(cold)) throw new InputError(`no cold database at ${cold}; run init --cold first`)
@@ -532,7 +694,7 @@ function importCold(): void {
   if (snapshot.state.mode !== "cold") throw new InputError(`${cold} is not a cold database`)
   const rows = snapshot.state.rows.filter((row) => row.kind === "Coverage" || row.kind === "Issue")
   const result = mutate(sharedPath(), () => ({ type: "cold.import", actor: seat, at: now(), rows }))
-  report(result, seat, `imported ${rows.length} rows from ${seat}'s cold pass`)
+  return report(result, seat, `imported ${rows.length} rows from ${seat}'s cold pass`)
 }
 
 function printReport(): void {
@@ -547,7 +709,7 @@ function printReport(): void {
       if (state.mode === "single" || state.handedOff[seat]) checkNotes(state, seat)
     }
   }
-  const text = renderReport(state, record(actor), readNotes(state))
+  const text = [renderReport(state, record(actor), readNotes(state)), unsettledText(snapshot.deliveries)].filter(Boolean).join("\n")
   const destination = join(runDirectory(), "report.md")
   writeFileSync(destination, text)
   console.log(text)
@@ -560,11 +722,33 @@ export function main(argv: readonly string[]): number {
     const [noun = "", ...rest] = argv
     if (noun === "" || noun === "--help" || noun === "-h" || noun === "help") { console.log(HELP); return 0 }
     const parsed = parse(rest)
-    const nouns = ["init", "status", "report", "timeline", "import", "handoff", "run", "coverage", "issue", "question", "proposed-fix", "shelved-fix", "checkout", "check-in"]
+    const nouns = ["init", "status", "report", "timeline", "review-basis", "import", "handoff", "run", "coverage", "issue", "question", "proposed-fix", "shelved-fix", "checkout", "check-in", "delivery"]
     if (!nouns.includes(noun)) throw new InputError(`unknown command '${noun}'.\n${HELP}`)
+    const allowedFlags = noun === "init" ? ["single", "joint", "cold", "deep", "route", "how-far", "names", ...COVERAGE_KINDS.map(kind => `${kind}s`)] : []
+    for (const flag of parsed.flags.keys()) {
+      if (!allowedFlags.includes(flag)) throw new InputError(`unknown flag --${flag}; use the command's documented key=value fields or init flags`)
+    }
     if (noun === "init") { init(parsed); return 0 }
     const actor = me()
-    if (noun === "status") { console.log(renderStatus(read(activePath(actor)).state, actor)); return 0 }
+    if (noun === "review-basis") {
+      only(parsed.fields, [])
+      if (parsed.positional.length !== 1) throw new InputError("review-basis names exactly one issue, proposal, or candidate")
+      const state = read(activePath(actor)).state
+      const target = rowById(state, parsed.positional[0]!)
+      if (!target || !["Issue", "Proposed fix", "Shelved fix"].includes(target.kind)) throw new InputError("review-basis names an existing issue, proposal, or candidate")
+      console.log(reviewBasis(state, target.id))
+      return 0
+    }
+    if (["status", "report", "timeline", "import"].includes(noun)) {
+      only(parsed.fields, [])
+      if (noun !== "timeline") noPositionals(parsed)
+    }
+    if (noun === "status") {
+      const path = activePath(actor)
+      console.log(renderStatus(read(path).state, actor))
+      showUnsettled(path)
+      return 0
+    }
     if (noun === "report") { printReport(); return 0 }
     if (noun === "timeline") {
       const chosen = parsed.positional[0]
@@ -574,13 +758,13 @@ export function main(argv: readonly string[]): number {
       console.log(renderTimeline(events, chosen))
       return 0
     }
-    if (noun === "import") { importCold(); return 0 }
+    if (noun === "import") return importCold()
+    if (noun === "delivery") return reconcileDelivery(parsed)
     const verb = noun === "handoff" ? "" : parsed.positional.shift() ?? ""
     const path = activePath(actor)
     const result = mutate(path, (state) => build(noun, verb, parsed, state))
     const last = result.events.at(-1)
-    report(result, actor, last ? `${last.row}: ${last.note}` : "recorded")
-    return 0
+    return report(result, actor, last ? `${last.row}: ${last.note}` : "recorded")
   } catch (error) {
     if (error instanceof InputError || error instanceof StoreError) {
       console.error(`ledger: ${error.message}`)

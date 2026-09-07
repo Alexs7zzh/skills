@@ -35,7 +35,7 @@ If the full loop is unavailable, retain the best signal, what it establishes, an
 4. Develop a candidate as understanding becomes concrete, per good-change.md. The reproducer and useful experiments stay with the change; the candidate can test a causal hypothesis before another reviewer agrees. Trace sibling mechanisms and related causes before claiming the wider problem resolved.
 5. Validate, retain, and independently review the candidate through good-change.md. Report-only work retains its examined proposal and experiments for later continuation.
 
-Create a single-seat diagnosis record per deep.md, Run directory and setup, or use the shared record in a deep run. Cover every input cluster with a supported cause or an explicit gap; an export assertion alone is not verification of a code cause.
+Use findings.md, Working record, from the initial investigation, or continue the shared record in a deep run. Cover every input cluster with a supported cause or an explicit gap; an export assertion alone is not verification of a code cause.
 
 ## Report
 
