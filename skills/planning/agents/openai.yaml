@@ -1,0 +1,4 @@
+interface:
+  display_name: "Planning"
+  short_description: "Clarify intent, write briefs, and organize work by real dependencies"
+  default_prompt: "Use $planning to clarify this work and organize the next steps."

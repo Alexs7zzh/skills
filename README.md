@@ -26,6 +26,7 @@ The repository publishes these skills:
 
 - `agent-messaging` writes prompts, briefs, dispatches, and handoffs that another agent can act on.
 - `coding` handles code changes, reviews, and diagnosis.
+- `planning` clarifies intent, writes briefs, and organizes work by real dependencies.
 - `skill-authoring` creates, reviews, tests, and maintains agent skills.
 
 ## Update
