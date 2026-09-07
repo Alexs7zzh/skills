@@ -213,6 +213,118 @@ test("checkout release renews the waiting author's work even when no poll saw th
   assert.equal(f.prompts().length, 2, "the renewed opportunity still sends only once")
 })
 
+test("an unchanged checkout duty that ran then stalled wakes master once with its reason", () => {
+  const f = fixture()
+  f.ok("B", "checkout", "take", "purpose=inspect candidate")
+  f.bind(); f.resume()
+  f.runtime.agents[1]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 1)
+  f.once()
+  assert.equal(f.prompts().length, 1, "acceptance alone is not a stall")
+  f.runtime.agents[1]!.agent_status = "working"; f.saveRuntime(); f.once()
+  f.runtime.agents[1]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 1, "busy master pulls work without interruption")
+  f.runtime.agents[2]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 2, "idle master receives the unresolved stall")
+  assert.equal(f.prompts().at(-1)![2], "pane-2")
+  assert.match(f.prompts().at(-1)![3]!, /B.*stalled/)
+  assert.match(f.ok("master", "coordinate", "status"), /master:.*B.*stalled/)
+  f.once(); f.once()
+  f.runtime.agents[2]!.agent_status = "working"; f.saveRuntime(); f.once()
+  f.runtime.agents[2]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 2, "observed master activity does not authorize another alert")
+})
+
+test("unavailable and blocked reviewers escalate only current outstanding duties", () => {
+  for (const status of ["blocked", "unknown", "missing", "changed", "unbound"]) {
+    const f = fixture()
+    f.ok("B", "checkout", "take", "purpose=inspect candidate")
+    f.bind(); f.resume()
+    if (status === "missing") f.runtime.agents.splice(1, 1)
+    else if (status === "changed") f.runtime.agents[1]!.agent_session.value = "replacement"
+    else if (status === "unbound") {
+      const db = new DatabaseSync(join(f.directory, "coordination.db"))
+      db.exec("UPDATE control SET value=json_remove(value, '$.bindings.B')"); db.close()
+    } else f.runtime.agents[1]!.agent_status = status
+    f.runtime.agents.find(agent => agent.name === "lead")!.agent_status = "idle"
+    f.saveRuntime(); f.once(); f.once()
+    assert.equal(f.prompts().length, 1, status)
+    assert.equal(f.prompts()[0]![2], "pane-2")
+    assert.ok(f.prompts()[0]![3]!.includes(`B: ${status}`))
+    f.ok("B", "checkout", "release"); f.ok("B", "handoff"); f.once()
+    assert.equal(f.prompts().length, 1, "no alert after outstanding duties are resolved")
+    assert.doesNotMatch(f.ok("master", "coordinate", "status"), /master attention required/)
+  }
+})
+
+test("recovery before master becomes idle cancels a stall and normal handoff never escalates", () => {
+  const f = fixture()
+  f.bind(); f.resume()
+  f.runtime.agents[1]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  f.runtime.agents[1]!.agent_status = "working"; f.saveRuntime(); f.once()
+  f.runtime.agents[1]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  f.ok("B", "handoff")
+  f.runtime.agents[2]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 1, "resolved stall leaves no queued master alert")
+  f.runtime.agents[0]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  f.runtime.agents[0]!.agent_status = "working"; f.saveRuntime(); f.once()
+  f.ok("A", "handoff")
+  f.runtime.agents[0]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 3, "normal completion adds only A's wake and master's report")
+  assert.doesNotMatch(f.prompts().at(-1)![3]!, /stalled|attention required/)
+})
+
+test("master alert coverage survives partial recovery and ordinary work changes", () => {
+  const f = fixture()
+  f.bind(); f.resume()
+  f.runtime.agents[0]!.agent_status = "blocked"
+  f.runtime.agents[1]!.agent_status = "blocked"
+  f.runtime.agents[2]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 1)
+  f.runtime.agents[0]!.agent_status = "working"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 1, "removing A's alert must not redeliver B's")
+  f.question("keep draft?"); f.once()
+  assert.equal(f.prompts().length, 2, "a new user question still wakes master")
+  f.runtime.agents[1]!.agent_status = "working"; f.saveRuntime(); f.once(); f.once()
+  assert.equal(f.prompts().length, 2, "resolving B must not redeliver the same question")
+})
+
+test("checked master retry overrides an older exact alert after partial recovery", () => {
+  const f = fixture()
+  f.bind(); f.resume()
+  f.runtime.agents[1]!.agent_status = "blocked"
+  f.runtime.agents[2]!.agent_status = "idle"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 1, "B alert is delivered first")
+  f.runtime.agents[0]!.agent_status = "blocked"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 2, "A plus B alert is delivered next")
+  f.runtime.agents[0]!.agent_status = "working"; f.saveRuntime(); f.once()
+  assert.equal(f.prompts().length, 2, "partial recovery alone sends nothing")
+  f.ok("master", "coordinate", "retry", "seat=master", "checked=master inspected outstanding B duty and requests another prompt")
+  f.once()
+  assert.equal(f.prompts().length, 3, "checked retry covers B despite the older accepted exact-B alert")
+  assert.match(f.prompts().at(-1)![3]!, /B: blocked/)
+  assert.doesNotMatch(f.prompts().at(-1)![3]!, /A: blocked/)
+  f.once(); f.once()
+  assert.equal(f.prompts().length, 3, "the checked retry still sends only once")
+})
+
+test("master escalation respects pause and retains ambiguous delivery without retry", () => {
+  const f = fixture()
+  f.bind(); f.resume()
+  f.runtime.agents[1]!.agent_status = "blocked"
+  f.runtime.agents[2]!.agent_status = "idle"; f.saveRuntime()
+  f.ok("master", "coordinate", "pause", "reason=user stopped workload"); f.once()
+  assert.equal(f.prompts().length, 0)
+  f.resume(); f.runtime.mode = "ambiguous"; f.saveRuntime()
+  assert.equal(f.run("master", "coordinate", "once").status, 2)
+  assert.equal(f.prompts().length, 1)
+  f.runtime.mode = "accept"; f.saveRuntime()
+  assert.equal(f.run("master", "coordinate", "once").status, 2)
+  assert.equal(f.run("master", "coordinate", "resume", "reason=transport restored").status, 1)
+  assert.equal(f.prompts().length, 1)
+  assert.match(f.ok("master", "coordinate", "status"), /paused[\s\S]*unconfirmed/)
+})
+
 test("private cold work wakes without sending shared conclusions or consuming shared notices", () => {
   const f = fixture(true)
   f.issue("PRIVATE_A_CONCLUSION")

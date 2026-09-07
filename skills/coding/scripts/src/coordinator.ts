@@ -11,8 +11,8 @@ import { deliveryOutcome, read, recordDelivery } from "./store.ts"
 type Role = "A" | "B" | "master"
 type Identity = { name: string; pane: string; session: string | null }
 type Owner = { pid: number; token: string; since: string }
-type Observation = { at: string; identity: Identity | null; status: string; detail: string; fingerprint: string | null }
-type Attempt = { seat: Role; identity: Identity; fingerprint: string; at: string; observedWorking: boolean; outcome: "unconfirmed" | "accepted" | "retry"; detail: string }
+type Observation = { at: string; identity: Identity | null; status: string; detail: string; fingerprint: string | null; attention?: string }
+type Attempt = { seat: Role; identity: Identity; fingerprint: string; at: string; observedWorking: boolean; outcome: "unconfirmed" | "accepted" | "retry"; detail: string; duties?: string[] }
 interface Control {
   paused: boolean
   reason: string
@@ -170,16 +170,43 @@ function tick(db: DatabaseSync, directory: string, watch: Owner | null): void {
       const available = work(directory, shared, seat, snapshot.events)
       const control = load(db)
       const binding = control.bindings[seat]
+      // Reviewer observations are refreshed earlier in this tick. Derive alerts
+      // from current duties, so recovery while master is busy leaves no queued alarm.
+      const alerts = seat === "master" ? (["A", "B"] as const).flatMap((reviewer) => {
+        const observed = control.observations[reviewer]
+        if (!observed?.attention || !observed.fingerprint) return []
+        return [{ key: createHash("sha256").update(JSON.stringify({ reviewer, binding: control.bindings[reviewer], identity: observed.identity, work: observed.fingerprint, reason: observed.attention })).digest("hex"), reason: `${reviewer}: ${observed.attention}` }]
+      }) : []
+      const duties = [...(available.fingerprint ? [available.fingerprint] : []), ...alerts.map((alert) => alert.key)]
+      if (alerts.length) {
+        available.fingerprint = createHash("sha256").update(JSON.stringify(duties)).digest("hex")
+        available.detail = `master attention required: ${alerts.map((alert) => alert.reason).join("; ")}`
+      }
       const agent = named(list, shared.names[seat])
       let status = !binding ? "unbound" : !agent ? "missing" : !identityEqual(binding, agent.identity) ? "changed" : agent.status
       if (!["unbound", "missing", "changed", "working", "idle", "done", "blocked"].includes(status)) status = "unknown"
       const prior = control.attempts.filter((attempt) => attempt.seat === seat && attempt.fingerprint === available.fingerprint && binding && identityEqual(attempt.identity, binding)).at(-1)
+      // Track each obligation included in a master wake. Otherwise resolving one
+      // alert (or adding a question) changes the combined fingerprint and nags
+      // master again about the remaining, already delivered obligations.
+      const covered = seat === "master" && duties.length > 0 && duties.every((duty) => {
+        const attempt = control.attempts.filter((attempt) => attempt.seat === seat && binding && identityEqual(attempt.identity, binding) && (attempt.duties ?? [attempt.fingerprint]).includes(duty)).at(-1)
+        return attempt && attempt.outcome !== "retry"
+      })
       let description = available.detail
       if (prior?.outcome === "accepted" && ["idle", "done"].includes(status) && available.fingerprint) description = prior.observedWorking
-        ? "stalled: current work was already prompted and ran; inspect before checked retry"
+        ? `stalled: current work was already prompted and ran; inspect before checked retry; ${available.detail}`
         : "wake accepted; awaiting activity or progress"
       if (prior?.outcome === "unconfirmed") description = "unconfirmed wake; inspect before checked retry"
-      const observation: Observation = { at: now(), identity: agent?.identity ?? null, status, detail: description, fingerprint: available.fingerprint }
+      if (alerts.length && !description.includes(available.detail)) description += `; ${available.detail}`
+      const attention = seat !== "master" && available.fingerprint
+        ? ["unbound", "missing", "changed", "unknown", "blocked"].includes(status)
+          ? `${status} with outstanding duties; inspect runtime and binding before recovery`
+          : prior?.outcome === "accepted" && prior.observedWorking && ["idle", "done"].includes(status)
+            ? "stalled with outstanding duties after an accepted wake and observed activity; inspect before checked retry"
+            : undefined
+        : undefined
+      const observation: Observation = { at: now(), identity: agent?.identity ?? null, status, detail: description, fingerprint: available.fingerprint, ...(attention ? { attention } : {}) }
       change(db, "observation changed", (state) => {
         const previous = state.observations[seat]
         if (!previous || JSON.stringify({ ...previous, at: "" }) !== JSON.stringify({ ...observation, at: "" })) state.observations[seat] = observation
@@ -188,7 +215,9 @@ function tick(db: DatabaseSync, directory: string, watch: Owner | null): void {
           if (attempt) attempt.observedWorking = true
         }
       })
-      if (control.paused || !available.fingerprint || !binding || !agent || !["idle", "done"].includes(status) || (prior && prior.outcome !== "retry")) continue
+      // Master suppression follows the latest delivery of each duty, including
+      // checked retries of combined alerts; an older exact match cannot veto it.
+      if (control.paused || !available.fingerprint || !binding || !agent || !["idle", "done"].includes(status) || (seat === "master" ? covered : prior && prior.outcome !== "retry")) continue
       const path = join(directory, "ledger.db")
       const pending = read(path).deliveries.filter((delivery) => delivery.to === seat && deliveryOutcome(delivery) === "pending" && !available.cold)
       const unconfirmed = read(path).deliveries.filter((delivery) => delivery.to === seat && deliveryOutcome(delivery) === "unconfirmed")
@@ -200,7 +229,7 @@ function tick(db: DatabaseSync, directory: string, watch: Owner | null): void {
       // Committed before any external side effect. Process loss leaves an unconfirmed wake.
       const reservedWake = change(db, "wake reserved", (state) => {
         if (state.paused) return false
-        state.attempts.push({ seat, identity: binding, fingerprint, at: now(), observedWorking: false, outcome: "unconfirmed", detail: "transport attempt reserved; acceptance not yet recorded" })
+        state.attempts.push({ seat, identity: binding, fingerprint, at: now(), observedWorking: false, outcome: "unconfirmed", detail: "transport attempt reserved; acceptance not yet recorded", ...(seat === "master" ? { duties } : {}) })
         return true
       })
       if (!reservedWake) continue
@@ -214,7 +243,7 @@ function tick(db: DatabaseSync, directory: string, watch: Owner | null): void {
         })
         continue
       }
-      const message = `Run directory: ${JSON.stringify(resolve(directory))}; recipient seat: ${seat}\nRead the current ${available.cold ? "private cold" : "shared"} ledger and your retained working note. Pull eligible work, respecting ownership and existing fresh-reader assignments. This wake is not an assignment or evidence of completion.`
+      const message = `Run directory: ${JSON.stringify(resolve(directory))}; recipient seat: ${seat}\n${alerts.length ? `${available.detail}.\n` : ""}Read the current ${available.cold ? "private cold" : "shared"} ledger and your retained working note. Pull eligible work, respecting ownership and existing fresh-reader assignments. This wake is not an assignment or evidence of completion.`
       const result = spawnSync("herdr", ["agent", "prompt", binding.pane, message], { encoding: "utf8", timeout: 10_000 })
       let accepted = false
       try {

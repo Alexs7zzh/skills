@@ -268,24 +268,46 @@ test("report only: issues and proposed fixes, no shelve, no check-in", () => {
   refused(state, { type: "check-in.approve", actor: "master", shelves: ["S-A-1"], executor: "A", approval: "go" }, "report only")
 })
 
-test("Hardening, telemetry-quality, and Nit never hold up the run; only a Nit is accepted", () => {
+test("Hardening and telemetry findings need disposition, not implementation; Nits remain optional", () => {
   let state = joint()
   state = ok(state, addIssue("A", "Hardening"))
   state = ok(state, addIssue("A", "Nit", { claim: "name" }))
   state = ok(state, addIssue("B", "telemetry-quality", { claim: "field" }))
-  assert.deepEqual(ready(state, "A"), [])
-  assert.deepEqual(ready(state, "B"), [])
+  assert.deepEqual(ready(state, "A").map((item) => item.row), ["I-A-1"])
+  assert.deepEqual(ready(state, "B").map((item) => item.row), ["I-B-1"])
   refused(state, { type: "issue.accept", actor: "A", id: "I-A-1", rev: 1, reason: "fine" }, "only a Nit")
   state = ok(state, { type: "issue.accept", actor: "B", id: "I-A-2", rev: 1, reason: "one run of life" })
+  state = ok(state, { type: "issue.exit", actor: "A", id: "I-A-1", rev: 1, exit: "todo", reference: "defer until owning boundary changes; retain impact evidence" })
+  state = ok(state, { type: "issue.exit", actor: "B", id: "I-B-1", rev: 1, exit: "comment", reference: "local provider log identifies cause; no API expansion warranted" })
   state = ok(state, { type: "handoff", actor: "A" })
   state = ok(state, { type: "handoff", actor: "B" })
   assert.equal(isDone(state), true)
   // A Hardening fix, when written, is shelved and reviewed like any other.
+  state = joint()
+  state = ok(state, addIssue("A", "Hardening"))
   state = ok(state, { type: "issue.verify", actor: "A", id: "I-A-1", rev: 1, certainty: 4, evidence: "p.log" })
   state = ok(state, { type: "proposed-fix.add", actor: "A", issues: ["I-A-1"], ...shape({ origin: "attention-miss" }) })
   state = ok(state, { type: "checkout.take", actor: "A", purpose: "fix" })
   state = ok(state, { type: "shelved-fix.add", actor: "A", fixes: ["P-A-1"], artifact: "s", ...evidence() })
   assert.equal(ready(state, "reader")[0]?.command, "shelved-fix.review")
+})
+
+test("non-gating disposition follows investigation ownership and does not block cold import", () => {
+  let cold = start("cold", "fix", "A")
+  cold = ok(cold, addIssue("A", "telemetry-quality"))
+  assert.equal(ready(cold, "A").some((item) => item.command === "cold.import"), true)
+  assert.equal(ready(cold, "A").some((item) => item.command === "issue.exit"), false)
+
+  let state = joint("report-only")
+  state = ok(state, addIssue("A", "telemetry-quality"))
+  state = ok(state, { type: "issue.take", actor: "B", id: "I-A-1", rev: 1 })
+  assert.deepEqual(ready(state, "A"), [])
+  assert.deepEqual(ready(state, "B").map((item) => [item.command, item.row]), [["issue.exit", "I-A-1"]])
+  state = ok(state, { type: "issue.release", actor: "B", id: "I-A-1", rev: 1 })
+  assert.equal(ready(state, "A")[0]?.row, "I-A-1")
+  state = ok(state, { type: "issue.disprove", actor: "A", id: "I-A-1", rev: 1, certainty: 4, evidence: "provider-contract.md" })
+  assert.deepEqual(ready(state, "A"), [])
+  assert.deepEqual(ready(state, "B"), [])
 })
 
 test("a proposed fix is complete before it is shelved; an incomplete one is reported as a direction", () => {

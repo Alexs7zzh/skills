@@ -220,6 +220,17 @@ test("cold import finishes declared discovery and open coverage without requirin
   assert.equal(rowsOf(shared, "Issue")[0]?.state, "new")
 })
 
+test("report headline counts unresolved non-gating findings and distinguishes explicit exits", () => {
+  let state = start()
+  const claim = issue("misleading telemetry")
+  assert.equal(claim.type, "issue.add")
+  state = apply(state, { ...claim, label: "telemetry-quality" } as Step)
+  assert.match(renderReport(state, [], {}), /Open substantive issues: 0/)
+  assert.match(renderReport(state, [], {}), /Recorded findings: 1; unresolved across all labels: 1/)
+  state = apply(state, { type: "issue.exit", actor: "A", id: "I-A-1", rev: 1, exit: "todo", reference: "defer until next export supplies the discriminator" })
+  assert.match(renderReport(state, [], {}), /Recorded findings: 1; unresolved across all labels: 0/)
+})
+
 test("reports distinguish historical candidates, replacement fixes, and blocked report-readiness", () => {
   let state = apply(start(), issue("lost draft"))
   state = apply(state, proposal("old direction", ["I-A-1"]))

@@ -64,7 +64,7 @@ issue accept <I-id> rev=N reason=..                                   Nit only
 issue take <I-id> rev=N | issue release <I-id> rev=N
 issue exit <I-id> rev=N kind=<comment|ruling|todo> reference=..      how an unfixed issue leaves the run
 issue drop <I-id> rev=N reason=..                                     master, on the user's word
-question add [issues=<I-ids>] [fix=<P-id>] question=.. options="(a) .., (b) .." recommendation=<an option> effect=.. cost=..
+question add [issues=<I-ids>] [fix=<P-id>] question=.. options="(a) .., (b) .." recommendation=<full option text, not its letter> effect=.. cost=..
 question answer <Q-id> rev=N answer=..                                master, the user's words
 proposed-fix add (issues=<I-ids> | goal=<feature goal>) shape=.. cost=..
           [origin=<mechanism or requirement> sites= rulings= test=<validation plan> guardrail= coordination=]
@@ -89,7 +89,8 @@ delivery show <D-id>                                                   retained 
 delivery accept <D-id> rev=N checked=<recipient/runtime observation>    master: record observed legacy delivery, without sending
 delivery supersede <D-id> rev=N reason=<why its notice is obsolete>     master: retain its history; do not repeat the mutation
 review-basis <I|P|S-id>                         print the current material review-input token
-status | report | timeline [A|B|master|reader|<row-id>]      the run's record: who did and waited on what, or the argument on one row
+status | report                                           current record; seat is selected by LEDGER_ME, no positional arguments
+timeline [A|B|master|reader|<row-id>]                       who did and waited on what, or the argument on one row
 `
 
 // ---------------------------------------------------------------------------

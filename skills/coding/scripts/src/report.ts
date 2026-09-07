@@ -246,10 +246,12 @@ export function renderReport(state: State, events: readonly Moment[], notes: Not
   const shelves = rowsOf(state, "Shelved fix")
   const checkIns = rowsOf(state, "Check-in")
   const openCount = substantive.filter((issue) => !["disproved", "duplicate"].includes(issue.state) && !issue.exit && !fixesForIssue(state, issue.id).some((fix) => shelvesForFix(state, fix.id).some((shelf) => !isHistoricalShelf(state, shelf) && shelf.state === "reviewed"))).length
+  const unresolvedCount = issues.filter((issue) => !["disproved", "duplicate", "accepted"].includes(issue.state) && !issue.exit && !fixesForIssue(state, issue.id).some((fix) => shelvesForFix(state, fix.id).some((shelf) => !isHistoricalShelf(state, shelf) && shelf.state === "reviewed"))).length
   return [
     `# ${state.route === "review" ? "Review" : state.route === "write" ? "Implementation" : "Diagnosis"} report`,
     "",
     `${state.mode === "joint" ? `Two reviewers, ${state.names.A} (A) and ${state.names.B} (B)` : `One reviewer, ${state.names.A}`}; ${state.deep ? "deep" : state.route === "review" ? "quick" : "plain"}; how far: ${state.howFar}. ${isDone(state) ? "Ready to report; unresolved work is listed below." : "The run is still open."} Open substantive issues: ${openCount}.`,
+    `Recorded findings: ${issues.length}; unresolved across all labels: ${unresolvedCount}. Explicit exits and clean reviewed candidates are not counted as unresolved; neither implies checked in.`,
     "",
     "## Coverage",
     "",

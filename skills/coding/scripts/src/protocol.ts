@@ -1363,8 +1363,17 @@ export function ready(state: State, actor: Actor): readonly Ready[] {
   }
 
   for (const issue of rowsOf(state, "Issue")) {
-    if (!isSubstantive(issue) || issue.exit) continue
+    if (issue.exit) continue
     if (openQuestionFor(state, issue.id)) continue
+    if (!isSubstantive(issue)) {
+      if (state.mode !== "cold" && ["Hardening", "telemetry-quality"].includes(issue.label)
+        && ["new", "verified", "assumed", "contested"].includes(issue.state)
+        && (issue.taken ?? issue.author) === seat
+        && !fixesForIssue(state, issue.id).some((fix) => isActiveFix(state, fix))) {
+        add(list, seat, "issue.exit", issue.id, "disposition this finding: develop a candidate, disprove or merge it, or record an explicit deferral with reason and next evidence or action; implementation is not required")
+      }
+      continue
+    }
     if (issue.state === "new" && issue.editor === seat) add(list, seat, "issue.verify", issue.id, "verify, assume, or drop your issue")
     const needsClaimReview = state.howFar === "report-only" || single && fixesForIssue(state, issue.id).some((fix) => currentShelvesForFix(state, fix.id).some((shelf) => ownsShelf(state, shelf, seat) && issue.editor !== seat))
     if (state.mode !== "cold" && needsClaimReview && ["new", "verified", "assumed"].includes(issue.state) && issue.editor !== seat && !issue.mark) {
