@@ -34,7 +34,7 @@ Use findings.md, Working record, throughout the review, including before finding
 
 ## Report
 
-Explain consequences in the owner's language. The record fields and dispositions are owned by findings.md; print the issues from the database when one is in use. The response contains:
+Explain consequences in the owner's language. The evidence content and dispositions are owned by findings.md; build the report from retained findings and assessments when a record is in use, not merely task counts. The response contains:
 - the goal and whether the reviewed behavior meets it, with any material mismatch;
 - substantive issues ranked by user impact, with the evidence basis and uncertainty;
 - each proposed fix or candidate and its current state; do not imply that a proposal is implemented or a saved candidate is reviewed;

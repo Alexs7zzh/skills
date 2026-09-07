@@ -43,7 +43,7 @@ Own the outcome within the user's task. Establish the feature's goal and intende
 - **Probe.** An experiment that answers a named question about the code. Its temporary instrumentation is removed; its evidence is retained.
 - **Red run, green run.** A check exposing the defect before a change, then meeting the intended behavior afterwards. These are evidence for claims they distinguish, not a mandatory shape for every change.
 - **Shelve.** A saved change recoverable with its baseline outside checked-in project history: a Plastic or Perforce shelve, a Git stash or patch with its base, or the project's equivalent. A branch name or worktree alone does not save an uncommitted diff.
-- **Database.** The run's shared SQLite record, kept by `scripts/ledger.ts` beside this file. It holds coverage, issues, questions, proposed fixes, shelved fixes, check-ins, and the sequence of recorded work. Reports and timelines come from it.
+- **Database.** The run's shared SQLite record, kept by `scripts/ledger.ts` beside this file. It retains tasks, input and result versions, assessments, ownership, dispatches and events; coordination mechanics are in ledger.md.
 - **Run.** One task and its retained investigation. A new turn, context, session, or instruction to implement can continue the run. Resumption and changed baselines follow findings.md, Continuity.
 - **Mark.** A recorded review of a revision by someone who did not write it. A proposal mark is optional discussion, not permission to develop a candidate.
 

@@ -13,7 +13,8 @@ Walk the relevant callers, owners, failure paths, and test seams. Keep the inves
 ## Choose the boundary
 
 - **Fix the cause within the boundary that can own it.** Find where the bad state is produced. Correct a misusing caller you control; validate external input at the boundary you own. If the origin is outside your control, name that limit and the contract your change can restore.
-- **Look for a structure that removes the failure mechanism.** Shared ownership, scattered validity checks, flag combinations, or repeated coordination suggest a structural cause. Name what an alternative deletes or makes impossible. Compare it with the contained fix in the actual code; a larger design earns its migration and regression risk.
+- **Describe the collaboration before the states.** Write one ordinary case and one interrupted case in the domain's own words: who does what, what they wait on, and what changes under them. Name the decisions, observations and owners that account requires. Map additional implementation states to the runtime questions or protocol transitions they serve, using good-code.md, Values; unexplained states call for revisiting the model, not another guard.
+- **Look for a structure that removes the failure mechanism.** Shared ownership, scattered validity checks, flag combinations, or repeated coordination suggest a structural cause. Name what an alternative deletes or makes impossible. Fewer nouns, a generic engine, or shorter functions are not improvements by themselves: compare total responsibility and caller effort with the contained fix. A larger design earns its migration and regression risk.
 - **Reuse before adding.** Look for the same job in the owning module and existing libraries. Use it or explain the mismatch. Before sharing an abstraction, check that the callers share a contract and should change together; similar lines alone do not establish that. Apply the deletion test in good-code.md, Values, to what you add or keep.
 - **Price the costs that remain expensive.** Code generation and reversible experiments are cheap. Regression risk, interface churn, integration, and the future reader's reasoning burden are not. Do not preserve a bad structure solely to minimize lines, or expand a working change solely because another architecture exists.
 - **Sweep the mechanism, not the author's presumed psychology.** Trace sibling sites that share the cause, contract, or workaround. Mirrored tests and invented constants call for an independent source of truth; lifetime defects call for tracing ownership and teardown. Expand the sweep when evidence could change the cause or fix boundary. Finish the relevant sweep before claiming that the group or bug class is resolved.
@@ -30,7 +31,7 @@ When an approach fails, retain the observation and the brief reason it was rejec
 
 ## Review the result
 
-A reader who did not write the candidate checks it in a fresh context per SKILL.md, Attention. Give it the goal and rulings, current issues, exact candidate and baseline, dependencies, validation record, evidence paths, and the captured review basis per findings.md, Continuity. It judges the claim and implementation together.
+A reader who did not write the candidate checks it in a fresh context per SKILL.md, Attention. Give it the goal and rulings, current issues, exact candidate and baseline, dependencies, validation record, evidence paths, and saved input versions per findings.md, Continuity. It judges the claim and implementation together.
 
 The review returns one assessment with:
 - whether the candidate meets the intended behavior and explicit rulings;

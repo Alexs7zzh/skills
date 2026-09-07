@@ -24,7 +24,7 @@ When a result surprises you, check the observation method and inputs as well as 
 
 If no available check can distinguish the alternatives, narrow the claim or leave the uncertainty open, with what would resolve it and why it is unavailable. Choose another method when it can answer the question. Do not manufacture a failing test, call every missing test seam an architecture defect, or ask the user to waive an arbitrary log requirement. A testability problem is an issue when it prevents a needed assurance about the project.
 
-The ledger's certainty steps identify the basis of a claim, not a probability or a total ordering of evidence:
+These certainty steps identify the basis of a claim, not a probability or a total ordering of evidence:
 1. Unsupported assertion.
 2. Checked source or observed fact, with its relevance still to establish.
 3. Code or contract proof of the stated claim under recorded assumptions.
@@ -37,15 +37,15 @@ A verified issue needs a retained evidence path and a supported claim at step 3,
 
 Use the ledger by default for substantive writing, quick review, and plain diagnosis, not only for deep or multi-agent work. Start or resume the record while gathering the goal and evidence; do not wait for a confirmed issue or candidate. Local setup is in [ledger.md](./ledger.md); two-family coordination is in deep.md when that mode is needed.
 
-Start a short current note with the goal, rulings, known scope, and first investigation. Before moving to another issue or cluster, or requesting a context reset, preserve the current conclusion or hypothesis, evidence pointers, rejected alternatives that matter, and the next action or blocker. Update the corresponding coverage and issue rows when that work has an outcome; an unresolved cause can remain a gap or hypothesis. Do not defer these records until the whole pass is finished or context is compacted. A harness-private checkpoint may supplement this record, not replace the state another investigator needs. Notes hold working state that does not yet fit a row; do not invent an issue or complete proposal merely to save it. Recording a direction does not gate developing or testing it.
+Start a short current note with the goal, rulings, known scope, and first investigation. Before moving to another issue or cluster, or requesting a context reset, preserve the current conclusion or hypothesis, evidence pointers, rejected alternatives that matter, and the next action or blocker. Record the outcome in the task and retain versioned evidence; an unresolved cause can remain a gap or hypothesis. Do not defer these records until the whole pass is finished or context is compacted. A harness-private checkpoint may supplement this record, not replace the state another investigator needs. Notes hold working state; do not invent an issue or complete proposal merely to save it. A task records a promised outcome, not each phase of reasoning. Recording a direction does not gate developing or testing it.
 
 Keep the note an index of current work; let rows own their recorded state, and link full logs and history instead of copying them. On resumption or a work switch, read that summary and the relevant rows and artifacts. Use a row's timeline when its history matters, rather than rereading the whole run. A note points to evidence; it does not upgrade a hypothesis, settle a user decision, or replace independent review. Record meaningful work boundaries, not every command or file read. A clean review or inconclusive investigation can have notes and coverage without manufactured findings.
 
 ## Change records
 
-The database separates claims from implementations so changing one does not erase the other. The row names are:
+Separate claims from implementations so changing one does not erase the other. These are content vocabulary, not mandatory database states or one task each. Retain the records needed to explain the work:
 
-| Row | It records |
+| Content | It records |
 |---|---|
 | Coverage | A hunk, symptom, cluster, or scenario, and whether it is covered, open, or a named gap |
 | Issue | The claim, site, trigger, user impact, evidence and certainty step, and disposition |
@@ -56,7 +56,7 @@ The database separates claims from implementations so changing one does not eras
 
 For an issue, investigate how the trigger arises, its scope and rough frequency where relevant; distinguish observations from estimates. For a maintenance finding, name the concrete future task or failure class affected. A proposed fix's validation plan may be a test, measurement, demonstration, or code proof; say what it must distinguish. Missing fields make a direction incomplete, not permission to invent values.
 
-Write new or contested issues while investigating. Their author can take the work and develop a proposed fix before another reviewer agrees. For report-only work, a proposal can be independently marked after its sites and evidence are examined. Proposal discussion never gates a candidate; an open question still blocks its dependent work.
+Write new or contested issues while investigating. Their author can take the work and develop a proposed fix before another reviewer agrees. For report-only work, a proposal can be independently marked after its sites and evidence are examined. Proposal discussion never gates a candidate. Record a consequential unanswered question as an explicit user wait on affected tasks; the helper does not infer dependencies or authority from paragraphs.
 
 A candidate's clean independent review covers the current claim, implementation, and validation together per good-change.md, Review the result. Nobody marks a revision they wrote. Keep supported issue conclusions when a patch needs revision; do not turn disagreement about a shape into a new dispute about an unchanged fact.
 
@@ -76,19 +76,19 @@ A technical document contradicting an actual release contract is a defect; first
 
 When issues combine into a new failure, common cause, or different impact, record the combined claim and its links. Verify the new claim rather than stamping the same report again. Walk interactions between overlapping candidates before treating them as independent.
 
-An issue's `parents` are claims its proof depends on, not merely related topics. Reassess that claim and its downstream reviews when a parent changes; retain its evidence for the new assessment. Use clusters or notes for relationships that do not imply this dependence.
+Declare exact input record references when a conclusion depends on another claim or ruling. Reassess affected conclusions when those inputs change. Use notes for relationships that do not imply dependence. A task prerequisite is different: it names another promised result that must arrive before this work can proceed.
 
 Keep baseline and dependency revisions with every candidate and its evidence. Batch builds when useful, but name the combination tested. File overlap alone does not make changes inseparable; combine candidates when they depend on each other and record that reason.
 
 ## Continuity
 
-A material edit to a checked claim, proposal, candidate, or dependency invalidates reviews that rely on it, downstream only. Use notes for additional rationale or presentation changes that leave the checked content intact. A claim or proposal edit reopens the affected review without making an unchanged candidate's validation stale. An answered question also reopens affected reviews so they account for the ruling; the answer alone does not require a candidate edit. Keep outstanding review conditions and already-stale validation until resolved.
+A material edit to a checked claim, proposal, candidate, or dependency makes reviews on different inputs inapplicable, downstream only. Retain each latest assessment, including its input basis, verdict and conditions; derive whether it applies to the current inputs. A later adverse assessment supersedes an earlier clean one. Use notes for additional rationale or presentation changes that leave checked content intact. A claim or proposal edit makes an assessment on those earlier inputs historical without making an unchanged candidate's validation stale. The responsible reviewer creates or updates the explicit follow-up task; a new record version does not create an assignment. An answered question also requires the review to account for the ruling; the answer alone does not require a candidate edit. Keep outstanding conditions until an independent assessment replaces them.
 
-An assessment identifies the inputs the reader received, not just the candidate revision. Before reviewing, retain the target revision, helper's review basis and supporting input references with the assessment; for a candidate review, include the saved candidate and baseline. Submit that recorded basis with the verdict, not a newly fetched token at submission time. If a claim, proposal, ruling, proof parent, or candidate dependency changed, retain the new inputs and basis and reassess the affected conclusion before submitting it. Ownership-only handoff does not change the basis. A rejected old submission requires reassessment, not a fabricated candidate edit or new validation run.
+An assessment identifies the exact subject and supporting record versions the reader received, including the candidate and baseline. Keep those references when submitting the verdict, not newly fetched revisions. An assessment of earlier inputs may finish as historical evidence; it does not approve newer inputs. Ownership-only handoff does not change those inputs. Finishing a review task means the assessment arrived, including any conditions; it does not accept the implementation or settle its parent task.
 
-Refresh the validation record when the candidate, baseline, or dependency candidates change, including when a dependency is dropped, explaining what was rerun and what remains applicable. Clearing a review is not a candidate revision and does not by itself require new validation content. The reviewer checks whether retained evidence supports the current claim and rulings; record a concrete condition if it does not. A filename pointing at an old green log is not fresh evidence.
+Validation has its own input basis: the saved candidate, baseline and dependency candidates. Refresh its record when those inputs change, including when a dependency is dropped, explaining what was rerun and what remains applicable. An inapplicable review is not a candidate revision and does not by itself require new validation content. The reviewer checks whether retained evidence supports the current claim and rulings; record a concrete condition if it does not. A filename pointing at an old green log is not fresh evidence. Retain local candidate files immutably; a remote shelve must name its exact revision rather than a moving branch.
 
-When an observation or ruling resolves review conditions without changing candidate inputs or invalidating its evidence, the author can request re-review with that reason. This queues the unchanged candidate for its independent reader and preserves the conditions until reviewed. An independent reader already investigating the conditions can re-review directly. Only that review clears or replaces the current conditions; their history remains in the record.
+When an observation or ruling resolves conditions without changing the candidate, give an independent reader an explicit follow-up task with that reason and the new evidence. Preserve the conditions until a later assessment replaces them; do not fabricate a candidate edit to request another review.
 
 Continue the same run when the task resumes, including after a session or context reset or a request to implement the reported result. When the user changes how far to go, update that setting in the existing record with its reason; the pinned helper's help supplies the command. Before handing off, retain the current candidate, baseline and dependencies, validation record, unfinished work, questions, and brief reasons for rejected alternatives. The next reader checks what changed and resumes from that material.
 
@@ -106,13 +106,13 @@ For a choice that does need the user, show:
 - feasible options with code impact, user effect, and a recommendation;
 - why the choice needs the user's judgment or authority.
 
-When new evidence challenges a ruling, identify that evidence and the consequence; do not silently discard the ruling or suppress the evidence. A user should not need to read code or a long spec to understand the choice. Keep the question open until answered, preserve its candidate, and continue independent work.
+When new evidence challenges a ruling, identify that evidence and the consequence; do not silently discard the ruling or suppress the evidence. A user should not need to read code or a long spec to understand the choice. Keep the question open until answered, preserve its candidate, and continue independent work. Record the answer and affected inputs through ledger.md, Ordinary coordination; a note alone does not resolve a user wait.
 
 ## Completion
 
-A run is ready to report when its scoped obligations have been checked or explicitly left open, candidates have their current review states, and remaining questions or evidence gaps say what would resolve them. Empty ready work permits a report; it does not turn unresolved work into clean work. Further passes need a remaining uncertainty or uncovered obligation, not a quota of repeated clean reviews.
+A run is ready to report when its scoped obligations have been checked or explicitly left open, candidates have their current review states, and remaining questions or evidence gaps say what would resolve them. Reporting is always possible. Empty eligible work does not turn unresolved work into clean work, and completed tasks mean their promised results arrived, not that every engineering conclusion is correct. Further passes need a remaining uncertainty or uncovered obligation, not a quota of repeated clean reviews.
 
-Hardening and telemetry-quality findings need a disposition, not a mandatory implementation. After discovery, their author (or the seat holding the investigation) chooses a candidate, disproves or merges the claim, or records an explicit exit with the reason and next evidence or action. An explicit deferral clears this work; the label alone does not. Nits remain optional.
+Hardening and telemetry-quality findings need a disposition, not a mandatory implementation. After discovery, the investigation task's owner chooses a candidate, disproves or merges the claim, or records an explicit disposition with the reason and next evidence or action. A deferral can complete the promised triage outcome; the label alone cannot. Nits remain optional.
 
 In fix mode, retain independently reviewed candidates until the user selects, changes, or drops them. Record a user-authorized drop of a proposed fix and its candidate with the reason, retaining its evidence and invalidating affected dependents. This is a terminal disposition, distinct from a reviewer's rejection during engineering discussion, and needs no check-in authorization. In report-only mode, retain the proposal and useful experiments for continuation. Neither mode needs a commit to finish its report.
 
