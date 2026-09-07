@@ -26,40 +26,53 @@ npm run check        # typecheck, then the tests
 - `src/protocol.ts`: the rules as a pure function, `transition(state, command)`,
   plus `ready(state, actor)`, which lists what each actor can do now,
   `situation(state, actor)`, what an actor is doing or waiting on, and the
-  messages a two-reviewer run sends.
+  notification intents a two-reviewer run records.
 - `src/store.ts`: SQLite as the durable envelope and the write lock. One row
   holds the state as JSON; one append-only table holds the record: each event
   with a millisecond timestamp, the substance of what was said, and every
   actor's situation once it had landed. Notification intent commits in the
   same transaction; a delivery table retains each recipient, message, and
   outcome history separately from domain state.
-- `src/cli.ts`: argument parsing, log-file checks, notes checks, message delivery.
+- `src/cli.ts`: argument parsing, log-file checks, notes checks, and record commands.
+- `src/coordinator.ts`: runtime observation and wake-ups, with bindings, pause
+  state, ownership, and attempt history in `<run>/coordination.db`. Runtime calls
+  do not hold the domain database's write lock.
 - `src/report.ts`: status, report, and timeline rendering.
 
-## Notification outcomes
+## Recording and wake-ups
 
-Joint-ledger mutations commit before sending runtime notifications. Exit status
-`2` means the mutation was saved but at least one delivery was not confirmed;
-it is not a refused mutation to retry. The output identifies each recipient,
-the subprocess error and its diagnostic output, and the message needing attention.
-Subprocess diagnostics are retained under `<run>/delivery/`. Notification intent
-is already in the database, so process loss after the mutation leaves a pending
-or unconfirmed delivery visible in status and the report.
+Domain mutations save state and notification intent without contacting Herdr.
+Exit status `0` means the record command succeeded; `1` means it was refused or
+failed. A queued notice is not a delivery failure. `LEDGER_NOTIFY` no longer
+controls transport, so reviewer recording needs no runtime permission.
 
-`delivery show D-id` reads its recipient, saved body, revision, and outcome history.
-After checking the recipient/runtime, use `delivery retry D-id rev=N checked=...`
-to retry that notification, or `delivery accept D-id rev=N checked=...` to record
-evidence that it was accepted. Use `delivery supersede D-id rev=N reason=...`
-when the work no longer needs that notice. The sender, its recorded successor
-(the arranger for a fresh reader), or master can reconcile it. Settled notices
-cannot be retried. There is no automatic retry or exactly-once delivery guarantee;
-acceptance may precede an interruption. Runtime access, recovery ownership, and
-task-specific stop rules follow `../deep.md`, Herdr runtime.
+The master runs one coordinator from a runtime-authorized context. It starts
+paused: bind each configured seat explicitly, then resume and watch:
 
-The default notifier is `herdr agent prompt`. `LEDGER_NOTIFY=print` (or an empty
-value) deliberately prints messages without sending them and exits successfully;
-the output labels that mode. Successful notifier commands are reported as accepted.
-Read-only commands and single-seat runs need no notification transport.
+```sh
+ledger coordinate bind seat=A reason="verified reviewer session"
+# Likewise bind B and master to their verified configured sessions.
+ledger coordinate resume reason="isolated preflight passed; run authorized"
+ledger coordinate watch
+```
+
+`coordinate once` performs a bounded tick; `coordinate status` reads the audit
+without contacting Herdr. `coordinate pause reason=...` stops new dispatch and
+waits for the active tick to drain. Bindings fence recipient identity. Eligible
+work wakes an idle or done seat; busy, blocked, unknown, or replaced sessions
+are not prompted. Private cold work stays private. Notices are coalesced into a
+run-and-seat wake directing the recipient to its current record, not replayed
+as peer instructions. Acceptance confirms delivery, not execution or progress.
+
+Uncertain delivery pauses coordination and is not automatically retried. After
+checking the runtime and recipient, the master can authorize a coordinator
+retry with `coordinate retry seat=A checked=...`, then explicitly resume.
+`delivery show D-id` retains legacy delivery history; the master uses
+`delivery accept D-id rev=N checked=...` or
+`delivery supersede D-id rev=N reason=...` to reconcile an old unconfirmed
+notice before proceeding. There is no `delivery retry` command or exactly-once
+guarantee. Runtime races, recovery ownership, and stop rules follow
+`../deep.md`, Herdr runtime.
 
 ## Reading a run back
 

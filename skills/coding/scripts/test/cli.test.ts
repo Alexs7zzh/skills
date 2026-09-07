@@ -1,12 +1,12 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
 import { DatabaseSync } from "node:sqlite"
 import { reviewBasis, rowsOf } from "../src/protocol.ts"
-import { read } from "../src/store.ts"
+import { deliveryOutcome, read } from "../src/store.ts"
 
 const LEDGER = join(import.meta.dirname, "..", "ledger.ts")
 
@@ -39,6 +39,13 @@ function expectOk(run: Run, pattern?: RegExp): Run {
 function expectRefused(run: Run, pattern: RegExp): void {
   assert.equal(run.code, 1, `expected refusal, got: ${run.out}`)
   assert.match(run.err, pattern)
+}
+
+function expectIntent(directory: string, recipient: "A" | "B" | "master", pattern: RegExp): void {
+  const notification = read(join(directory, "ledger.db")).deliveries.at(-1)!
+  assert.equal(notification.to, recipient)
+  assert.equal(deliveryOutcome(notification), "pending")
+  assert.match(notification.message, pattern)
 }
 
 function fresh(): string {
@@ -138,71 +145,68 @@ test("joint names are distinct nonempty addresses and cold init inherits setting
   expectOk(ledger("A", "init", "--cold"))
 })
 
-test("notification failure is distinct from a refused mutation and retains transport diagnostics", () => {
+test("a candidate saves notification intent without executing a denied legacy transport", () => {
   const fixture = deliveryFixture()
-  const command = fixture.notifier('console.error("socket: Operation not permitted"); process.exit(7)')
+  const invoked = join(fixture.directory, "transport-invoked")
+  const command = fixture.notifier(`require("node:fs").writeFileSync(${JSON.stringify(invoked)}, "called"); console.error("socket: Operation not permitted"); process.exit(7)`)
   const result = runner(fixture.directory, command)("A", ...fixture.save)
-  assert.equal(result.code, 2)
-  assert.match(result.err, /delivery not confirmed to reviewer.*exit 7/)
-  assert.match(result.err, /socket: Operation not permitted/)
-  assert.match(result.err, /mutation was saved; do not repeat/)
-  assert.match(result.out, /message for reviewer: Run directory:/)
-  assert.match(result.out, /recipient seat: B\nfresh assessments for you to arrange or update: S-A-1@1 basis=sha256:/)
+  expectOk(result)
+  assert.equal(result.err, "")
   assert.doesNotMatch(result.out, /delivery accepted/)
-  const diagnostics = readdirSync(join(fixture.directory, "delivery"))
-  assert.equal(diagnostics.length, 1)
-  const diagnostic = JSON.parse(readFileSync(join(fixture.directory, "delivery", diagnostics[0]!), "utf8"))
-  assert.equal(diagnostic.to, "reviewer")
-  assert.equal(diagnostic.status, 7)
-  assert.match(diagnostic.stderr, /Operation not permitted/)
-  assert.match(diagnostic.message, /S-A-1/)
+  assert.equal(existsSync(invoked), false)
+  assert.equal(existsSync(join(fixture.directory, "delivery")), false)
   const saved = read(join(fixture.directory, "ledger.db"))
   assert.equal(rowsOf(saved.state, "Shelved fix").length, 1)
   assert.equal(saved.events.filter((event) => event.command === "shelved-fix.add").length, 1)
+  const notification = saved.deliveries.at(-1)!
+  assert.equal(notification.to, "B")
+  assert.equal(notification.address, "reviewer")
+  assert.equal(deliveryOutcome(notification), "pending")
+  assert.match(notification.message, /recipient seat: B\nfresh assessments for you to arrange or update: S-A-1@1 basis=sha256:/)
   expectOk(runner(fixture.directory, command)("B", "status"), /only you arrange these fresh contexts/)
+  assert.deepEqual(read(join(fixture.directory, "ledger.db")), saved)
+  assert.equal(existsSync(invoked), false)
 })
 
-test("notification outcomes cover success, intentional print, missing executable and signal", () => {
+test("legacy notification settings never execute or alter the saved pending intent", () => {
   for (const mode of ["success", "print", "", "missing", "signal"] as const) {
     const fixture = deliveryFixture()
     const received = join(fixture.directory, "received.json")
     const command = mode === "success"
       ? fixture.notifier(`require("node:fs").writeFileSync(${JSON.stringify(received)}, JSON.stringify(process.argv.slice(2)))`)
-      : mode === "signal" ? fixture.notifier('console.log("provider stopped"); process.kill(process.pid, "SIGTERM")')
+      : mode === "signal" ? fixture.notifier(`require("node:fs").writeFileSync(${JSON.stringify(received)}, "called"); process.kill(process.pid, "SIGTERM")`)
       : mode === "missing" ? join(fixture.directory, "absent-notifier") : mode
     const result = runner(fixture.directory, command)("A", ...fixture.save)
-    if (mode === "success") {
-      expectOk(result, /delivery accepted to reviewer/)
-      assert.equal(result.err, "")
-      const args = JSON.parse(readFileSync(received, "utf8"))
-      assert.equal(args[0], "reviewer")
-      assert.equal(args[1].split("\n")[0], `Run directory: ${JSON.stringify(fixture.directory)}; recipient seat: B`)
-      assert.match(args[1], /\nfresh assessments for you to arrange or update: S-A-1@1 basis=sha256:[a-f0-9]{64}\..*Next:/)
-      assert.equal(args.length, 2)
-      assert.doesNotMatch(result.out, /message for reviewer:/)
-    } else if (mode === "print" || mode === "") {
-      expectOk(result, /delivery disabled by LEDGER_NOTIFY/)
-      assert.match(result.out, /recipient seat: B\nfresh assessments for you to arrange or update: S-A-1@1 basis=sha256:/)
-      assert.equal(result.err, "")
-      assert.equal(existsSync(join(fixture.directory, "delivery")), false)
-    } else {
-      assert.equal(result.code, 2)
-      assert.match(result.err, mode === "missing" ? /ENOENT/ : /SIGTERM/)
-      if (mode === "signal") assert.match(result.err, /provider stopped/)
-      assert.equal(rowsOf(read(join(fixture.directory, "ledger.db")).state, "Shelved fix").length, 1)
-    }
+    expectOk(result)
+    assert.equal(result.err, "")
+    assert.equal(existsSync(received), false, `${mode}: LEDGER_NOTIFY must not execute`)
+    assert.equal(existsSync(join(fixture.directory, "delivery")), false)
+    const saved = read(join(fixture.directory, "ledger.db"))
+    assert.equal(rowsOf(saved.state, "Shelved fix").length, 1)
+    const notification = saved.deliveries.at(-1)!
+    assert.equal(notification.to, "B")
+    assert.equal(notification.address, "reviewer")
+    assert.equal(deliveryOutcome(notification), "pending")
+    assert.equal(notification.message.split("\n")[0], `Run directory: ${JSON.stringify(fixture.directory)}; recipient seat: B`)
+    assert.match(notification.message, /\nfresh assessments for you to arrange or update: S-A-1@1 basis=sha256:[a-f0-9]{64}\..*Next:/)
   }
 })
 
-test("failed question delivery still records the open decision for the master", () => {
+test("a question saves the open decision and master notification without executing transport", () => {
   const fixture = deliveryFixture()
-  const command = fixture.notifier('console.error("recipient blocked"); process.exit(1)')
+  const invoked = join(fixture.directory, "transport-invoked")
+  const command = fixture.notifier(`require("node:fs").writeFileSync(${JSON.stringify(invoked)}, "called"); console.error("recipient blocked"); process.exit(1)`)
   const result = runner(fixture.directory, command)("A", "question", "add", "fix=P-A-1", "question=keep saved state?", "options=keep,delete", "recommendation=keep", "effect=persistence", "cost=one handler")
-  assert.equal(result.code, 2)
-  assert.match(result.err, /delivery not confirmed to lead/)
-  assert.match(result.err, /recipient blocked/)
-  assert.match(result.out, /recipient seat: master\nquestion: Q-A-1/)
-  const questions = rowsOf(read(join(fixture.directory, "ledger.db")).state, "Question")
+  expectOk(result)
+  assert.equal(result.err, "")
+  assert.equal(existsSync(invoked), false)
+  const saved = read(join(fixture.directory, "ledger.db"))
+  const notification = saved.deliveries.at(-1)!
+  assert.equal(notification.to, "master")
+  assert.equal(notification.address, "lead")
+  assert.equal(deliveryOutcome(notification), "pending")
+  assert.match(notification.message, /recipient seat: master\nquestion: Q-A-1/)
+  const questions = rowsOf(saved.state, "Question")
   assert.equal(questions.length, 1)
   assert.equal(questions[0]?.state, "open")
 })
@@ -286,26 +290,30 @@ test("a two-reviewer run: cold passes, import, messages, notes at handoff, maste
   expectOk(ledger("B", "proposed-fix", "mark", "P-A-1", "rev=1"))
   expectOk(ledger("A", "checkout", "take", "purpose=fix I-A-1"))
   expectRefused(ledger("B", "checkout", "take", "purpose=probe"), /held by A/)
-  expectOk(ledger("A", "shelved-fix", "add", "fixes=P-A-1", "artifact=cs 15", "baseline=base-sha + user.patch", "validation=validation.md"), /recipient seat: B\nfresh assessments for you to arrange or update: S-A-1@1 basis=sha256:/)
+  expectOk(ledger("A", "shelved-fix", "add", "fixes=P-A-1", "artifact=cs 15", "baseline=base-sha + user.patch", "validation=validation.md"))
+  expectIntent(directory, "B", /recipient seat: B\nfresh assessments for you to arrange or update: S-A-1@1 basis=sha256:/)
   expectRefused(ledger("A", "handoff"), /release the checkout/)
   expectOk(ledger("A", "checkout", "release"))
   expectRefused(ledger("A", "handoff"), /A-notes.md/)
   writeFileSync(join(directory, "A-notes.md"), "passes: 1 sweeps, 2 lenses, 1 probes, 0 diff reviews\nretrospective: rule 3 found it\n\n## Goal closure\n\nok\n\n## Domain scenarios\n\nok\n")
   expectRefused(ledger("A", "handoff"), /skipped:/)
   writeFileSync(join(directory, "A-notes.md"), "passes: 1 sweeps, 2 lenses, 1 probes, 0 diff reviews\nskipped: diff reviews, none of mine were shelved by B\nretrospective: rule 3 found it\n\n## Goal closure\n\nok\n\n## Domain scenarios\n\nok\n")
-  expectOk(ledger("A", "handoff"), /recipient seat: B\nA handed off.*Pending fresh assessments arranged by you: S-A-1@1/)
+  expectOk(ledger("A", "handoff"))
+  expectIntent(directory, "B", /recipient seat: B\nA handed off.*Pending fresh assessments arranged by you: S-A-1@1/)
   expectRefused(ledger("B", "shelved-fix", "review", "S-A-1", "rev=1"), /require a fresh context with LEDGER_ME=reader/)
   expectRefused(ledger("B", "shelved-fix", "review", "S-A-1", "rev=1", "conditions=check recovery"), /require a fresh context with LEDGER_ME=reader/)
   writeFileSync(join(directory, "B-notes.md"), "passes: 1 sweeps, 1 lenses, 1 probes, 1 diff reviews\nretrospective: nothing new\n\n## Goal closure\n\nok\n\n## Domain scenarios\n\nok\n")
   expectOk(ledger("B", "handoff"), /only you arrange these fresh contexts/)
   writeFileSync(join(directory, "assessment.md"), "Fresh reader checked candidate, claims, and validation against the frozen input.\n")
-  expectOk(ledger("reader", "shelved-fix", "review", "S-A-1", "rev=1", "reader=candidate-check", "assessment=assessment.md"), /recipient seat: master\nboth reviewers handed off with nothing ready/)
+  expectOk(ledger("reader", "shelved-fix", "review", "S-A-1", "rev=1", "reader=candidate-check", "assessment=assessment.md"))
+  expectIntent(directory, "master", /recipient seat: master\nboth reviewers handed off with nothing ready/)
 
   expectRefused(ledger("A", "report"), /master prints/)
   const report = expectOk(ledger("master", "report"), /Two reviewers, opus-reviewer \(A\) and codex-reviewer \(B\)/)
   assert.match(report.out, /Notes from opus-reviewer \(A\)/)
   assert.match(report.out, /rule 3 found it/)
-  expectOk(ledger("master", "check-in", "approve", "shelves=S-A-1", "approval=user said go", "executor=A"), /recipient seat: A\nready for you: K-M-1/)
+  expectOk(ledger("master", "check-in", "approve", "shelves=S-A-1", "approval=user said go", "executor=A"))
+  expectIntent(directory, "A", /recipient seat: A\nready for you: K-M-1/)
   expectOk(ledger("A", "check-in", "record", "K-M-1", "rev=1", "changeset=cs 16"), /checked in as cs 16/)
   const final = expectOk(ledger("master", "report"), /\| K-M-1 \| S-A-1 \| A \| checked in \| cs 16 \|/)
   assert.match(final.out, /### Where the time went/)

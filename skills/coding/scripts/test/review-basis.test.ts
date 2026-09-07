@@ -4,21 +4,25 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
-import { read } from "../src/store.ts"
+import { deliveryOutcome, read } from "../src/store.ts"
 
 const source = join(import.meta.dirname, "..", "ledger.ts")
 
 // These tests retain the exact dispatch token; submission never fills it from current state.
 function fixture(mode: "single" | "joint" = "single") {
   const directory = mkdtempSync(join(tmpdir(), "ledger-review-basis-"))
+  const invoked = join(directory, "unexpected-notification")
+  const notifier = join(directory, "notifier.cjs")
+  writeFileSync(notifier, `require("node:fs").writeFileSync(${JSON.stringify(invoked)}, "called"); process.exit(7)`)
   const commands: unknown[] = []
   for (const name of ["validation.md", "validation-v2.md", "assessment.md"]) writeFileSync(join(directory, name), `retained review-basis fixture: ${name}\n`)
   const run = (actor: string, args: string[], expected = 0) => {
     const pinned = join(directory, "bin", "ledger.ts")
-    const child = spawnSync(process.execPath, ["--no-warnings", existsSync(pinned) ? pinned : source, ...args], { encoding: "utf8", env: { ...process.env, LEDGER_DIR: directory, LEDGER_ME: actor, LEDGER_NOTIFY: "print" } })
+    const child = spawnSync(process.execPath, ["--no-warnings", existsSync(pinned) ? pinned : source, ...args], { encoding: "utf8", env: { ...process.env, LEDGER_DIR: directory, LEDGER_ME: actor, LEDGER_NOTIFY: `${process.execPath} ${notifier}` } })
     commands.push({ actor, args, code: child.status, out: child.stdout, err: child.stderr })
     writeFileSync(join(directory, "commands.json"), JSON.stringify(commands, null, 2))
     assert.equal(child.status, expected, `${directory}: ${actor} ${args.join(" ")}\n${child.stderr || child.stdout}`)
+    assert.equal(existsSync(invoked), false, "ledger records and reads never execute LEDGER_NOTIFY")
     return child
   }
   const snapshot = () => read(join(directory, "ledger.db"))
@@ -98,9 +102,16 @@ test("issue and proposal assessments bind parent proofs; changed pending inputs 
   const issueBasis = f.capture("I-A-2", "issue-input")
   const proposalBasis = f.capture("P-A-2", "proposal-input")
   const candidateBasis = f.capture("S-A-2", "candidate-input")
-  const changed = f.run("A", ["issue", "set", "I-A-1", "rev=1", "scope=every persisted draft"])
-  assert.match(changed.stdout, /fresh assessments for you to arrange or update: S-A-2@1 basis=sha256:/)
-  assert.match(changed.stdout, /Give changed inputs and their basis to that child for reassessment; do not start a duplicate reader/)
+  const previousIntents = f.snapshot().deliveries.length
+  f.run("A", ["issue", "set", "I-A-1", "rev=1", "scope=every persisted draft"])
+  const notifications = f.snapshot().deliveries.slice(previousIntents)
+  assert.equal(notifications.length, 1)
+  const notification = notifications[0]!
+  assert.equal(notification.to, "B")
+  assert.equal(notification.address, "arranger")
+  assert.equal(deliveryOutcome(notification), "pending")
+  assert.match(notification.message, /fresh assessments for you to arrange or update: S-A-2@1 basis=sha256:/)
+  assert.match(notification.message, /Give changed inputs and their basis to that child for reassessment; do not start a duplicate reader/)
   const reader = ["reader=retained-child", "assessment=assessment.md"]
   for (const [noun, verb, id, basis] of [["issue", "agree", "I-A-2", issueBasis], ["proposed-fix", "mark", "P-A-2", proposalBasis], ["proposed-fix", "reject", "P-A-2", proposalBasis]]) {
     assert.match(f.run("reader", [noun!, verb!, id!, "rev=1", `basis=${basis}`, ...reader, ...(verb === "reject" ? ["reason=old conclusion"] : [])], 1).stderr, /review inputs changed/)

@@ -10,6 +10,8 @@ Keep the record in the project's ignored working folder when one is specified, o
 
 Set `LEDGER_DIR` to that directory and `LEDGER_ME` to your seat. Run the skill's `scripts/ledger.ts --help` to see initialization and record commands. `ledger init` pins the helper under `<run directory>/bin/`; all later commands in this document refer to that pinned `bin/ledger.ts`. Existing runs keep their pinned helper when the skill changes. Continue or reuse their evidence per findings.md, Continuity; do not delete an old run as setup for a new one.
 
+Ledger mutations only save the record. In a joint run, deep.md's coordinator owns runtime observations and delivery. A queued notification is not a failed mutation or a request for the author to send it. Status distinguishes queued work from uncertain delivery and coordinator health; do not repeat a saved mutation to obtain a notification.
+
 In a joint run, `init --cold` inherits the master's declared scope and settings. The same pinned commands automatically read and write your private cold database until import; no database-selection flag is needed. Independent discovery delays sharing, not recording: follow findings.md, Working record, in your cold pass too. If the supplied scope is missing from the record, add its coverage rows before investigating it.
 
 Use `<seat>-notes.md` for the current note described in findings.md, Working record. Full artifacts stay on disk; there is no fixed number of files per issue or candidate. Before reporting or handing off, the pinned helper names any missing report fields. A pass count describes work already done, not a reason to run another pass. Reports summarize the record so the user can see outcomes and choices without reading the whole investigation.

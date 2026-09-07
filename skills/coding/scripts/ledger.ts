@@ -2,4 +2,4 @@
 // The coding skill's run database. `ledger --help` lists the commands.
 import { main } from "./src/cli.ts"
 
-process.exitCode = main(process.argv.slice(2))
+process.exitCode = await main(process.argv.slice(2))

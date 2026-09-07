@@ -1,5 +1,4 @@
 // Argument parsing and file checks. Builds protocol commands, stores them, prints the result.
-import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
@@ -27,7 +26,8 @@ import {
   type State,
 } from "./protocol.ts"
 import { isActor, renderReport, renderStatus, renderTimeline, summary, type Notes } from "./report.ts"
-import { StoreError, create, deliveryOutcome, mutate, read, recordDelivery, unsettled, type Delivery, type Mutation } from "./store.ts"
+import { StoreError, create, deliveryOutcome, mutate, read, recordDelivery, type Delivery, type Mutation } from "./store.ts"
+import { coordinate, coordinationStatus } from "./coordinator.ts"
 
 export class InputError extends Error {}
 
@@ -81,9 +81,13 @@ check-in approve shelves=<S-ids> approval=<the user's words> [executor=<A|B|mast
 check-in record <K-id> rev=N changeset=.. [departures=..] | check-in drop <K-id> rev=N reason=..
 import                                                                cold pass into the shared database
 handoff                                                               two-reviewer run, when ready work is empty
+coordinate status | once | watch [interval=<milliseconds>]            master-owned runtime observer and wake-ups; default interval 2000
+coordinate bind seat=<A|B|master> reason=..                            bind a dispatched runtime session
+coordinate pause reason=.. | resume reason=..                          explicit pause persists across restarts
+coordinate retry seat=<A|B|master> checked=..                           master: reconcile an uncertain wake after checking recipient/runtime
 delivery show <D-id>                                                   retained notification and outcome history
-delivery retry|accept <D-id> rev=N checked=<recipient/runtime observation>   reconcile only this notification; never repeat the saved mutation
-delivery supersede <D-id> rev=N reason=<why its work no longer needs notification>
+delivery accept <D-id> rev=N checked=<recipient/runtime observation>    master: record observed legacy delivery, without sending
+delivery supersede <D-id> rev=N reason=<why its notice is obsolete>     master: retain its history; do not repeat the mutation
 review-basis <I|P|S-id>                         print the current material review-input token
 status | report | timeline [A|B|master|reader|<row-id>]      the run's record: who did and waited on what, or the argument on one row
 `
@@ -336,65 +340,8 @@ function checkNotes(state: State, seat: Seat): void {
 }
 
 // ---------------------------------------------------------------------------
-// Messages
+// Delivery history. Runtime observation and prompting belong to coordinator.ts.
 
-function deliver(path: string, notifications: readonly Delivery[], checked = "initial delivery", explicit = false): boolean {
-  const configured = (process.env.LEDGER_NOTIFY ?? "herdr agent prompt").trim()
-  let confirmed = true
-  for (const notification of notifications) {
-    const to = notification.address
-    const message = notification.message
-    let current = notification
-    let attempted = false
-    const outcome = (value: "unconfirmed" | "accepted" | "printed", note: string) => {
-      current = recordDelivery(path, current.id, current.updates.length, { at: now(), actor: me(), outcome: value, note })
-    }
-    try {
-      if (configured && configured !== "print") {
-        // A killed process leaves this attempt visibly unconfirmed even if the provider accepted it.
-        outcome("unconfirmed", `${checked}; transport attempt started, acceptance not yet recorded`)
-        attempted = true
-        const [command, ...prefix] = configured.split(/\s+/)
-        const child = spawnSync(command!, [...prefix, to, message], { encoding: "utf8", timeout: 10_000 })
-        if (!child.error && child.status === 0) {
-          outcome("accepted", "transport accepted delivery")
-          console.log(`delivery accepted to ${to}`)
-          continue
-        }
-        confirmed = false
-        const failure = child.error?.message ?? (child.signal ? `signal ${child.signal}` : `exit ${child.status}`)
-        console.error(`delivery not confirmed to ${to}: ${failure}`)
-        for (const diagnostic of [child.stderr, child.stdout]) if (diagnostic?.trim()) console.error(diagnostic.trim())
-        const record = JSON.stringify({
-          id: notification.id, at: now(), actor: me(), to, command: [command, ...prefix], message,
-          status: child.status, signal: child.signal, error: child.error?.message ?? null,
-          stdout: child.stdout, stderr: child.stderr,
-        }, null, 2)
-        const diagnosticPath = join(runDirectory(), "delivery", `${createHash("sha256").update(record).digest("hex")}.json`)
-        let detail = failure
-        try {
-          mkdirSync(dirname(diagnosticPath), { recursive: true })
-          writeFileSync(diagnosticPath, record)
-          console.error(`delivery diagnostic: ${diagnosticPath}`)
-          detail += `; diagnostic: ${diagnosticPath}`
-        } catch (error) {
-          detail += `; could not retain delivery diagnostic: ${error instanceof Error ? error.message : String(error)}`
-          console.error(detail)
-        }
-        outcome("unconfirmed", detail)
-      } else {
-        outcome("printed", `${checked}; LEDGER_NOTIFY intentionally disabled transport`)
-        console.log(`delivery disabled by LEDGER_NOTIFY; message not sent to ${to}`)
-      }
-    } catch (error) {
-      if (explicit && !attempted && error instanceof StoreError) throw error
-      confirmed = false
-      console.error(`delivery ${notification.id} not completed: ${error instanceof Error ? error.message : String(error)}; read status before reconciliation`)
-    }
-    console.log(`message for ${to}: ${message}`)
-  }
-  return confirmed
-}
 
 function showDelivery(delivery: Delivery): string {
   return [
@@ -405,15 +352,17 @@ function showDelivery(delivery: Delivery): string {
 }
 
 function unsettledText(deliveries: readonly Delivery[]): string {
-  const pending = deliveries.filter(unsettled)
-  if (pending.length === 0) return ""
+  const queued = deliveries.filter((delivery) => deliveryOutcome(delivery) === "pending")
+  const uncertain = deliveries.filter((delivery) => deliveryOutcome(delivery) === "unconfirmed")
+  if (queued.length === 0 && uncertain.length === 0) return ""
   return [
-    "## Unsettled delivery",
+    "## Coordination",
     "",
-    "The sender reconciles; its successor or master takes over if it cannot resume. Check the recipient/runtime before retrying or recording acceptance; a timeout or interruption may follow acceptance. Domain report-readiness does not settle delivery.",
-    ...pending.flatMap((delivery) => [
+    `${queued.length} notification intents queued for the coordinator; the work mutations are saved.`,
+    ...(uncertain.length ? ["Unconfirmed delivery requires the master to check the recipient/runtime and record a disposition; do not resend or repeat the mutation."] : []),
+    ...uncertain.flatMap((delivery) => [
       showDelivery(delivery),
-      `Next: "$LEDGER_DIR/bin/ledger.ts" delivery retry ${delivery.id} rev=${delivery.updates.length} checked=<recipient/runtime observation>, or delivery accept with evidence it was accepted. If obsolete, delivery supersede ${delivery.id} rev=${delivery.updates.length} reason=<why no notification is needed>.`,
+      `Master: delivery accept ${delivery.id} rev=${delivery.updates.length} checked=<receipt evidence>, or delivery supersede with the reason the notice is obsolete. Runtime wake-ups belong to coordinate.`,
     ]),
   ].join("\n")
 }
@@ -437,34 +386,26 @@ function reconcileDelivery(parsed: Parsed): number {
     console.log(showDelivery(delivery))
     return 0
   }
+  if (actor !== "master") throw new InputError("the master owns delivery reconciliation; reviewers only record work")
   if (verb === "supersede") {
     only(parsed.fields, ["rev", "reason"])
     console.log(showDelivery(recordDelivery(path, id, rev(parsed.fields), { at: now(), actor, outcome: "superseded", note: required(parsed.fields, "reason") })))
     return 0
   }
-  if (verb !== "retry" && verb !== "accept") throw new InputError("delivery takes show, retry, accept, or supersede")
+  if (verb !== "accept") throw new InputError("delivery takes show, accept, or supersede; runtime wake-ups belong to coordinate")
   only(parsed.fields, ["rev", "checked"])
   const checked = required(parsed.fields, "checked")
   const revision = rev(parsed.fields)
-  if (verb === "accept") {
-    console.log(showDelivery(recordDelivery(path, id, revision, { at: now(), actor: me(), outcome: "accepted", note: `recipient/runtime checked: ${checked}` })))
-    return 0
-  }
-  const delivery = read(path).deliveries.find((item) => item.id === id)
-  if (!delivery) throw new InputError(`no delivery ${id}; read status`)
-  if (delivery.updates.length !== revision) throw new InputError(`${id} is at rev ${delivery.updates.length}; read its delivery record again`)
-  const confirmed = deliver(path, [delivery], `recipient/runtime checked before retry: ${checked}`, true)
-  showUnsettled(path)
-  return confirmed ? 0 : 2
+  console.log(showDelivery(recordDelivery(path, id, revision, { at: now(), actor, outcome: "accepted", note: `recipient/runtime checked: ${checked}` })))
+  return 0
 }
 
 function report(result: Mutation, actor: Actor, line: string): number {
   console.log(line)
-  const confirmed = deliver(result.path, result.notifications)
   console.log(summary(result.state, actor))
   showUnsettled(result.path)
-  if (!confirmed) console.error("ledger: mutation was saved; do not repeat it. Check the runtime and recipient before delivering the printed message; a timeout may have delivered it. Follow the task's stop rule before recovery.")
-  return confirmed ? 0 : 2
+  if (result.state.mode === "joint") console.log(coordinationStatus(runDirectory()))
+  return 0
 }
 
 // ---------------------------------------------------------------------------
@@ -709,7 +650,7 @@ function printReport(): void {
       if (state.mode === "single" || state.handedOff[seat]) checkNotes(state, seat)
     }
   }
-  const text = [renderReport(state, record(actor), readNotes(state)), unsettledText(snapshot.deliveries)].filter(Boolean).join("\n")
+  const text = [renderReport(state, record(actor), readNotes(state)), unsettledText(snapshot.deliveries), state.mode === "joint" ? coordinationStatus(runDirectory()) : ""].filter(Boolean).join("\n")
   const destination = join(runDirectory(), "report.md")
   writeFileSync(destination, text)
   console.log(text)
@@ -717,10 +658,14 @@ function printReport(): void {
   console.log(summary(state, actor))
 }
 
-export function main(argv: readonly string[]): number {
+export async function main(argv: readonly string[]): Promise<number> {
   try {
     const [noun = "", ...rest] = argv
     if (noun === "" || noun === "--help" || noun === "-h" || noun === "help") { console.log(HELP); return 0 }
+    if (noun === "coordinate") {
+      if ((rest[0] ?? "status") !== "status" && me() !== "master") throw new InputError("coordinate controls belong to the master")
+      return await coordinate(runDirectory(), rest)
+    }
     const parsed = parse(rest)
     const nouns = ["init", "status", "report", "timeline", "review-basis", "import", "handoff", "run", "coverage", "issue", "question", "proposed-fix", "shelved-fix", "checkout", "check-in", "delivery"]
     if (!nouns.includes(noun)) throw new InputError(`unknown command '${noun}'.\n${HELP}`)
@@ -747,6 +692,7 @@ export function main(argv: readonly string[]): number {
       const path = activePath(actor)
       console.log(renderStatus(read(path).state, actor))
       showUnsettled(path)
+      if (read(sharedPath()).state.mode === "joint") console.log(coordinationStatus(runDirectory()))
       return 0
     }
     if (noun === "report") { printReport(); return 0 }
