@@ -9,7 +9,7 @@ State quick or deep and how far you are going so the user can redirect.
 | The change | Mode |
 |---|---|
 | A bounded change without a risk surface | Quick |
-| Release-gating, too much material for one judgment context, or a risk surface | Deep; read [deep.md](./deep.md) and choose your role |
+| Release-gating, too much material for one judgment context, or a risk surface | Deep; read [deep.md](./deep.md) for joint coordination |
 | The user asks for a deep or thorough review | Deep |
 | The user names a focus | Use the relevant mode within that scope; report which lenses were applied |
 
@@ -17,7 +17,7 @@ Risk surfaces are listed in good-code.md. If the scope is unclear, inspect the c
 
 ## Gather the input
 
-Inventory the requested revision or working-tree change, including existing local edits. Identify its goal, relevant rulings, files, and changed hunks without judging them. Record the baseline and where callers, owners, and project contracts can be found. A master gathers this input; reviewers determine whether it is correct and sufficient.
+Inventory the requested revision or working-tree change, including existing local edits. Identify its goal, relevant rulings, files, and changed hunks without judging them. Record the baseline and where callers, owners, and project contracts can be found. Master can prepare this input; both investigators check whether it is correct and sufficient.
 
 ## Scope of judgment
 
@@ -34,7 +34,7 @@ Use findings.md, Working record, throughout the review, including before finding
 
 ## Report
 
-Explain consequences in the owner's language. The evidence content and dispositions are owned by findings.md; build the report from retained findings and assessments when a record is in use, not merely task counts. The response contains:
+Explain consequences in the user's language. The evidence content and dispositions are owned by findings.md; build the report from retained conclusions and evidence when a record is in use, not merely task counts. The response contains:
 - the goal and whether the reviewed behavior meets it, with any material mismatch;
 - substantive issues ranked by user impact, with the evidence basis and uncertainty;
 - each proposed fix or candidate and its current state; do not imply that a proposal is implemented or a saved candidate is reviewed;

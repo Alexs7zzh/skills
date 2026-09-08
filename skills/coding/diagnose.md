@@ -9,7 +9,7 @@ State plain or deep beside how far you are going.
 | The investigation | Mode |
 |---|---|
 | A bounded symptom or coherent cluster without a risk surface | Plain |
-| Independent clusters that need separate investigators, a cause on a risk surface, or a requested deep or exhaustive diagnosis | Deep; read [deep.md](./deep.md) and choose your role |
+| Independent clusters that exceed one judgment context, a cause on a risk surface, or a requested deep or exhaustive diagnosis | Deep; read [deep.md](./deep.md) for joint coordination |
 
 Risk surfaces are listed in good-code.md. Choose by the work, not by whether symptoms arrived in one export or several. Escalate if new evidence requires deep coordination, retaining the investigation so far.
 

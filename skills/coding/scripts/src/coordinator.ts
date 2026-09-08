@@ -27,6 +27,9 @@ const rolesFor = (snapshot: Snapshot): Role[] => Object.keys(snapshot.state.name
 // Policy checkpoint: an accepted wake without observed activity needs inspection
 // after one minute. This is not a transport deadline or evidence the agent died.
 const ACTIVITY_INSPECTION_MS = 60_000
+// Coordinator policy: bound each CLI observation/send. Kill the owned CLI child
+// at the deadline even if it ignores SIGTERM; a timed-out send stays unconfirmed.
+const RUNTIME_TIMEOUT_MS = 10_000
 const now = () => new Date().toISOString()
 const initial = (): Control => ({ paused: true, reason: "disabled until master resumes", tick: null, watch: null, lastObservation: null, bindings: {}, observations: {}, attempts: [] })
 const detail = (error: unknown) => error instanceof Error ? error.message : String(error)
@@ -35,9 +38,11 @@ const suppresses = (attempt: Attempt) => attempt.outcome !== "not-sent" && !atte
 
 function open(directory: string): DatabaseSync {
   const db = new DatabaseSync(join(directory, "coordination.db"))
-  db.exec("PRAGMA busy_timeout = 5000; CREATE TABLE IF NOT EXISTS control (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS audit (seq INTEGER PRIMARY KEY, at TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL)")
-  db.prepare("INSERT OR IGNORE INTO control VALUES (1, ?)").run(JSON.stringify(initial()))
-  return db
+  try {
+    db.exec("PRAGMA busy_timeout = 5000; CREATE TABLE IF NOT EXISTS control (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS audit (seq INTEGER PRIMARY KEY, at TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL)")
+    db.prepare("INSERT OR IGNORE INTO control VALUES (1, ?)").run(JSON.stringify(initial()))
+    return db
+  } catch (error) { db.close(); throw error }
 }
 function load(db: DatabaseSync): Control {
   return JSON.parse((db.prepare("SELECT value FROM control WHERE id=1").get() as { value: string }).value) as Control
@@ -71,7 +76,7 @@ function render(state: Control, roles: readonly Role[]): string {
     const attempt = state.attempts.filter((attempt) => attempt.seat === seat).at(-1)
     if (attempt) lines.push(`  last wake: ${attempt.outcome} at ${attempt.at}; activity after wake: ${attempt.observedWorking ? "observed working" : "not observed"}${attempt.retry ? `; checked retry authorized at ${attempt.retry.at}` : ""}`)
   }
-  for (const attempt of state.attempts.filter(unresolved)) lines.push(`unconfirmed wake ${attempt.seat} ${attempt.id}: ${attempt.detail}; master checked retry required`)
+  for (const attempt of state.attempts.filter(unresolved)) lines.push(`unconfirmed wake ${attempt.seat} ${attempt.id}: ${attempt.detail}; master must inspect the recipient/runtime, then coordinate retry seat=${attempt.seat} checked=... and explicitly resume; restart watch if it stopped`)
   return lines.join("\n")
 }
 /** Reading normal ledger health must neither create control state nor contact Herdr. */
@@ -96,7 +101,7 @@ function session(value: unknown): string | null {
   throw new Error("Herdr returned an invalid agent session")
 }
 function agents(names: readonly string[]): Agent[] {
-  const result = spawnSync("herdr", ["agent", "list"], { encoding: "utf8", timeout: 10_000 })
+  const result = spawnSync("herdr", ["agent", "list"], { encoding: "utf8", timeout: RUNTIME_TIMEOUT_MS, killSignal: "SIGKILL" })
   if (result.error || result.status !== 0) throw new Error(`Herdr observation failed: ${result.error?.message ?? result.stderr ?? result.status}`)
   const payload: unknown = JSON.parse(result.stdout)
   const list = (payload as { result?: { agents?: unknown } })?.result?.agents
@@ -125,15 +130,22 @@ function work(snapshot: Snapshot, seat: Role): { duties: string[]; detail: strin
 
 function tick(db: DatabaseSync, directory: string, watch: Owner | null): void {
   const owner: Owner = { pid: process.pid, token: randomUUID(), since: now() }
-  change(db, "tick acquired", (state) => {
-    if (state.tick) throw new Error(`coordinator tick already owned by ${ownerText(state.tick)}`)
+  const acquired = change(db, "tick acquired", (state) => {
     if (state.watch && state.watch.token !== watch?.token) throw new Error(`watch already owned by ${ownerText(state.watch)}`)
+    if (state.tick) {
+      // Only control commands can reserve between this watch's ticks: competing
+      // once/watch invocations are excluded by its durable watch ownership.
+      if (watch && state.watch?.token === watch.token && alive(state.tick)) return false
+      throw new Error(`coordinator tick already owned by ${ownerText(state.tick)}`)
+    }
     state.tick = owner
     if (state.attempts.some(unresolved)) {
       state.paused = true
       state.reason = "unconfirmed wake; master must inspect and retry explicitly"
     }
+    return true
   })
+  if (!acquired) return
   try {
     const roles = rolesFor(read(join(directory, "ledger.db")))
     let list: Agent[]
@@ -228,8 +240,8 @@ function tick(db: DatabaseSync, directory: string, watch: Owner | null): void {
         })
         continue
       }
-      const message = `Run directory: ${JSON.stringify(resolve(directory))}; recipient actor: ${seat}\n${available.detail}.\nRead the current ledger and your retained working note. Continue your eligible assigned tasks and inspect your recorded child executions when due. Preserve task and checkout ownership. This wake is not an assignment or evidence of completion.`
-      const result = spawnSync("herdr", ["agent", "prompt", binding.pane, message], { encoding: "utf8", timeout: 10_000 })
+      const message = `Run directory: ${JSON.stringify(resolve(directory))}; recipient actor: ${seat}\n${available.detail}.\nRead the current ledger and your retained working note. Pull your action work, peer-agreement duties or unread outcomes, and inspect your recorded child executions when due. Preserve task and checkout ownership. This wake is not an assignment or evidence of completion.`
+      const result = spawnSync("herdr", ["agent", "prompt", binding.pane, message], { encoding: "utf8", timeout: RUNTIME_TIMEOUT_MS, killSignal: "SIGKILL" })
       let accepted = false
       try {
         const response = JSON.parse(result.stdout) as { result?: { type?: string; agent?: { name?: string; pane_id?: string; agent_session?: unknown } } }
@@ -299,11 +311,27 @@ export async function coordinate(directory: string, args: readonly string[]): Pr
         if (state.watch || state.tick) throw new Error(`coordinator already owned: watch ${ownerText(state.watch)}; tick ${ownerText(state.tick)}`)
         state.watch = watch
       })
-      let stopping = false
-      const stop = () => { stopping = true }
+      const stopping = new AbortController()
+      const stop = () => { stopping.abort() }
       process.on("SIGINT", stop); process.on("SIGTERM", stop)
-      try { while (!stopping) { tick(db, directory, watch); if (!stopping) await delay(interval) } }
-      finally { process.off("SIGINT", stop); process.off("SIGTERM", stop) }
+      try {
+        while (!stopping.signal.aborted) {
+          tick(db, directory, watch)
+          if (load(db).attempts.some(unresolved)) {
+            console.error(`coordination watch stopped: unconfirmed wake in ${resolve(directory)}. Master must inspect coordinate status and the recipient/runtime, record coordinate retry seat=... checked=..., then explicitly resume and restart watch. No automatic retry was sent.`)
+            break
+          }
+          if (!stopping.signal.aborted) {
+            try { await delay(interval, undefined, { signal: stopping.signal }) }
+            catch (error) { if (!(stopping.signal.aborted && error instanceof Error && error.name === "AbortError")) throw error }
+          }
+        }
+      }
+      finally {
+        process.off("SIGINT", stop); process.off("SIGTERM", stop)
+        change(db, "watch stopped", (state) => { if (state.watch?.token === watch?.token) state.watch = null })
+        watch = null
+      }
     } else {
       // Bind calls runtime only after excluding an active tick, with a durable reservation.
       const owner: Owner = { pid: process.pid, token: randomUUID(), since: now() }
@@ -337,7 +365,7 @@ export async function coordinate(directory: string, args: readonly string[]): Pr
     console.log(render(load(db), roles))
     return load(db).attempts.some(unresolved) ? 2 : 0
   } finally {
-    if (watch) change(db, "watch stopped", (state) => { if (state.watch?.token === watch?.token) state.watch = null })
-    db.close()
+    try { if (watch) change(db, "watch stopped", (state) => { if (state.watch?.token === watch?.token) state.watch = null }) }
+    finally { db.close() }
   }
 }

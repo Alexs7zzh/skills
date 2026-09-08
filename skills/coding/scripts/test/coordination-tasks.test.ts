@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises"
 import { DatabaseSync } from "node:sqlite"
 import { create, mutate, read } from "../src/store.ts"
 import { initialState, type Command } from "../src/protocol.ts"
+import { coordinate } from "../src/coordinator.ts"
 
 const AT = "2026-01-01T00:00:00.000Z"
 const PAST = "2000-01-01T00:00:00.000Z"
@@ -34,10 +35,22 @@ const args = process.argv.slice(2);
 const runtime = JSON.parse(fs.readFileSync(${JSON.stringify(runtimePath)}, "utf8"));
 fs.appendFileSync(${JSON.stringify(callsPath)}, JSON.stringify(args) + "\\n");
 if (runtime.mode === "denied") { console.error("fake runtime denied"); process.exit(7); }
-if (args[0] === "agent" && args[1] === "list") console.log(JSON.stringify({result:{agents:runtime.agents}}));
+if (args[0] === "agent" && args[1] === "list") {
+  const listed = () => console.log(JSON.stringify({result:{agents:runtime.agents}}));
+  if (runtime.mode === "hold-list") {
+    fs.writeFileSync(${JSON.stringify(join(directory, "listing"))}, "reserved");
+    const timer = setInterval(() => { if (fs.existsSync(${JSON.stringify(join(directory, "release"))})) { clearInterval(timer); listed(); } }, 10);
+  } else listed();
+}
 else if (args[0] === "agent" && args[1] === "prompt") {
   if (runtime.mode === "crash") { process.kill(process.ppid, "SIGKILL"); process.exit(0); }
-  if (runtime.mode === "ambiguous") { console.error("accepted then connection lost"); process.exit(7); }
+  if (runtime.mode === "ambiguous" || (runtime.mode === "ambiguous-worker" && args[2] === "pane-0")) { console.error("accepted then connection lost"); process.exit(7); }
+  if (runtime.mode === "ignore-stop") {
+    process.on("SIGTERM", () => {});
+    fs.writeFileSync(${JSON.stringify(join(directory, "runtime-pid"))}, String(process.pid));
+    setInterval(() => {}, 1000);
+    return;
+  }
   const agent = runtime.agents.find(agent => agent.pane_id === args[2]);
   const accepted = () => console.log(JSON.stringify({result:{type:"agent_prompted",agent:runtime.mode === "rebound" ? {...agent, agent_session:{...agent.agent_session,value:"replaced-during-prompt"}} : agent}}));
   if (runtime.mode === "hold") {
@@ -53,13 +66,21 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
 `)
   const environment = (actor: string) => ({ ...process.env, PATH: `${directory}:${process.env.PATH}`, LEDGER_ME: actor })
   const run = (actor: string, ...args: string[]) => spawnSync(process.execPath, ["--no-warnings", entry, ...args], { encoding: "utf8", env: environment(actor) })
-  const start = (...args: string[]) => spawn(process.execPath, ["--no-warnings", entry, ...args], { stdio: "ignore", env: environment("master") })
+  const start = (...args: string[]) => spawn(process.execPath, ["--no-warnings", entry, ...args], { stdio: ["ignore", "pipe", "pipe"], env: environment("master") })
   const ok = (...args: string[]) => {
     const result = run("master", ...args)
     assert.equal(result.status, 0, `${args.join(" ")}: ${result.stderr || result.stdout}`)
     return result.stdout
   }
   const snapshot = () => read(ledger)
+  const control = () => {
+    const db = new DatabaseSync(join(directory, "coordination.db"), { readOnly: true })
+    try {
+      db.exec("PRAGMA busy_timeout=5000")
+      return JSON.parse((db.prepare("SELECT value FROM control WHERE id=1").get() as { value: string }).value)
+    }
+    finally { db.close() }
+  }
   const command = (cmd: Command) => mutate(ledger, () => cmd)
   const calls = (): string[][] => existsSync(callsPath) ? readFileSync(callsPath, "utf8").trim().split("\n").map((line) => JSON.parse(line)) : []
   const prompts = () => calls().filter((args) => args[1] === "prompt")
@@ -71,13 +92,15 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
   create(ledger, state, { at: AT, actor: "master", command: "init", row: "", note: "isolated fake runtime fixture" })
   const add = (id: string, owner: string | null = "Alice", permission: "read" | "write" = "read") => command({ type: "task.add", actor: "master", at: AT, id, title: id, outcome: `retained result for ${id}`, next: `inspect ${id}`, owner, permission })
   const task = (id: string) => snapshot().state.tasks.find((item) => item.id === id)!
-  const deliver = (id: string) => {
+  const publish = (id: string, disposition: "done" | "stopped" | "cancelled" = "done") => {
     const assigned = task(id)
     assert.ok(assigned.owner)
     const result = `${id}-result`
     command({ type: "record.save", actor: assigned.owner, at: AT, id: result, rev: 0, kind: "evidence", title: `Result of ${id}`, content: "Fixture observation and its limitation retained", inputs: assigned.inputs })
-    command({ type: "task.finish", actor: assigned.owner, at: AT, id, rev: assigned.rev, result: { id: result, rev: 1 } })
+    command({ type: "task.publish", actor: assigned.owner, at: AT, id, rev: assigned.rev, result: { id: result, rev: 1 }, disposition })
   }
+  const agree = (id: string) => command({ type: "task.agree", actor: task(id).conclusion!.author === "Alice" ? "Bob" : "Alice", at: AT, id, rev: task(id).rev })
+  const deliver = (id: string, disposition: "done" | "stopped" | "cancelled" = "done") => { publish(id, disposition); agree(id) }
   const reserve = (id = "child-check", inspectAfter = PAST) => {
     add("read-candidate", "Bob")
     command({ type: "dispatch.reserve", actor: "Bob", at: AT, id, task: "read-candidate", taskRev: task("read-candidate").rev, inspectAfter })
@@ -86,7 +109,15 @@ catch (error) { console.error(error.message); process.exitCode = 1; }
     const dispatch = snapshot().state.dispatches[0]!
     command({ type: "dispatch.update", actor: "Bob", at: AT, id: dispatch.id, rev: dispatch.rev, state, inspectAfter, observation: `fake runtime observed child ${state}`, ...(state === "running" ? { worker: { name: "fresh-reader", pane: "child-pane", session: "child-session" } } : {}) })
   }
-  return { directory, ledger, runtime, saveRuntime, run, start, ok, calls, prompts, bind, resume, once, idle, snapshot, command, add, task, deliver, reserve, updateDispatch }
+  return { directory, ledger, runtime, saveRuntime, run, start, ok, calls, prompts, bind, resume, once, idle, snapshot, control, command, add, task, publish, agree, deliver, reserve, updateDispatch }
+}
+
+async function waitFor(condition: () => boolean, timeout = 5000) {
+  const deadline = Date.now() + timeout
+  while (!condition()) {
+    assert.ok(Date.now() < deadline, "timed out waiting for fixture state")
+    await delay(10)
+  }
 }
 
 function ageLatestAttempt(directory: string) {
@@ -215,7 +246,8 @@ test("a user wait reaches master while its owner can do unrelated work", () => {
   f.bind(); f.resume(); f.idle(0, 1, 2); f.once(); f.once()
   assert.deepEqual(f.prompts().map((args) => args[2]).sort(), ["pane-0", "pane-2"])
   assert.match(f.prompts().find((args) => args[2] === "pane-0")![3]!, /inspect-import/)
-  assert.match(f.prompts().find((args) => args[2] === "pane-2")![3]!, /retained export format/)
+  assert.match(f.prompts().find((args) => args[2] === "pane-2")![3]!, /retained outcome or blocker/)
+  assert.match(f.task("decide-export").wait!.reason, /retained export format/, "the reason lives in the record, not duplicated in the wake")
   assert.equal(f.task("decide-export").owner, "Alice")
 })
 
@@ -341,28 +373,57 @@ test("accepted activity followed by idle with unchanged work escalates only once
   f.idle(0, 2); f.once(); f.once()
   assert.equal(f.prompts().length, 2)
   assert.match(f.prompts()[1]![3]!, /Alice: stalled/)
-  f.command({ type: "task.cancel", actor: "Alice", at: AT, id: "inspect-export", rev: f.task("inspect-export").rev, reason: "User cancelled this work" })
+  f.deliver("inspect-export", "cancelled")
   f.once()
   assert.equal(f.prompts().length, 3, "terminal cancellation gives master a final reporting prompt")
   assert.equal(f.prompts().at(-1)![2], "pane-2")
   assert.doesNotMatch(f.ok("status"), /master attention required/)
 })
 
-test("the last terminal result wakes idle master once and subsequent notes do not repeat it", () => {
+test("each agreed conclusion wakes idle master while remaining work continues; notes do not repeat it", () => {
   const f = fixture()
   f.add("inspect-export"); f.add("inspect-import", "Bob")
   f.bind(); f.resume(); f.idle(2); f.once()
   assert.equal(f.prompts().length, 0)
   f.deliver("inspect-export"); f.once()
-  assert.equal(f.prompts().length, 0, "one delivered result does not imply all recorded work is terminal")
+  assert.equal(f.prompts().length, 1, "intermediate conclusions reach master before the investigation ends")
+  assert.equal(f.task("inspect-import").state, "open")
   f.deliver("inspect-import"); f.idle(0, 1, 2); f.once(); f.once()
-  assert.equal(f.prompts().length, 1)
+  assert.equal(f.prompts().length, 2)
   assert.equal(f.prompts()[0]![2], "pane-2")
-  assert.match(f.prompts()[0]![3]!, /result|report/)
+  assert.match(f.prompts()[0]![3]!, /retained outcome or blocker/)
+  assert.match(f.prompts()[1]![3]!, /all conclusions/)
   f.command({ type: "task.set", actor: "Alice", at: AT, id: "inspect-export", rev: f.task("inspect-export").rev, note: "More context for the retained result" })
   f.once(); f.once()
-  assert.equal(f.prompts().length, 1)
+  assert.equal(f.prompts().length, 2)
   assert.ok(f.snapshot().state.tasks.every((task) => task.state === "done"))
+})
+
+test("either investigator's publication wakes its peer and idle master; acknowledgement is not assent", () => {
+  for (const author of ["Alice", "Bob"]) {
+    const f = fixture()
+    const peerIndex = author === "Alice" ? 1 : 0
+    f.add("conclusion", author)
+    f.add("continuing-investigation", author)
+    f.bind(); f.resume(); f.idle(peerIndex, 2)
+    f.publish("conclusion")
+    f.once(); f.once()
+    assert.deepEqual(f.prompts().map((args) => args[2]).sort(), [`pane-${peerIndex}`, "pane-2"].sort())
+    assert.match(f.prompts().find((args) => args[2] === `pane-${peerIndex}`)![3]!, /read the conclusion and evidence; agree, revise, or reopen/)
+    assert.match(f.prompts().find((args) => args[2] === "pane-2")![3]!, /retained outcome or blocker/)
+    assert.equal(f.task("continuing-investigation").state, "open")
+    const conclusion = f.task("conclusion").conclusion
+    f.command({ type: "task.ack", actor: "master", at: AT, id: "conclusion", rev: f.task("conclusion").rev })
+    f.once()
+    assert.deepEqual(f.task("conclusion").conclusion, conclusion)
+    assert.deepEqual(conclusion!.agreedBy, [author])
+    assert.equal(f.prompts().length, 2, "acknowledgement neither re-wakes the peer nor ends its agreement duty")
+    f.agree("conclusion")
+    f.once(); f.once()
+    assert.equal(f.prompts().length, 3)
+    assert.equal(f.prompts().at(-1)![2], "pane-2", "peer assent becomes a new visible outcome")
+    assert.doesNotMatch(f.prompts().at(-1)![3]!, /all conclusions/, "other investigation is still active")
+  }
 })
 
 test("terminal results with a held checkout request release before the final reporting wake", () => {
@@ -382,21 +443,23 @@ test("terminal results with a held checkout request release before the final rep
   assert.doesNotMatch(f.prompts()[1]![3]!, /checkout still held/)
 })
 
-test("an active child and then its missing result prevent a premature final reporting wake", () => {
+test("an active child and missing result do not suppress intermediate outcomes or imply completion", () => {
   const f = fixture()
   f.add("inspect-export"); f.reserve("child-check", FUTURE)
   f.updateDispatch("running", FUTURE)
   f.deliver("inspect-export")
   f.bind(); f.resume(); f.idle(0, 1, 2); f.once()
-  assert.equal(f.prompts().length, 0)
+  assert.equal(f.prompts().length, 1)
+  assert.equal(f.prompts()[0]![2], "pane-2")
+  assert.doesNotMatch(f.prompts()[0]![3]!, /all conclusions/)
   f.updateDispatch("finished")
   f.once()
-  assert.equal(f.prompts().length, 1)
-  assert.equal(f.prompts()[0]![2], "pane-1", "child exit returns the still-missing result to its parent")
-  f.deliver("read-candidate"); f.once(); f.once()
   assert.equal(f.prompts().length, 2)
-  assert.equal(f.prompts()[1]![2], "pane-2")
-  assert.match(f.prompts()[1]![3]!, /result|report/)
+  assert.equal(f.prompts()[1]![2], "pane-1", "child exit returns the still-missing result to its parent")
+  f.deliver("read-candidate"); f.once(); f.once()
+  assert.equal(f.prompts().length, 3)
+  assert.equal(f.prompts()[2]![2], "pane-2")
+  assert.match(f.prompts()[2]![3]!, /result|report/)
 })
 
 test("paused state survives fresh processes and suppresses owned tasks and overdue inspections", () => {
@@ -437,7 +500,9 @@ test("ambiguous send survives restart and a checked retry retains its outcome an
   f.bind(); f.resume(); f.idle(0)
   const before = f.snapshot()
   f.runtime.mode = "ambiguous"; f.saveRuntime()
-  assert.equal(f.run("master", "once").status, 2)
+  const failed = f.run("master", "once")
+  assert.equal(failed.status, 2)
+  assert.match(failed.stdout, /inspect the recipient\/runtime.*retry seat=Alice checked=.*explicitly resume/)
   f.runtime.mode = "accept"; f.saveRuntime()
   assert.equal(f.run("master", "resume", "reason=transport restored").status, 1)
   assert.equal(f.run("master", "once").status, 2)
@@ -511,4 +576,168 @@ test("pause during a send drains it, prevents later sends and excludes a competi
     await exited
   }
   assert.match(f.ok("status"), /paused; user stopped agents/)
+})
+
+test("ambiguous worker delivery visibly stops watch, retains pause and requires checked recovery", async () => {
+  const f = fixture()
+  f.add("inspect-export")
+  f.bind(); f.resume(); f.idle(0, 2)
+  f.runtime.mode = "ambiguous-worker"; f.saveRuntime()
+  const watcher = f.start("watch", "interval=250")
+  const exited = eventOnce(watcher, "exit")
+  let output = "", diagnostic = ""
+  watcher.stdout.on("data", (chunk) => { output += chunk })
+  watcher.stderr.on("data", (chunk) => { diagnostic += chunk })
+  try {
+    await waitFor(() => watcher.exitCode !== null)
+    assert.deepEqual(await exited, [2, null])
+    assert.match(diagnostic, /watch stopped: unconfirmed wake/)
+    assert.match(diagnostic, /inspect coordinate status.*retry seat=.*checked=.*resume and restart watch/)
+    assert.match(output, /unconfirmed wake Alice/)
+    assert.equal(f.control().watch, null)
+    assert.equal(f.control().tick, null)
+    assert.equal(f.control().paused, true)
+    assert.equal(f.control().attempts[0].outcome, "unconfirmed")
+    assert.equal(f.control().observations.master.status, "idle")
+    assert.deepEqual(f.prompts().map((call) => call[2]), ["pane-0"])
+    f.runtime.mode = "accept"; f.saveRuntime()
+    assert.equal(f.run("master", "resume", "reason=runtime restored").status, 1)
+    assert.equal(f.run("master", "watch", "interval=250").status, 2, "restart exposes retained uncertainty without another prompt")
+    assert.equal(f.prompts().length, 1)
+    f.ok("retry", "seat=Alice", "checked=recipient and transport inspected; retry authorized")
+    f.once()
+    assert.equal(f.prompts().length, 1)
+    f.resume(); f.once()
+    assert.equal(f.prompts().length, 2)
+    assert.equal(f.control().attempts[0].outcome, "unconfirmed", "recovery retains original outcome")
+  } finally {
+    if (watcher.exitCode === null) watcher.kill("SIGTERM")
+    await exited
+  }
+})
+
+test("binding across scheduled ticks preserves watch and later work delivery", async () => {
+  const f = fixture()
+  f.add("inspect-export")
+  f.bind(); f.idle(0)
+  const watcher = f.start("watch", "interval=1000")
+  const exited = eventOnce(watcher, "exit")
+  let binder: ReturnType<typeof f.start> | undefined
+  let bound: ReturnType<typeof eventOnce> | undefined
+  try {
+    await waitFor(() => f.control().lastObservation !== null && f.control().tick === null)
+    f.runtime.mode = "hold-list"; f.saveRuntime()
+    binder = f.start("bind", "seat=Alice", "reason=inspected actor during paused watch")
+    bound = eventOnce(binder, "exit")
+    await waitFor(() => existsSync(join(f.directory, "listing")))
+    await delay(2200)
+    assert.equal(watcher.exitCode, null)
+    assert.equal(binder.exitCode, null)
+    assert.equal(f.control().watch.pid, watcher.pid)
+    assert.equal(f.control().tick.pid, binder.pid)
+    assert.equal(f.run("master", "once").status, 1)
+    assert.equal(f.run("master", "watch", "interval=250").status, 1)
+    writeFileSync(join(f.directory, "release"), "binding inspected")
+    assert.deepEqual(await bound, [0, null])
+    f.runtime.mode = "accept"; f.saveRuntime()
+    await waitFor(() => f.control().tick === null)
+    f.resume()
+    await waitFor(() => f.prompts().length === 1)
+    assert.equal(f.prompts()[0]![2], "pane-0")
+    assert.equal(watcher.exitCode, null)
+  } finally {
+    writeFileSync(join(f.directory, "release"), "cleanup")
+    if (binder && binder.exitCode === null) binder.kill("SIGTERM")
+    if (bound) await bound
+    watcher.kill("SIGTERM")
+    await exited
+  }
+  assert.equal(f.control().watch, null)
+  assert.equal(f.control().tick, null)
+})
+
+test("watch stop cancels long sleep and removes its signal handlers and database claims", async () => {
+  const f = fixture()
+  f.bind()
+  const savedPath = process.env.PATH, savedActor = process.env.LEDGER_ME
+  const sigint = process.listeners("SIGINT"), sigterm = process.listeners("SIGTERM")
+  process.env.PATH = `${f.directory}:${savedPath}`; process.env.LEDGER_ME = "master"
+  try {
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      const watched = coordinate(f.directory, ["watch", "interval=60000"])
+      assert.equal(process.listeners(signal).length, (signal === "SIGINT" ? sigint : sigterm).length + 1)
+      process.emit(signal)
+      const outcome = await Promise.race([watched, delay(1000).then(() => "stop timed out")])
+      assert.equal(outcome, 0)
+      assert.deepEqual(process.listeners("SIGINT"), sigint)
+      assert.deepEqual(process.listeners("SIGTERM"), sigterm)
+      assert.equal(f.control().watch, null)
+      assert.equal(f.control().tick, null)
+    }
+  } finally {
+    if (savedPath === undefined) delete process.env.PATH; else process.env.PATH = savedPath
+    if (savedActor === undefined) delete process.env.LEDGER_ME; else process.env.LEDGER_ME = savedActor
+  }
+})
+
+test("a dead control owner still stops watch visibly and needs explicit recovery", async () => {
+  const f = fixture()
+  f.bind()
+  const watcher = f.start("watch", "interval=1000")
+  const exited = eventOnce(watcher, "exit")
+  let diagnostic = ""
+  watcher.stderr.on("data", (chunk) => { diagnostic += chunk })
+  let binder: ReturnType<typeof f.start> | undefined
+  let bound: ReturnType<typeof eventOnce> | undefined
+  try {
+    await waitFor(() => f.control().lastObservation !== null && f.control().tick === null)
+    f.runtime.mode = "hold-list"; f.saveRuntime()
+    binder = f.start("bind", "seat=Alice", "reason=inspected actor")
+    bound = eventOnce(binder, "exit")
+    await waitFor(() => existsSync(join(f.directory, "listing")))
+    binder.kill("SIGKILL")
+    assert.deepEqual(await bound, [null, "SIGKILL"])
+    writeFileSync(join(f.directory, "release"), "release the fixture runtime child")
+    await waitFor(() => watcher.exitCode !== null)
+    assert.deepEqual(await exited, [1, null])
+    assert.match(diagnostic, /coordinator tick already owned.*stale; master must inspect and resume/)
+    assert.equal(f.control().watch, null)
+    assert.equal(f.control().tick.pid, binder.pid, "uncertain control claim is not silently stolen")
+    f.resume()
+    assert.equal(f.control().tick, null)
+  } finally {
+    writeFileSync(join(f.directory, "release"), "cleanup")
+    if (binder && binder.exitCode === null && binder.signalCode === null) binder.kill("SIGTERM")
+    if (bound) await bound
+    if (watcher.exitCode === null) watcher.kill("SIGTERM")
+    await exited
+  }
+})
+
+test("runtime child ignoring SIGTERM is bounded, reaped and leaves send uncertainty", async () => {
+  const f = fixture()
+  f.add("inspect-export")
+  f.bind(); f.resume(); f.idle(0)
+  f.runtime.mode = "ignore-stop"; f.saveRuntime()
+  const watcher = f.start("watch", "interval=250")
+  const exited = eventOnce(watcher, "exit")
+  let childPid: number | undefined
+  try {
+    await waitFor(() => existsSync(join(f.directory, "runtime-pid")))
+    childPid = Number(readFileSync(join(f.directory, "runtime-pid"), "utf8"))
+    await waitFor(() => watcher.exitCode !== null, 14_000)
+    assert.deepEqual(await exited, [2, null])
+    assert.throws(() => process.kill(childPid!, 0), { code: "ESRCH" })
+    assert.equal(f.prompts().length, 1)
+    const state = f.control()
+    assert.equal(state.watch, null)
+    assert.equal(state.tick, null)
+    assert.equal(state.paused, true)
+    assert.equal(state.attempts[0].outcome, "unconfirmed")
+    assert.match(state.attempts[0].detail, /SIGKILL/)
+  } finally {
+    if (childPid) { try { process.kill(childPid, "SIGKILL") } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error } }
+    if (watcher.exitCode === null) watcher.kill("SIGTERM")
+    await exited
+  }
 })

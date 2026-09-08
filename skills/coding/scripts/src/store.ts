@@ -15,8 +15,10 @@ const CREATE = [
 function open(path: string, readOnly = false): DatabaseSync {
   const database = new DatabaseSync(path, { readOnly })
   // Contending CLI invocations wait for the short local transaction, then fail visibly.
-  database.exec("PRAGMA busy_timeout=5000")
-  return database
+  try {
+    database.exec("PRAGMA busy_timeout=5000")
+    return database
+  } catch (error) { database.close(); throw error }
 }
 function loadState(db: DatabaseSync, path: string): State {
   const row = db.prepare("SELECT schema,state FROM ledger WHERE id=1").get() as { schema: number; state: string } | undefined

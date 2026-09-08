@@ -5,7 +5,7 @@ description: "Use when implementing or changing code, reviewing a diff, branch, 
 
 # Coding
 
-Read this file first. It holds the shared execution contract and routes each task to its method. A dispatch names a role inside an existing run; use that row instead of starting a standalone review. When the work changes kind, add the new route's files without starting the investigation over.
+Read this file first. It holds the shared execution contract and routes each task to its method. A dispatch names bounded work inside an existing run; use that row instead of starting a standalone review. When the work changes kind, add the new route's files without starting the investigation over.
 
 Choose the workflow by the judgment needed, not by whether a file contains code. For a direct, bounded presentation or mechanical edit whose intended result the user has settled, such as removing a specified sentence from a homepage or correcting a comment typo, inspect the target and relevant repository rules, make the edit, and verify the requested result and affected layout or behavior. Do not load the substantive route, create a ledger, or require a separate reviewer for that edit. Do not invoke the ledger helper unless needed to honor an existing run's ownership contract. A local diff and the smallest relevant UI or test check suffice; do not turn a copy change into a repository audit. Preserve existing work and any active shared-checkout ownership. Changes to runtime logic, authorization, data handling, contracts, or instruction design use the substantive route even when the requested line is fully specified. Escalate a presentation edit too if inspection shows it needs investigation to be safe. An explicit request for deeper review still applies.
 
@@ -16,7 +16,7 @@ Substantive routes read the Values in [good-code.md](./good-code.md) and Evidenc
 | Writing or changing code | [good-change.md](./good-change.md); the relevant good-code.md lenses; findings.md for records, dispositions, or user decisions |
 | Reviewing | [review.md](./review.md), which chooses quick or deep; the relevant good-code.md lenses and findings.md; good-change.md when judging or developing a change; [deep.md](./deep.md) for deep coordination |
 | Diagnosing | [diagnose.md](./diagnose.md), which chooses plain or deep; findings.md; the good-code.md lenses suggested by the symptom or mechanism; good-change.md when developing a candidate; deep.md for deep coordination |
-| Dispatched into a two-family run | deep.md for your role, then the review or diagnosis route named in the dispatch |
+| Investigator in a joint run | deep.md for shared coordination, then the review or diagnosis route named in the brief. Both investigators have the same authority; an assignment names the next action, not a permanent specialty |
 | Dispatched to check an existing candidate | good-change.md, Review the result, and the relevant good-code.md lenses. Use the supplied record and return the independent assessment; the parent owns coordination |
 | Master of a two-family run | deep.md, Roles and Herdr runtime; the route's input-gathering section. You coordinate and carry user decisions; you judge no code |
 | Maintaining this skill | [maintaining.md](./maintaining.md), then the affected documents and helpers |
@@ -43,9 +43,9 @@ Own the outcome within the user's task. Establish the feature's goal and intende
 - **Probe.** An experiment that answers a named question about the code. Its temporary instrumentation is removed; its evidence is retained.
 - **Red run, green run.** A check exposing the defect before a change, then meeting the intended behavior afterwards. These are evidence for claims they distinguish, not a mandatory shape for every change.
 - **Shelve.** A saved change recoverable with its baseline outside checked-in project history: a Plastic or Perforce shelve, a Git stash or patch with its base, or the project's equivalent. A branch name or worktree alone does not save an uncommitted diff.
-- **Database.** The run's shared SQLite record, kept by `scripts/ledger.ts` beside this file. It retains tasks, input and result versions, assessments, ownership, dispatches and events; coordination mechanics are in ledger.md.
+- **Database.** The run's shared SQLite record, kept by `scripts/ledger.ts` beside this file. It retains work, conclusions and agreement, replacement links, evidence, ownership, dispatches and events; coordination mechanics are in ledger.md.
 - **Run.** One task and its retained investigation. A new turn, context, session, or instruction to implement can continue the run. Resumption and changed baselines follow findings.md, Continuity.
-- **Mark.** A recorded review of a revision by someone who did not write it. A proposal mark is optional discussion, not permission to develop a candidate.
+- **Conclusion.** A substantive position on an investigation, supported by reasons and evidence. Publishing it endorses it; saving evidence or a checkpoint alone does not. Agreement and replacement explanations follow findings.md, Conclusions and replacement.
 
 ## Attention
 
@@ -57,7 +57,7 @@ Own the outcome within the user's task. Establish the feature's goal and intende
 
 ## How far to go
 
-- **Fix**, the default unless the user asks for report only. Investigate and develop recoverable candidates within the task's scope. Follow good-change.md through validation and independent review. Intermediate agreement on an issue or shape is not a gate to writing. Check in nothing.
+- **Fix**, the default unless the user asks for report only. Investigate and develop recoverable candidates within the task's scope. Follow good-change.md through validation and independent review. Agreement is not a gate to writing or experimenting. Check in nothing.
 - **Report only.** Investigate and assess proposed fixes; make no lasting source edits. Save useful experiments and candidate patches outside the checkout so a later implementation can continue from them.
 - **Check in.** Only the reviewed candidates and executor the user authorizes. Selection and dependency checks follow findings.md.
 

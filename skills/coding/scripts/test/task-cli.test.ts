@@ -24,24 +24,75 @@ function fixture(scope = "fix") {
 }
 const add = (id: string, ...extra: string[]) => ["task", "add", id, "title=" + id, "outcome=retain useful result", "next=inspect evidence", ...extra]
 
-test("actual CLI retains a file and completes atomically using pinned helper", () => {
-  const { directory, cli, snapshot } = fixture()
-  cli("A", add("investigate"))
-  const output = cli("A", ["task", "finish", "investigate", "rev=1", "file=" + source])
-  assert.match(output, /0 open, 1 done/)
-  const record = snapshot().state.records[0]!
-  assert.deepEqual(readFileSync(join(directory, record.path)), readFileSync(source))
-  assert.equal(snapshot().state.tasks[0]!.result?.id, record.id)
-  const pinned = spawnSync(process.execPath, ["--no-warnings", join(directory, "bin/ledger.ts"), "report"], { env: { ...process.env, LEDGER_DIR: directory, LEDGER_ME: "A" }, encoding: "utf8" })
-  assert.equal(pinned.status, 0, pinned.stderr)
-  assert.match(pinned.stdout, /not a claim that all findings are resolved/)
+test("resumed owner publishes a version comparison and peer agreement reaches master", () => {
+  const { cli, snapshot } = fixture()
+  cli("A", add("compare"))
+  cli("A", ["task", "start", "compare", "rev=1"])
+  cli("A", ["task", "release", "compare", "rev=2", "note=baseline retained", "next=compare candidate"])
+  cli("B", ["task", "claim", "compare", "rev=3"])
+  assert.equal(snapshot().state.tasks[0]!.started, false)
+  cli("B", ["task", "start", "compare", "rev=4"])
+  cli("A", ["record", "save", "measurement", "rev=0", "kind=evidence", "title=baseline", "content=fixture baseline 10 seconds"])
+  cli("B", ["record", "save", "measurement", "rev=1", "kind=evidence", "title=candidate", "content=fixture candidate 1 second"])
+  const before = snapshot()
+  assert.match(cli("B", ["record", "save", "duplicate", "rev=0", "kind=validation", "title=comparison", "content=invalid repeated ref", "inputs=measurement@1,measurement@1"], 1), /references must be unique/)
+  assert.deepEqual(snapshot(), before)
+  cli("B", ["record", "save", "comparison", "rev=0", "kind=validation", "title=comparison", "content=fixture observations show improvement", "inputs=measurement@1,measurement@2"])
+  cli("B", ["task", "publish", "compare", "rev=5", "disposition=done", "result=comparison@1"])
+  assert.deepEqual(snapshot().state.tasks[0]!.conclusion!.agreedBy, ["B"])
+  cli("master", ["task", "ack", "compare", "rev=6"])
+  assert.deepEqual(snapshot().state.tasks[0]!.conclusion!.agreedBy, ["B"])
+  cli("A", ["task", "agree", "compare", "rev=7"])
+  const state = snapshot().state
+  assert.deepEqual(state.records.at(-1)!.inputs, [{ id: "measurement", rev: 1 }, { id: "measurement", rev: 2 }])
+  assert.deepEqual(state.tasks[0]!.conclusion!.agreedBy, ["B", "A"])
+  assert.ok(state.tasks[0]!.attention > state.tasks[0]!.acknowledged)
+  assert.match(cli("master", ["status"]), /run-results-ready/)
 })
 
-test("stale file finish rolls back record and events; original task stays open", () => {
+test("dispatch lookup recovers exact execution identity without mutation or runtime access", () => {
+  const { cli, snapshot } = fixture()
+  cli("A", add("reader"))
+  cli("A", ["record", "save", "reader", "rev=0", "kind=evidence", "title=same id", "content=distinct namespace"])
+  cli("A", ["dispatch", "reserve", "reader", "task=reader", "taskRev=1", "inspectAfter=2099-01-01T00:00:00Z"])
+  const reserved = JSON.parse(cli("A", ["dispatch", "show", "reader"]))
+  assert.equal(reserved.rev, 1)
+  assert.equal(reserved.worker, null)
+  const worker = { name: "fresh-child", pane: "exact-pane", session: "exact-session" }
+  cli("A", ["dispatch", "update", "reader", `rev=${reserved.rev}`, "state=running", "observation=spawn confirmed", "worker=" + JSON.stringify(worker)])
+  const before = snapshot()
+  const execution = JSON.parse(cli("A", ["dispatch", "show", "reader"]))
+  assert.equal(execution.rev, 2)
+  assert.deepEqual(execution.worker, worker)
+  assert.equal(execution.observations.at(-1).detail, "spawn confirmed")
+  assert.match(cli("master", ["report"]), /\| Dispatch \| Rev \|/)
+  assert.match(cli("A", ["dispatch", "show", "missing"], 1), /no dispatch missing/)
+  assert.match(cli("A", ["dispatch", "show", "reader", "rev=1"], 1), /exactly one id/)
+  assert.match(cli("A", ["dispatch", "show"], 1), /exactly one id/)
+  assert.match(cli("unknown", ["dispatch", "show", "reader"], 1), /unknown actor/)
+  assert.deepEqual(snapshot(), before)
+  cli("A", ["dispatch", "update", "reader", `rev=${execution.rev}`, "state=finished", "observation=read identity and confirmed completion"])
+  assert.equal(snapshot().state.dispatches[0]!.state, "finished")
+})
+
+test("actual CLI retains and publishes a file atomically using pinned helper", () => {
+  const { directory, cli, snapshot } = fixture()
+  cli("A", add("investigate"))
+  const output = cli("A", ["task", "publish", "investigate", "rev=1", "disposition=done", "file=" + source])
+  assert.match(output, /0 open, 1 published conclusions, 0 agreed/)
+  const record = snapshot().state.records[0]!
+  assert.deepEqual(readFileSync(join(directory, record.path)), readFileSync(source))
+  assert.equal(snapshot().state.tasks[0]!.conclusion?.record.id, record.id)
+  const pinned = spawnSync(process.execPath, ["--no-warnings", join(directory, "bin/ledger.ts"), "report"], { env: { ...process.env, LEDGER_DIR: directory, LEDGER_ME: "A" }, encoding: "utf8" })
+  assert.equal(pinned.status, 0, pinned.stderr)
+  assert.match(pinned.stdout, /not a machine proof of correctness/)
+})
+
+test("stale file publication rolls back record and events; original task stays open", () => {
   const { cli, snapshot } = fixture()
   cli("A", add("one"))
   const before = snapshot()
-  assert.match(cli("A", ["task", "finish", "one", "rev=0", "file=" + source], 1), /read rev 0/)
+  assert.match(cli("A", ["task", "publish", "one", "rev=0", "disposition=done", "file=" + source], 1), /read rev 0/)
   assert.deepEqual(snapshot(), before)
 })
 
@@ -74,25 +125,33 @@ test("user wait leaves independent work available and only master can resolve", 
   assert.equal(snapshot().state.tasks[0]!.version, 2)
 })
 
-test("review conditions are retained, new candidate makes old assessment historical", () => {
+test("review conditions stay ordinary evidence; material republication resets peer assent", () => {
   const { cli, snapshot } = fixture()
   cli("A", ["record", "save", "candidate", "rev=0", "kind=candidate", "title=patch", "file=" + source])
-  cli("B", add("review", "review=candidate@1", "inputs=candidate@1"))
-  cli("B", ["task", "finish", "review", "rev=1", "file=" + source, "verdict=conditions", "conditions=distinguish field and executed addresses"])
-  assert.match(cli("master", ["report"]), /conditions/)
+  cli("B", add("review", "inputs=candidate@1"))
+  cli("B", ["record", "save", "assessment", "rev=0", "kind=assessment", "title=conditions", "content=distinguish field and executed addresses", "inputs=candidate@1"])
+  assert.equal(snapshot().state.tasks[0]!.conclusion, null, "saving an assessment is not a conclusion")
+  cli("B", ["task", "publish", "review", "rev=1", "disposition=stopped", "result=assessment@1"])
+  cli("A", ["task", "agree", "review", "rev=2"])
   cli("A", ["record", "save", "candidate", "rev=1", "kind=candidate", "title=corrected comment", "content=corrected patch"])
-  assert.match(cli("master", ["report"]), /historical/)
-  assert.equal(snapshot().state.tasks[0]!.state, "done")
+  cli("B", ["record", "save", "assessment", "rev=1", "kind=assessment", "title=corrected evidence", "content=executed and field addresses now distinguished", "inputs=candidate@2"])
+  cli("B", ["task", "publish", "review", "rev=3", "disposition=done", "result=assessment@2"])
+  assert.deepEqual(snapshot().state.tasks[0]!.conclusion!.agreedBy, ["B"])
+  assert.match(cli("master", ["report"]), /awaiting A/)
+  assert.equal(snapshot().state.records.filter((record) => record.id === "assessment").length, 2)
 })
 
-test("same-parent fresh execution is distinct from artifact authorship", () => {
+test("child execution supplies retained evidence but does not substitute peer assent", () => {
   const { cli, snapshot } = fixture()
   cli("A", ["record", "save", "candidate", "rev=0", "kind=candidate", "title=patch", "content=implementation"])
-  cli("A", add("fresh", "review=candidate@1", "inputs=candidate@1"))
+  cli("A", add("fresh", "inputs=candidate@1"))
   cli("A", ["dispatch", "reserve", "reader", "task=fresh", "taskRev=1", "inspectAfter=2099-01-01T00:00:00Z"])
   cli("A", ["dispatch", "update", "reader", "rev=1", "state=finished", "observation=child returned assessment", 'worker={"name":"fresh-child","pane":"test-pane","session":"test-session"}'])
-  cli("A", ["task", "finish", "fresh", "rev=1", "file=" + source, "verdict=clean", "dispatch=reader"])
-  assert.deepEqual(snapshot().state.records.at(-1)!.authors, ["fresh-child"])
+  cli("A", ["record", "save", "assessment", "rev=0", "kind=assessment", "title=child report", "content=fresh-child checked candidate@1; evidence in child transcript", "inputs=candidate@1"])
+  cli("A", ["task", "publish", "fresh", "rev=1", "disposition=done", "result=assessment@1"])
+  assert.equal(snapshot().state.dispatches[0]!.worker!.name, "fresh-child")
+  assert.deepEqual(snapshot().state.tasks[0]!.conclusion!.agreedBy, ["A"])
+  assert.match(cli("B", ["status"]), /agree:fresh/)
 })
 
 test("scope narrowing retains authorized check-in as blocked work", () => {
@@ -111,7 +170,7 @@ test("ordinary invalid options have no mutation and old schema refuses without m
   assert.match(cli("A", add("one", "typo=value"), 1), /invalid or duplicate/)
   assert.deepEqual(snapshot(), before)
   const database = new DatabaseSync(join(directory, "ledger.db"))
-  database.exec("UPDATE ledger SET schema=9")
+  database.exec("UPDATE ledger SET schema=10")
   database.close()
   assert.match(cli("master", ["status"], 1), /pinned helper/)
 })
@@ -119,8 +178,9 @@ test("ordinary invalid options have no mutation and old schema refuses without m
 test("report retains cancellation reason and checkout; invalid show and claim refuse", () => {
   const { cli, snapshot } = fixture()
   cli("A", add("one"))
-  cli("A", ["task", "finish", "one", "rev=1", "file=" + source])
-  cli("A", ["task", "cancel", "one", "rev=2", "reason=user dropped this result"])
+  cli("A", ["task", "publish", "one", "rev=1", "disposition=done", "file=" + source])
+  cli("A", ["record", "save", "drop", "rev=0", "kind=conclusion", "title=user decision", "content=user dropped this result"])
+  cli("A", ["task", "publish", "one", "rev=2", "disposition=cancelled", "result=drop@1"])
   cli("A", ["checkout", "take", "rev=0", "purpose=preserve pending candidate"])
   const report = cli("master", ["report"])
   assert.match(report, /user dropped this result/)
@@ -130,6 +190,32 @@ test("report retains cancellation reason and checkout; invalid show and claim re
   const before = snapshot()
   assert.match(cli("A", ["task", "claim", "two", "rev=1", "owner=none"], 1), /use task release/)
   assert.deepEqual(snapshot(), before)
+})
+
+test("status renders nested replacements and shared children without duplicating investigation", () => {
+  const { cli, snapshot } = fixture()
+  for (const id of ["root", "left", "right", "shared"]) cli("A", add(id))
+  const replace = (id: string, children: string) => {
+    cli("A", ["record", "save", id + "-argument", "rev=0", "kind=conclusion", "title=replacement", "content=These continuing issues account for the original concern; no successful fix is implied"])
+    cli("A", ["task", "publish", id, "rev=1", "disposition=replaced", "result=" + id + "-argument@1", "children=" + children])
+    cli("B", ["task", "agree", id, "rev=2"])
+  }
+  replace("root", "left,right")
+  replace("left", "shared")
+  replace("right", "shared")
+  const before = snapshot()
+  const status = cli("A", ["status", "root"])
+  assert.match(status, /^- root @3: root — replaced; agreed by A, B/m)
+  assert.match(status, /^  - left @3:/m)
+  assert.match(status, /^    - shared @1: shared — eligible/m)
+  assert.match(status, /^  - right @3:/m)
+  assert.match(status, /^    - ↳ shared — shared issue; shown above/m)
+  assert.equal((status.match(/shared @1:/g) ?? []).length, 1)
+  assert.match(status, /1 open, 3 published conclusions, 3 agreed/)
+  assert.match(status, /Replaced is not fixed/)
+  assert.doesNotMatch(status, /all conclusions and replacements have investigator agreement/)
+  assert.match(cli("A", ["status", "missing"], 1), /no task missing/)
+  assert.deepEqual(snapshot(), before, "nested inspection is read-only")
 })
 
 test("retention writes exactly the bytes hashed even when source changes between read and save", () => {

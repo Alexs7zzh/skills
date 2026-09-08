@@ -21,7 +21,7 @@ Walk the relevant callers, owners, failure paths, and test seams. Keep the inves
 
 ## Develop the candidate
 
-The investigator usually writes the test or experiment and the candidate while that information is in context. Start once the intended outcome, affected boundary, and a way to discriminate the claim are concrete. Issue agreement and proposal marks are not prerequisites. A candidate may expose a mistaken hypothesis; retain that result and revise the claim.
+The investigator usually writes the test or experiment and the candidate while that information is in context. Start once the intended outcome, affected boundary, and a way to discriminate the claim are concrete. Peer agreement is not a prerequisite. A candidate may expose a mistaken hypothesis; retain that result and revise the claim.
 
 Use findings.md, Evidence, to choose validation. Run a reachable defect check on the baseline before changing it, then on the candidate; preserve both results. For other claims, establish the relevant comparison or proof before interpreting the result. Do not force a failing test when no behavior is meant to change, and do not substitute a replica for untested integration.
 
@@ -31,7 +31,7 @@ When an approach fails, retain the observation and the brief reason it was rejec
 
 ## Review the result
 
-A reader who did not write the candidate checks it in a fresh context per SKILL.md, Attention. Give it the goal and rulings, current issues, exact candidate and baseline, dependencies, validation record, evidence paths, and saved input versions per findings.md, Continuity. It judges the claim and implementation together.
+A reader who did not write the candidate checks the claim and implementation together. In a joint run, both investigators own the final judgment; the peer checks the current result rather than merely accepting an assigned child's verdict. Use a fresh reader per SKILL.md, Attention, when shared authorship or accumulated discussion leaves no independent check, or when a fresh check can resolve a named uncertainty. A child supplies evidence and assessment, not either investigator's assent. Outside a joint run, obtain a fresh independent check before calling the candidate reviewed. Give the reader the goal and rulings, current issues, exact candidate and baseline, dependencies, validation record, evidence paths, and checked versions per findings.md, Continuity.
 
 The review returns one assessment with:
 - whether the candidate meets the intended behavior and explicit rulings;
@@ -41,4 +41,4 @@ The review returns one assessment with:
 
 After recording its own assessment, the reader may compare the author's rationale and investigate any difference. A preference without a concrete unmet obligation is not a condition. Rationale stays in the record for the user and the next reader.
 
-A clean review accepts this candidate and its checked claims together. Existing issue or proposal reviews can be reused when their evidence remains applicable; no extra stamp is required merely because a logical phase has a name. A changed candidate or dependency follows findings.md, Continuity. A saved candidate without independent review is reported as unreviewed.
+A clean review supports this candidate and its checked claims together. In a joint run, record the investigators' conclusion under findings.md, Conclusions and replacement. Existing checks can be reused when their evidence remains applicable; no extra stamp is required merely because a logical phase has a name. A changed candidate or dependency follows findings.md, Continuity. A saved candidate without independent review is reported as unreviewed.
