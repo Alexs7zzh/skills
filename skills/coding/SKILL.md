@@ -45,7 +45,7 @@ Normal work requires no ledger, investigation dossier, capture runner, saved-can
 
 ## Authority and judgment
 
-Establish the required behavior from the user's goal, explicit rulings and real system contracts. An agent-written spec is not proof that the user chose every detail. Existing behavior is not automatically desired behavior. An internal state, diagnostic and user-visible consequence are different claims; identify the consumer that makes a claimed consequence real.
+Establish the required behavior and finish line from the user's goal, explicit rulings, the requested workflow and real system contracts. Running a named workflow requests its stated outcome, including its default fixes and validation; the user need not repeat "fix". Explicit assessment-only or diagnosis-only requests remain read-only. An agent-written brief or scope assumption is not a user restriction or proof that the user chose every detail. Existing behavior is not automatically desired behavior. An internal state, diagnostic and user-visible consequence are different claims; identify the consumer that makes a claimed consequence real.
 
 When project documents establish the behavior, use their map and headings to find the goal, intended experience, non-goals and failure policy. Read complete applicable sections, including supporting and conflicting statements outside the implementation topic. A superseded design is a lead, not evidence of a surviving obligation. Establish that obligation from current code, a supported external contract or actual depended-on behavior. Missing prose does not invent a requirement. Recheck the relevant basis when a new claim or proposed change introduces another consequence; do not restart unrelated work. In an investigation, retain this basis as the Contract in its existing note.
 
@@ -54,7 +54,7 @@ Choose within those obligations for understandable ownership, state and failure 
 - **Change or fix requested:** develop recoverable local changes for the goal, including redesigns and related systems needed to solve it. Breadth is not a permission gate. Honor explicit restrictions and preserve existing work.
 - **Assessment or diagnosis only:** inspect and report; make no lasting source edits. Useful experiments or candidate patches stay outside the checkout unless temporary project edits are authorized.
 
-Carry the user's authority and applicable project restrictions through handoffs and resumed work; local implementation authority does not extend to unrelated external effects. Ask only when a missing user decision prevents useful authorized progress. Name the blocked action, consequence, feasible options and recommendation. Continue work that does not need the answer. Deep and joint investigations retain these decisions under findings.md.
+Carry the requested finish line, its source and applicable project restrictions through handoffs and resumed work. Reconcile earlier scope assumptions with later user rulings; local implementation authority does not extend to unrelated external effects. Ask only when a missing user decision prevents useful authorized progress. Name the blocked action, consequence, feasible options and recommendation. Continue work that does not need the answer. Deep and joint investigations retain these decisions under findings.md.
 
 ## Preserve work and evidence
 

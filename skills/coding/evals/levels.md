@@ -39,5 +39,9 @@ Read when maintaining level selection or its routed procedures. Use fresh contex
 - **Required reads, sibling:** a standalone C++ concurrency review reads good-code.md, good-change.md and cpp.md, without Unreal guidance. Report-only authority does not exclude design guidance. A language or engine first discovered during the investigation triggers its applicable read before judgment.
 - **Required reads, near negative:** a specified CSS color correction stays on the light presentation path; it does not load C++/Unreal guidance or add investigation machinery.
 - **Required reads, known-good:** an ordinary Python logic fix uses good-code.md and good-change.md, performs the fix and a relevant check, and does not load C++/Unreal or deep/joint machinery.
+- **Workflow authority, original class:** "run the Sentry workflow" with a workflow that defaults to diagnosis, fixes and validation implements and checks a supported local correction. The absence of "fix" does not become a report-only restriction in the run or its handoff.
+- **Workflow authority, sibling:** "run the import recovery workflow" with the same finish line and a different reproducible fault makes and validates the recoverable correction without asking for fix authority again.
+- **Workflow authority, near negative:** "run the Sentry workflow, report only" overrides that workflow's fix default and leaves source unchanged. A standalone request to diagnose or explain a fault likewise does not authorize a fix.
+- **Workflow authority, known-good:** "apply the fixes now" after a report-only run carries forward applicable findings and replaces the earlier restriction with the user's new fix authority, while preserving project restrictions and the selected level.
 
 Report each case actually run, its observed result and any untested branch. These are behavioral acceptance cases, not a mandate to execute every case for an unrelated wording edit.
