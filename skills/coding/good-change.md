@@ -1,6 +1,6 @@
 # Good change
 
-Read before proposing, writing, or reviewing a change. This file relates the change to its goal and governs development through independent review. Evidence standards live in findings.md, Evidence.
+Read before proposing, writing, or reviewing a change. This file relates the change to its goal and governs development through independent review. Evidence standards live in evidence.md.
 
 ## Establish the outcome
 
@@ -8,7 +8,7 @@ For a requested feature, state the goal as the user experiences it, the intended
 
 For a defect, identify the bad state and the mechanism that produces it. For a maintenance change, name the concrete task or failure boundary that becomes easier to reason about. Existing docs, tests, and behavior tell you where to investigate; check them against the goal and rulings before treating them as requirements.
 
-Walk the relevant callers, owners, failure paths, and test seams. Keep the investigation in findings.md's Working record and record the proposed fix using Change records as its direction becomes concrete. A feature can name its goal directly; do not invent a bug to fit a workflow. Continue the existing review or diagnosis record when developing its candidate.
+Walk the relevant callers, owners, failure paths, and test seams. Keep the investigation per evidence.md, Working record, and record the proposed fix using findings.md, Change records, as its direction becomes concrete. A feature can name its goal directly; do not invent a bug to fit a workflow. Continue the existing review or diagnosis record when developing its candidate.
 
 ## Choose the boundary
 
@@ -23,7 +23,7 @@ Walk the relevant callers, owners, failure paths, and test seams. Keep the inves
 
 The investigator usually writes the test or experiment and the candidate while that information is in context. Start once the intended outcome, affected boundary, and a way to discriminate the claim are concrete. Peer agreement is not a prerequisite. A candidate may expose a mistaken hypothesis; retain that result and revise the claim.
 
-Use findings.md, Evidence, to choose validation. Run a reachable defect check on the baseline before changing it, then on the candidate; preserve both results. For other claims, establish the relevant comparison or proof before interpreting the result. Do not force a failing test when no behavior is meant to change, and do not substitute a replica for untested integration.
+Use evidence.md to choose validation. Run a reachable defect check on the baseline before changing it, then on the candidate; preserve both results. For other claims, establish the relevant comparison or proof before interpreting the result. Do not force a failing test when no behavior is meant to change, and do not substitute a replica for untested integration.
 
 Save the candidate and its evidence before switching work or ending a session. Do not erase a working candidate merely to report a proposal. In report-only mode, retain a patch or experiment outside the checkout and restore only your temporary edits. Shared checkout mechanics are in ledger.md.
 
@@ -34,7 +34,7 @@ When an approach fails, retain the observation and the brief reason it was rejec
 A reader who did not write the candidate checks the claim and implementation together. In a joint run, both investigators own the final judgment; the peer checks the current result rather than merely accepting an assigned child's verdict. Use a fresh reader per SKILL.md, Attention, when shared authorship or accumulated discussion leaves no independent check, or when a fresh check can resolve a named uncertainty. A child supplies evidence and assessment, not either investigator's assent. Outside a joint run, obtain a fresh independent check before calling the candidate reviewed. Give the reader the goal and rulings, current issues, exact candidate and baseline, dependencies, validation record, evidence paths, and checked versions per findings.md, Continuity.
 
 The review returns one assessment with:
-- whether the candidate meets the intended behavior and explicit rulings;
+- whether the candidate meets the intended behavior and explicit rulings, distinguishing any proposed departure and its consequences from a fulfilled requirement;
 - whether the evidence distinguishes the claim, exercises the relevant code, and supports the claimed scope;
 - each affected failure outcome, and any concrete regression or maintenance cost from the relevant good-code.md lenses;
 - unresolved conditions, each with the observation or decision that would close it.

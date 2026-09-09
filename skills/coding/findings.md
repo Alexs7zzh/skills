@@ -1,45 +1,6 @@
 # Findings
 
-The shared rules for evidence, records, decisions, and completion. Read Evidence for every coding task that makes a judgment; read the remaining sections when recording or resolving work. Terms are defined in SKILL.md.
-
-## Evidence
-
-**Choose evidence by what the claim says.** State the claim and a plausible alternative that would make it wrong. Choose a check whose result could distinguish them, using the actual boundary, inputs, and environment the claim covers. A check that cannot distinguish them adds no support. Agreement, a test name, or repetition of the implementation is not independent evidence.
-
-A validation record contains the claim and alternative; method and exact invocation or code/contract walk; inputs, environment, baseline, and candidate; observed result with artifact paths; and the limits or remaining uncertainty. Keep the full record on disk and its useful conclusion in the issue or report. For a code proof, retain the relevant paths, assumptions, and contracts so another reader can challenge them.
-
-Examples of this principle, not an exhaustive set of cases:
-
-| Claim | Evidence that can distinguish it |
-|---|---|
-| A defect occurs and the change removes it | A reproducer on the actual affected code before and after the change, with the inputs and both results retained |
-| Behavior is preserved while structure changes | Checks of the relevant observable behavior on both versions, plus a code argument for the changed ownership or invariant; passing both times can be the expected result |
-| A feature meets its goal | Acceptance scenarios derived from the user's experience and rulings, including affected failure paths; a demo when experience cannot be judged from code |
-| A path meets a performance budget | Measurements on the relevant path and workload against the budget, with the target environment and scaling assumptions |
-| A state cannot occur | A code or contract proof covering the ways it could arise, with evidence for its premises; a stress run without failures establishes only what was observed |
-
-When a practical probe can settle the uncertainty, run it instead of extending the argument. Choose its inputs independently of the design's convenient constants or symmetries. A fifteen-minute probe is a useful prompt to try the experiment, not a universal limit on worthwhile investigation. Test through shipped code when the claim includes its wiring; a replica establishes only the mechanism it reproduces.
-
-When a result surprises you, check the observation method and inputs as well as the system. Disagreeing probes may have exercised different cases. Batch independent probes under one stable build; an experiment that depends on an earlier result belongs in the next batch.
-
-If no available check can distinguish the alternatives, narrow the claim or leave the uncertainty open, with what would resolve it and why it is unavailable. Choose another method when it can answer the question. Do not manufacture a failing test, call every missing test seam an architecture defect, or ask the user to waive an arbitrary log requirement. A testability problem is an issue when it prevents a needed assurance about the project.
-
-These certainty steps identify the basis of a claim, not a probability or a total ordering of evidence:
-1. Unsupported assertion.
-2. Checked source or observed fact, with its relevance still to establish.
-3. Code or contract proof of the stated claim under recorded assumptions.
-4. Executed check or measurement, with its input class and artifacts.
-5. Direct observation in the running target system, with its context and artifacts.
-
-A verified issue needs a retained evidence path and a supported claim at step 3, 4, or 5. A higher number does not expand what the evidence proves. A dismissal has the same burden as the claim it makes: “by design,” “engine noise,” and “not our fault” need the applicable ruling or evidence. Engine, plugin, and vendored code remain investigation targets when they determine the outcome.
-
-## Working record
-
-Use the ledger by default for substantive writing, quick review, and plain diagnosis, not only for deep or multi-agent work. Start or resume the record while gathering the goal and evidence; do not wait for a confirmed issue or candidate. Local setup is in [ledger.md](./ledger.md); two-family coordination is in deep.md when that mode is needed.
-
-Start a short current note with the goal, rulings, known scope, and first investigation. Before moving to another issue or cluster, or requesting a context reset, preserve the current conclusion or hypothesis, evidence pointers, rejected alternatives that matter, and the next action or blocker. Record the outcome in the task and retain versioned evidence; an unresolved cause can remain a gap or hypothesis. Do not defer these records until the whole pass is finished or context is compacted. A harness-private checkpoint may supplement this record, not replace the state another investigator needs. Notes hold working state; do not invent an issue or complete proposal merely to save it. A task records a promised outcome, not each phase of reasoning. Recording a direction does not gate developing or testing it.
-
-Keep the note an index of current work; let rows own their recorded state, and link full logs and history instead of copying them. On resumption or a work switch, read that summary and the relevant rows and artifacts. Use a row's timeline when its history matters, rather than rereading the whole run. A note points to evidence; it does not upgrade a hypothesis, settle a user decision, or replace independent review. Record meaningful work boundaries, not every command or file read. A clean review or inconclusive investigation can have notes and coverage without manufactured findings.
+Read for candidate records, ledger investigations, user decisions, continuity and completion. Common evidence and working-note standards live in [evidence.md](./evidence.md). Terms are defined in SKILL.md.
 
 ## Change records
 
@@ -54,7 +15,7 @@ Separate claims from implementations so changing one does not erase the other. T
 | Shelved fix | The recoverable candidate, exact baseline, dependency candidates and revisions, and a validation record for that version |
 | Check-in | The user's selection and authorization, executor, and resulting changeset or drop |
 
-For an issue, investigate how the trigger arises, its scope and rough frequency where relevant; distinguish observations from estimates. For a maintenance finding, name the concrete future task or failure class affected. A proposed fix's validation plan may be a test, measurement, demonstration, or code proof; say what it must distinguish. Missing fields make a direction incomplete, not permission to invent values.
+A proposed fix's validation plan may be a test, measurement, demonstration, or code proof; say what it must distinguish. Missing fields make a direction incomplete, not permission to invent values.
 
 Write new or contested issues while investigating. Either investigator can take the next action and develop a proposed fix before the peer agrees. For report-only work, examine the proposal's sites and evidence before concluding that it is suitable. Proposal discussion never gates a candidate. Record a consequential unanswered question as an explicit user wait on affected work; the helper does not infer dependencies or authority from paragraphs.
 
@@ -67,18 +28,6 @@ In a joint run, both investigators agree on substantive conclusions, not each in
 When one issue should continue through one or more others, record a replacement and explain in ordinary language why those issues account for the original concern. This covers duplicates, a narrower actionable subset, a broader cause, and work that splits into several investigations. Identify what is excluded, added, or still unresolved. Both investigators agree with that explanation; either may start the continuing work before agreement. Reuse an existing issue when appropriate rather than duplicating its investigation.
 
 Replacement preserves the original issue and its explanation; it does not say that issue was fixed. When the continuing work concludes, explain what its outcomes mean for the original concern. A child concluding "impossible" does not establish a parent conclusion that required its success. The investigators judge that relationship; do not construct a formal proof for the helper or assume the helper has checked it.
-
-## Labels and impact
-
-- **Bug.** A defect with an investigated trigger or a supported proof that the contract is violated.
-- **Restructure.** A concrete maintenance cost or failure mechanism that a structural change removes. Related bugs can be its evidence; deletion is justified by the requirement investigation in good-code.md.
-- **Hardening.** A real defect with low current impact. Prefer fixing it alongside substantive work where its risk is already being exercised. It never gates a release on its own.
-- **Nit.** A minor improvement with no substantive impact. Fix it in the same touch, or accept it with a reason; do not keep returning it as open work.
-- **telemetry-quality.** A defect in what telemetry reports. Judge it against the logging or pipeline contract; it is not release-gating on its own.
-
-Record impact from 1, highest, to 5, lowest. Lead with the user consequence; keep Hardening, telemetry-quality, and Nit in separate batches. A low measured impact can lower severity without proving the underlying invariant sound. Investigate numbers that lower severity as carefully as numbers that raise it.
-
-A technical document contradicting an actual release contract is a defect; first establish that contract per SKILL.md, Authority. An unverified constant, a misleading detector, or a failed coverage claim earns an issue when its unsupported assumption affects a concrete obligation. A deliberate human choice suppresses only claims its rationale addresses. New evidence can justify challenging it through a question.
 
 ## Related work
 
@@ -106,15 +55,15 @@ If an older pinned helper cannot express the resumed work, create a compatible r
 
 ## Whose call
 
-Apply SKILL.md, Authority and judgment, before opening a question. Missing spec detail and competing engineering options are not automatically user decisions. Choose within the known goals and rulings, record a consequential assumption, and make the result reviewable.
+Apply SKILL.md, Authority and judgment, before opening a question. Prefer a reviewable candidate to asking the user to choose an implementation. Missing spec detail, competing designs, and a larger fix call for investigation and judgment under the existing candidate authority, not a user wait. Record consequential assumptions and tradeoffs so the user can judge the result. Peer agreement does not accept those tradeoffs on the user's behalf.
 
 For a choice that does need the user, show:
 - the goal or ruling at stake and the concrete experience each option produces;
 - what is known, how the condition arises, and any uncertainty that matters to the choice;
 - feasible options with code impact, user effect, and a recommendation;
-- why the choice needs the user's judgment or authority.
+- the next action that cannot proceed without the answer, and why investigation or a recoverable candidate cannot settle it. Name any explicit restriction or external effect that needs new authority.
 
-When new evidence challenges a ruling, identify that evidence and the consequence; do not silently discard the ruling or suppress the evidence. A user should not need to read code or a long spec to understand the choice. Keep the question open until answered, preserve its candidate, and continue independent work. Record the answer and affected inputs through ledger.md, Ordinary coordination; a note alone does not resolve a user wait.
+When new evidence challenges a ruling, identify the consequence and distinguish the current requirement from your proposed alternative. A user should not need to read code or a long spec to understand it. A consequential recommendation can be reported without blocking candidate development; use a user wait only for the action identified above. Keep that wait open until answered, preserve its candidate, and continue independent work. Record the answer and affected inputs through ledger.md, Ordinary coordination; a note alone does not resolve a user wait.
 
 ## Completion
 

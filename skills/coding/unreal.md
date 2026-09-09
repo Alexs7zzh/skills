@@ -1,12 +1,6 @@
-# C++ and Unreal cues
+# Unreal cues
 
-Read the C++ section for C++ work. Read the Unreal sections only for engine work. A mechanism points to what to investigate; provider details and version facts must be checked against the target before they settle a finding. Keep fork-specific build limits and policies in the project's documents.
-
-## C++ mechanisms
-
-- Sequence-validated copies need a proof for payload access as well as ordering around invalidation and recheck. Fences or a later successful sequence check do not by themselves legalize a race on non-atomic payload. Walk the exact protocol against the [C++ memory model](https://eel.is/c++draft/intro.races), including the happens-before edges it requires. Passing stress tests on one architecture do not prove portability.
-- A moved value read by another argument of the same call can depend on argument evaluation order. Inspect the language version and the actual read and move; `std::move` and Unreal's `MoveTemp` do not themselves sequence the arguments.
-- For casts that bypass a static guarantee, such as `const_cast`, unchecked downcasts, or `reinterpret_cast` on live objects, establish the replacement type, lifetime, alignment, or mutability precondition at reachable inputs. The cast's spelling alone does not prove a defect.
+Read for Unreal Engine work, alongside cpp.md for C++. A mechanism points to what to investigate; provider details and version facts must be checked against the target before they settle a finding. Keep fork-specific build limits and policies in the project's documents.
 
 ## Unreal mechanisms
 

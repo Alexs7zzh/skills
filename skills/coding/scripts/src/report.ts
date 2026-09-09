@@ -1,6 +1,6 @@
 // Read-only presentation of arguments, peer agreement and continuing work.
 import { recordByRef, taskById, type Actor, type Moment, type State, type Task } from "./protocol.ts"
-import { activeDispatch, agreed, eligibility, workSignals } from "./work.ts"
+import { activeDispatch, agreed, eligibility, pendingWait, workSignals } from "./work.ts"
 
 function cell(value: unknown): string { return String(value ?? "-").replaceAll("|", "\\|").replaceAll(/\r?\n/g, " ") }
 function table(headers: readonly string[], rows: readonly (readonly unknown[])[]): string {
@@ -14,12 +14,13 @@ function agreement(state: State, task: Task): string {
 }
 function situation(state: State, task: Task): string {
   if (task.conclusion) return `${task.conclusion.disposition}; ${agreement(state, task)}`
-  if (task.wait) return `waiting on ${task.wait.kind}: ${task.wait.reason}`
+  const wait = pendingWait(state, task)
+  if (wait) return `waiting on ${wait.kind}: ${wait.reason}`
   const dispatch = activeDispatch(state, task.id)
   if (dispatch) return `child ${dispatch.state}: ${dispatch.id}; parent ${dispatch.parent}; inspect ${dispatch.inspectAfter}`
   if (!task.owner) return "unassigned"
   const gate = eligibility(state, task, task.owner, task.started ? "dispatch" : "start")
-  return gate.allowed ? (task.started ? "in progress" : "eligible") : gate.blockers.join("; ")
+  return gate.allowed ? (task.started ? "assigned; start recorded" : "assigned") : gate.blockers.join("; ")
 }
 /** Shared children display once; later parents keep a cross-reference. */
 export function renderTree(state: State, rootId?: string): string {
@@ -33,7 +34,7 @@ export function renderTree(state: State, rootId?: string): string {
     if (!task) { lines.push(`${indent}- missing issue ${cell(id)}`); return }
     if (seen.has(id)) { lines.push(`${indent}- ↳ ${cell(id)} — shared issue; shown above`); return }
     seen.add(id)
-    lines.push(`${indent}- ${cell(id)} @${task.rev}: ${cell(task.title)} — ${cell(situation(state, task))}; acting: ${cell(task.owner)}`)
+    lines.push(`${indent}- ${cell(id)} @${task.rev}: ${cell(task.title)} — ${cell(situation(state, task))}; owner: ${cell(task.owner)}`)
     for (const child of task.conclusion?.children ?? []) visit(child, depth + 1)
   }
   for (const root of roots) visit(root, 0)
@@ -51,12 +52,12 @@ export function renderStatus(state: State, actor: Actor, rootId?: string): strin
   return [
     `Goal: ${state.goal}`,
     `Investigators: ${state.investigators.join(", ")}. Scope: ${state.scope.mode} @${state.scope.rev}.`,
-    `Issues: ${state.tasks.length - published.length} open, ${published.length} published conclusions, ${settled.length} agreed.`,
+    `Tasks: ${state.tasks.length - published.length} open, ${published.length} published conclusions, ${settled.length} agreed.`,
     `Checkout: ${state.checkout ? `${state.checkout.holder} — ${state.checkout.purpose}` : "free"} @${state.checkoutRev}`,
     `\nAttention for ${actor}:\n`,
     table(["Issue/action", "Reason"], workSignals(state, actor).map((signal) => [signal.key, signal.reason])),
     `\n${rootId ? `Issue ${rootId}` : "Investigation"}:\n`, renderTree(state, rootId),
-    "\nReplaced is not fixed. Read each replacement argument and its continuing issues. Agreement is not master acknowledgement.",
+    "\nTask counts are not finding counts. Assignment and recorded starts are not observed runtime activity. Replaced is not fixed; agreement is not master acknowledgement.",
   ].join("\n")
 }
 export function renderReport(state: State): string {

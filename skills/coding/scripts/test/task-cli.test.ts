@@ -24,6 +24,43 @@ function fixture(scope = "fix") {
 }
 const add = (id: string, ...extra: string[]) => ["task", "add", id, "title=" + id, "outcome=retain useful result", "next=inspect evidence", ...extra]
 
+test("checkout wait uses current availability without clearing real external or user waits", () => {
+  const { cli, snapshot } = fixture()
+  cli("B", ["checkout", "take", "rev=0", "purpose=shared build"])
+  cli("A", add("write-batch", "permission=write", "wait=checkout", "waitReason=apply the reviewed change"))
+  cli("A", add("external-result", "wait=external", "waitReason=await the actual provider result"))
+  cli("A", add("user-choice", "wait=user", "waitReason=change the product promise"))
+  cli("A", add("independent-read"))
+  assert.match(cli("A", ["status", "write-batch"]), /waiting on checkout/)
+  assert.match(cli("A", ["task", "start", "write-batch", "rev=1"], 1), /waiting on checkout/)
+  cli("A", ["task", "start", "independent-read", "rev=1"])
+  cli("B", ["checkout", "release", "rev=1", "reason=build finished and inputs retained"])
+  const status = cli("A", ["status"])
+  assert.match(status, /task:write-batch/)
+  assert.doesNotMatch(status, /waiting on checkout/)
+  assert.match(status, /waiting on external/)
+  assert.match(status, /waiting on user/)
+  assert.equal(snapshot().state.checkout, null)
+  cli("A", ["task", "start", "write-batch", "rev=1"])
+  assert.match(cli("A", ["task", "start", "external-result", "rev=1"], 1), /waiting on external/)
+  assert.match(cli("A", ["task", "start", "user-choice", "rev=1"], 1), /waiting on user/)
+})
+
+test("mutation receipts return current identifiers without dumping unrelated investigation state", () => {
+  const { cli } = fixture()
+  cli("A", add("unrelated"))
+  const added = cli("B", add("current"))
+  assert.match(added, /current @1/)
+  assert.doesNotMatch(added, /unrelated|Attention for|Investigation:/)
+  const recorded = cli("B", ["record", "save", "observations", "rev=0", "kind=evidence", "title=Current evidence", "content=retained observation"])
+  assert.match(recorded, /observations@1/)
+  const published = cli("B", ["task", "publish", "current", "rev=1", "disposition=done", "result=observations@1"])
+  assert.match(published, /current @2/)
+  assert.match(published, /observations@1/)
+  assert.doesNotMatch(published, /unrelated|Attention for|Investigation:/)
+  assert.match(cli("B", ["status"]), /unrelated/)
+})
+
 test("resumed owner publishes a version comparison and peer agreement reaches master", () => {
   const { cli, snapshot } = fixture()
   cli("A", add("compare"))
@@ -42,7 +79,7 @@ test("resumed owner publishes a version comparison and peer agreement reaches ma
   assert.deepEqual(snapshot().state.tasks[0]!.conclusion!.agreedBy, ["B"])
   cli("master", ["task", "ack", "compare", "rev=6"])
   assert.deepEqual(snapshot().state.tasks[0]!.conclusion!.agreedBy, ["B"])
-  cli("A", ["task", "agree", "compare", "rev=7"])
+  cli("A", ["task", "agree", "compare", "rev=6"])
   const state = snapshot().state
   assert.deepEqual(state.records.at(-1)!.inputs, [{ id: "measurement", rev: 1 }, { id: "measurement", rev: 2 }])
   assert.deepEqual(state.tasks[0]!.conclusion!.agreedBy, ["B", "A"])
@@ -75,11 +112,31 @@ test("dispatch lookup recovers exact execution identity without mutation or runt
   assert.equal(snapshot().state.dispatches[0]!.state, "finished")
 })
 
+test("non-pane child handles remain inspectable without weakening identity or ownership", () => {
+  const { cli, snapshot } = fixture()
+  cli("A", add("local-reader"))
+  cli("A", ["dispatch", "reserve", "local-child", "task=local-reader", "taskRev=1", "inspectAfter=2099-01-01T00:00:00Z"])
+  const worker = { name: "/root/independent-reader", pane: null, session: null }
+  cli("A", ["dispatch", "update", "local-child", "rev=1", "state=running", "observation=runtime returned child handle", "worker=" + JSON.stringify(worker)])
+  assert.deepEqual(JSON.parse(cli("A", ["dispatch", "show", "local-child"])).worker, worker)
+  const before = snapshot()
+  for (const invalid of [{ ...worker, name: "" }, { ...worker, pane: "" }, { name: worker.name, session: null }]) {
+    cli("A", ["dispatch", "update", "local-child", "rev=2", "state=running", "observation=invalid identity", "worker=" + JSON.stringify(invalid)], 1)
+  }
+  assert.match(cli("A", ["dispatch", "update", "local-child", "rev=2", "state=running", "observation=different execution", "worker=" + JSON.stringify({ ...worker, name: "/root/replacement" })], 1), /identity cannot change/)
+  assert.match(cli("B", ["dispatch", "update", "local-child", "rev=2", "state=finished", "observation=not the parent"], 1), /only dispatch parent or master/)
+  assert.match(cli("master", ["task", "claim", "local-reader", "rev=1", "owner=B"], 1), /active dispatch/)
+  assert.deepEqual(snapshot(), before)
+  cli("A", ["dispatch", "update", "local-child", "rev=2", "state=finished", "observation=returned result confirmed through the same runtime"])
+  assert.deepEqual(snapshot().state.dispatches[0]!.worker, worker)
+  assert.equal(snapshot().state.tasks[0]!.state, "open")
+})
+
 test("actual CLI retains and publishes a file atomically using pinned helper", () => {
   const { directory, cli, snapshot } = fixture()
   cli("A", add("investigate"))
   const output = cli("A", ["task", "publish", "investigate", "rev=1", "disposition=done", "file=" + source])
-  assert.match(output, /0 open, 1 published conclusions, 0 agreed/)
+  assert.match(output, /Task investigate @2: done/)
   const record = snapshot().state.records[0]!
   assert.deepEqual(readFileSync(join(directory, record.path)), readFileSync(source))
   assert.equal(snapshot().state.tasks[0]!.conclusion?.record.id, record.id)
@@ -207,7 +264,7 @@ test("status renders nested replacements and shared children without duplicating
   const status = cli("A", ["status", "root"])
   assert.match(status, /^- root @3: root — replaced; agreed by A, B/m)
   assert.match(status, /^  - left @3:/m)
-  assert.match(status, /^    - shared @1: shared — eligible/m)
+  assert.match(status, /^    - shared @1: shared — assigned/m)
   assert.match(status, /^  - right @3:/m)
   assert.match(status, /^    - ↳ shared — shared issue; shown above/m)
   assert.equal((status.match(/shared @1:/g) ?? []).length, 1)

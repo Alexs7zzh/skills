@@ -25,9 +25,19 @@ Create issues as the investigation develops. Save records as needed. `task publi
 
 An unanswered decision is a user wait on affected work. Clearing it requires a current master-recorded ruling and atomically links that ruling to the task. Other affected conclusions are the investigators' responsibility to reconcile. External waits likewise retain their reason; neither wait is successful completion.
 
-`status ID` displays a nested replacement view with shared references. `report` keeps all arguments and waits visible. Master reads meaningful changes, summarizes them and uses `task ack` to acknowledge visibility, never to supply peer assent. Finishing the run means every registered conclusion has investigator agreement and no checkout or child execution remains held; it does not mean every requested fix succeeded.
+Mutations return compact receipts with the affected revisions and retained references. `status ID` displays a nested replacement view with shared references and any cached runtime observations; it makes no runtime call. Counts describe tasks, not verified findings. `report` keeps all arguments and waits visible. Master reads meaningful changes, summarizes them and uses `task ack` to acknowledge visibility without revising the task or supplying peer assent. Finishing the run means every registered conclusion has investigator agreement and no checkout or child execution remains held; it does not mean every requested fix succeeded.
 
-`dispatch show ID` returns the exact execution identity and revision without a runtime call or mutation. A finished child is not a finished issue and cannot substitute for a peer's assent. Argument and stale-revision errors call for a reread and correction, not a coordination emergency.
+A checkout hold serializes access; it does not grant authority. Report-only work can hold stable build/test inputs while write and check-in tasks remain restricted by scope. Release and recovery still require the holder or checked master recovery respectively.
+
+Use `wait=checkout` only when the next remaining action needs shared inputs. Its eligibility derives from the current holder, so release returns work to its owner without clearing an external wait. Other investigation remains available; a wake does not acquire the checkout. A satisfied checkout wait is cleared when the task publishes its conclusion.
+
+`dispatch show ID` returns the exact execution identity and revision without a runtime call or mutation. A child name is its actual runtime handle; unavailable pane/session fields are null. Herdr coordinator bindings still require their exact runtime identity. A finished child is not a finished issue and cannot substitute for a peer's assent. Argument and stale-revision errors call for a reread and correction, not a coordination emergency.
+
+## Execution evidence
+
+`node --no-warnings evidence.ts --help` describes the standalone capture runner. It creates a new directory for one literal command invocation, retains selected input files and raw output, and writes its termination receipt only after the child and its output streams close. `inspect` checks the retained bytes against that receipt without executing anything. Compact review notes and ledger arguments can reference the same capture; using it does not require a ledger.
+
+This records process facts, not test verdicts. An exit-zero command can print a failed assertion, a copied probe can omit production wiring, and an interrupted check can return useful partial evidence. The runner neither authenticates agent-editable files nor establishes what an agent had observed when it wrote an earlier claim. Evidence interpretation belongs in `../evidence.md`; chronological trial acceptance belongs in `../maintaining.md`. Normal command permissions and shared-input ownership still apply.
 
 ## Runtime
 
@@ -37,6 +47,6 @@ The watch loop checks finite child inspection times and idle work. One minute wi
 
 ## Compatibility and checks
 
-Schema 11 deliberately replaces schema 10, not silently migrates it. Old runs retain their pinned helpers and evidence. Do not point this helper at an old ledger. An authorized continuation needs an explicit mapping of continuing issues, arguments and ownership, preserving unresolved rulings; do not invent peer assent during import.
+Schema 12 adds checkout-conditioned waits. Old runs retain their pinned helpers and evidence; no migration is performed. Do not point this helper at an old ledger. An authorized continuation carries its continuing issues, arguments and ownership forward, preserving unresolved rulings; do not invent peer assent during import.
 
 Run `npm run check` here and `scripts/check-skills.sh` from the repository root. Tests cover conclusions, replacements, responsibility, changing scope and ownership, retained-result rollback, actual CLI use and fake-runtime delivery/inspection. These checks do not certify a real Herdr installation or production project run.

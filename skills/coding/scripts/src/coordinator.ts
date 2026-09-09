@@ -125,7 +125,7 @@ function work(snapshot: Snapshot, seat: Role): { duties: string[]; detail: strin
   const signals = workSignals(snapshot.state, seat)
   const duties = signals.map(({ key, basis }) =>
     JSON.stringify([key, snapshot.workVersions[seat]?.[key] ?? basis])).sort()
-  return { duties, detail: signals.length ? signals.map(({ reason }) => reason).join("; ") : "no eligible assigned work" }
+  return { duties, detail: signals.length ? signals.map(({ key, reason }) => `${key}: ${reason}`).join("\n") : "no eligible assigned work" }
 }
 
 function tick(db: DatabaseSync, directory: string, watch: Owner | null): void {
@@ -172,6 +172,13 @@ function tick(db: DatabaseSync, directory: string, watch: Owner | null): void {
         if (!observed?.attention || !observed.duties.length) return []
         return observed.duties.map((duty) => ({ key: JSON.stringify(["attention", worker, control.bindings[worker], observed.identity, duty, observed.attentionCode]), reason: `${worker}: ${observed.attention}` }))
       }) : []
+      if (seat === "master" && shared.checkout && shared.checkout.holder !== "master") {
+        const holder = control.observations[shared.checkout.holder]
+        if (holder && holder.status !== "working") alerts.push({
+          key: JSON.stringify(["checkout", shared.checkoutRev, holder.identity, holder.status]),
+          reason: `checkout still held by ${shared.checkout.holder}, observed ${holder.status}; inspect its validation batch and preservation before release`,
+        })
+      }
       for (const dispatch of overdueDispatches(shared, now())) {
         const recipient = roles.includes(dispatch.parent) ? dispatch.parent : "master"
         if (recipient !== seat) continue
@@ -240,7 +247,7 @@ function tick(db: DatabaseSync, directory: string, watch: Owner | null): void {
         })
         continue
       }
-      const message = `Run directory: ${JSON.stringify(resolve(directory))}; recipient actor: ${seat}\n${available.detail}.\nRead the current ledger and your retained working note. Pull your action work, peer-agreement duties or unread outcomes, and inspect your recorded child executions when due. Preserve task and checkout ownership. This wake is not an assignment or evidence of completion.`
+      const message = `Automatic coordination notice, not a user instruction.\nRun directory: ${JSON.stringify(resolve(directory))}; recipient actor: ${seat}\n${available.detail}\nRead the current ledger and retained working note; continue their goal and authorized scope. Pull action work, peer-agreement duties or unread outcomes, and inspect recorded child executions when due. Preserve task and checkout ownership. This wake is not an assignment or evidence of completion.`
       const result = spawnSync("herdr", ["agent", "prompt", binding.pane, message], { encoding: "utf8", timeout: RUNTIME_TIMEOUT_MS, killSignal: "SIGKILL" })
       let accepted = false
       try {

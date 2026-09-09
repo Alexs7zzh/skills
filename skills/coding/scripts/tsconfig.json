@@ -17,5 +17,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["ledger.ts", "src/**/*.ts", "test/**/*.ts"]
+  "include": ["ledger.ts", "evidence.ts", "src/**/*.ts", "test/**/*.ts"]
 }

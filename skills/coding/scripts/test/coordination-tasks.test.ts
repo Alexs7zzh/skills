@@ -211,6 +211,48 @@ test("notes do not complete work or renew its wake; explicit release changes who
   assert.equal(f.task("inspect-export").owner, null)
 })
 
+test("checkout wait resumes after release while independent research remains available", () => {
+  const f = fixture()
+  f.add("edit-export", "Alice", "write"); f.add("research-import", "Alice")
+  f.command({ type: "checkout.take", actor: "Bob", at: AT, rev: 0, purpose: "Validate a separate candidate" })
+  f.command({ type: "task.set", actor: "Alice", at: AT, id: "edit-export", rev: 1, wait: { kind: "checkout", reason: "Next batch edits the shared source" } })
+  f.bind(); f.resume(); f.idle(0); f.once()
+  assert.equal(f.prompts().length, 1)
+  assert.match(f.prompts()[0]![3]!, /task:research-import/)
+  assert.doesNotMatch(f.prompts()[0]![3]!, /task:edit-export/)
+  f.deliver("research-import"); f.once()
+  assert.equal(f.prompts().length, 1, "the blocked write does not keep waking the investigator")
+  f.command({ type: "checkout.release", actor: "Bob", at: AT, rev: 1, reason: "Candidate and evidence retained" })
+  f.once(); f.once()
+  assert.equal(f.prompts().length, 2)
+  assert.match(f.prompts()[1]![3]!, /task:edit-export/)
+  assert.equal(f.snapshot().state.checkout, null, "a wake does not acquire the checkout")
+  f.command({ type: "checkout.take", actor: "Alice", at: AT, rev: 2, purpose: "Apply the pending edit" })
+  f.command({ type: "task.start", actor: "Alice", at: AT, id: "edit-export", rev: f.task("edit-export").rev })
+  f.publish("edit-export")
+  assert.equal(f.task("edit-export").wait, null, "a satisfied internal wait does not obstruct publication")
+})
+
+test("checkout reacquisition and busy readers preserve the pending work without duplicate wakes", () => {
+  const f = fixture()
+  f.add("stable-input-check", "Alice")
+  f.command({ type: "checkout.take", actor: "Bob", at: AT, rev: 0, purpose: "Mutable build inputs" })
+  f.command({ type: "task.set", actor: "Alice", at: AT, id: "stable-input-check", rev: 1, wait: { kind: "checkout", reason: "Run the saved comparison on stable inputs" } })
+  f.bind(); f.resume(); f.idle(0); f.once()
+  assert.equal(f.prompts().length, 0)
+  f.command({ type: "checkout.release", actor: "Bob", at: AT, rev: 1, reason: "First batch retained" })
+  f.command({ type: "checkout.take", actor: "Bob", at: AT, rev: 2, purpose: "Second batch started before the next poll" })
+  f.once()
+  assert.equal(f.prompts().length, 0, "past availability is not permission to act on busy inputs")
+  f.runtime.agents[0]!.agent_status = "working"; f.saveRuntime()
+  f.command({ type: "checkout.release", actor: "Bob", at: AT, rev: 3, reason: "Second batch retained" })
+  f.once()
+  assert.equal(f.prompts().length, 0, "do not interrupt a reader working elsewhere")
+  f.idle(0); f.once(); f.once()
+  assert.equal(f.prompts().length, 1)
+  assert.match(f.prompts()[0]![3]!, /stable-input-check/)
+})
+
 test("an external wait resolved between observations renews eligible assigned work once", () => {
   const f = fixture()
   f.add("fix-export", "Alice", "write")
@@ -237,6 +279,19 @@ test("checkout ownership does not assign or interrupt independent reading work",
   f.command({ type: "checkout.release", actor: "Bob", at: AT, rev: f.snapshot().state.checkoutRev, reason: "Independent edit retained" })
   f.once()
   assert.equal(f.prompts().length, 1)
+})
+
+test("a working validator needs no owned open task to keep the checkout without alarming master", () => {
+  const f = fixture()
+  f.add("signal-candidate", "Alice", "write")
+  f.command({ type: "checkout.take", actor: "Bob", at: AT, rev: 0, purpose: "Validate Alice's saved candidate" })
+  f.bind(); f.resume(); f.idle(2); f.once(); f.once()
+  assert.deepEqual(f.prompts(), [], "working holder is not an abandoned checkout")
+  f.idle(1); f.once(); f.once()
+  assert.equal(f.prompts().length, 1)
+  assert.equal(f.prompts()[0]![2], "pane-2")
+  assert.match(f.prompts()[0]![3]!, /checkout.*Bob|Bob.*checkout/)
+  assert.equal(f.snapshot().state.checkout?.holder, "Bob", "attention does not steal ownership")
 })
 
 test("a user wait reaches master while its owner can do unrelated work", () => {
@@ -424,6 +479,20 @@ test("either investigator's publication wakes its peer and idle master; acknowle
     assert.equal(f.prompts().at(-1)![2], "pane-2", "peer assent becomes a new visible outcome")
     assert.doesNotMatch(f.prompts().at(-1)![3]!, /all conclusions/, "other investigation is still active")
   }
+})
+
+test("peer agreement creates no author follow-up when the issue is already converged", () => {
+  const f = fixture()
+  f.add("one-issue")
+  f.publish("one-issue")
+  f.bind(); f.resume(); f.idle(0); f.once()
+  assert.equal(f.prompts().length, 0)
+  f.agree("one-issue"); f.once(); f.once()
+  assert.equal(f.prompts().length, 0, "agreement is not a new author obligation")
+  f.add("different-question"); f.once(); f.once()
+  assert.equal(f.prompts().length, 1)
+  assert.match(f.prompts()[0]![3]!, /different-question/)
+  assert.doesNotMatch(f.prompts()[0]![3]!, /one-issue/)
 })
 
 test("terminal results with a held checkout request release before the final reporting wake", () => {

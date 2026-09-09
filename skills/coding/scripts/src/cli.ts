@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import { initialState, taskById, type Command, type RecordRef, type State, type ScopeMode } from "./protocol.ts"
 import { create, mutate, read } from "./store.ts"
 import { renderReport, renderStatus, renderTimeline } from "./report.ts"
-import { coordinate } from "./coordinator.ts"
+import { coordinate, coordinationStatus } from "./coordinator.ts"
 
 const HELP = `ledger: equal investigators, conclusions and replacements. LEDGER_DIR=<run> LEDGER_ME=<actor>
 Local init defaults to actor master. Runtime coordination is optional and master-controlled.
@@ -19,19 +19,21 @@ status [task-id] | report | timeline [actor-or-id] | show <task-or-record-id> [r
 task add ID title=... outcome=... next=... [owner=actor|none] [permission=read|write|check-in]
 task set ID rev=N [title=... outcome=... next=... note=... permission=...]
      [inputs=record@1,...]
-     [wait=user|external|none waitReason=...] [reason=... resolution=ruling@N]
-     Resolving a user wait (none/external) requires master + a current kind=ruling record saved by master.
+     [wait=user|external|checkout|none waitReason=...] [reason=... resolution=ruling@N]
+     Resolving a user wait requires master + a current kind=ruling record saved by master.
      Its exact resolution reference joins task inputs and bumps material version automatically.
      Other material changes require reason=. External waits remain owner-clearable.
+     Checkout waits are eligible when the checkout is free or held by the task owner; no clearing mutation.
+     Availability does not acquire the checkout. Keep independent investigation on other work moving.
      Either investigator may add notes or raise a user wait on a peer-owned issue.
 task claim ID rev=N [owner=actor] | task release ID rev=N note=... next=...
-task start ID rev=N
+task start ID rev=N   optional action checkpoint, not observed runtime liveness
 task publish ID rev=N disposition=done|stopped|cancelled|replaced result=record@N
      OR file=<conclusion argument> [children=task-id,...]
      Publishing endorses your argument and clears the peer's agreement; replaced needs children.
      File publication retains the argument and publishes atomically. Evidence saves are not endorsements.
 task agree ID rev=N   investigator agrees with the current published conclusion
-task ack ID rev=N     master has read an outcome; not engineering agreement
+task ack ID rev=N     master has read an outcome; does not revise engineering work
 task reopen ID rev=N reason=... [next=...]
      add also accepts inputs/wait/note. Replacement explains continuing work, not a formal proof.
 
@@ -39,11 +41,13 @@ record save ID rev=N kind=... title=... file=<path> OR content=<small text>
      [inputs=record@1,... authors=A,B]
      rev=0 creates; append uses expected latest rev. Files are retained content-addressed.
 checkout take rev=N purpose=... | checkout release rev=N reason=...
+     A hold serializes access, including report-only validation; it grants no edit authority.
 checkout recover rev=N stopped=<evidence> preserved=<evidence>   master only
 dispatch show ID   read current revision, exact worker identity and observations
 dispatch reserve ID task=ID taskRev=N inspectAfter=<ISO timestamp>
 dispatch update ID rev=N state=reserved|running|finished|stopped observation=...
-     [worker='{"name":"actual-child","pane":"identity","session":null}' inspectAfter=...]
+     [worker='{"name":"actual-runtime-handle","pane":null,"session":null}' inspectAfter=...]
+     Retain pane/session when supplied by the runtime; null means that field is unavailable.
 scope set rev=N mode=report-only|fix|check-in source=...
 scope authorize ID rev=N scopeRev=N executor=actor inputs=record@1,... source=...
 
@@ -52,6 +56,7 @@ coordinate pause|resume reason=... | bind seat=actor reason=... | retry seat=act
 Only coordinator invokes Herdr. Mutations never send peer messages or execute project work.
 Records describe findings/candidates; labels do not generate tasks. Report is always available.
 Ordinary argument/stale-revision errors: inspect and correct; not a mechanism emergency.
+Mutations return a receipt. Use status for current work and cached runtime observations.
 `
 
 const SPECS: Record<string, string> = {
@@ -121,7 +126,7 @@ function command(type: string, values: Record<string, string>, actor: string, di
     else if (key === "authors") output[key] = value ? value.split(",") : []
     else if (key === "worker") {
       const worker = JSON.parse(value) as Record<string, unknown>
-      if (!worker || typeof worker.name !== "string" || typeof worker.pane !== "string" || !(worker.session === null || typeof worker.session === "string")) throw new Error("worker needs name, pane, session")
+      if (!worker || typeof worker.name !== "string" || !(worker.pane === null || typeof worker.pane === "string") || !(worker.session === null || typeof worker.session === "string")) throw new Error("worker needs name and explicit pane/session strings or null")
       output[key] = worker
     } else output[key] = value
   }
@@ -176,7 +181,9 @@ export async function main(args: readonly string[]): Promise<number> {
     if (["status", "report", "timeline", "show"].includes(group!)) {
       if (group === "status" || group === "report") {
         if (group === "report" && args.length !== 1 || group === "status" && args.length > 2) throw new Error(`${group} ${group === "status" ? "accepts at most one task id" : "accepts no options"}`)
-        console.log(group === "status" ? renderStatus(snapshot.state, actor, verb) : renderReport(snapshot.state)); return 0
+        console.log(group === "status" ? renderStatus(snapshot.state, actor, verb) : renderReport(snapshot.state))
+        if (group === "status" && existsSync(join(directory, "coordination.db"))) console.log(`\nObserved runtime:\n${coordinationStatus(directory)}`)
+        return 0
       }
       if (group === "timeline") {
         if (args.length > 2) throw new Error("timeline accepts one actor or id")
@@ -196,7 +203,21 @@ export async function main(args: readonly string[]): Promise<number> {
     const values = fields(positional ? rest.slice(1) : rest, spec.replace(/^id /, ""))
     if (id) values.id = id
     const result = mutate(path, (state) => type === "task.publish" ? publishCommands(state, values, actor, directory) : command(type, values, actor, directory))
-    console.log(`Saved ${type}${id ? ` ${id}` : ""}; ledger revision ${result.state.revision}\n${renderStatus(result.state, actor)}`)
+    const state = result.state
+    const receipt = [`Saved ${type}${id ? ` ${id}` : ""}; ledger revision ${state.revision}`]
+    if (type.startsWith("task.")) {
+      const task = taskById(state, id!)!
+      receipt.push(`Task ${task.id} @${task.rev}: ${task.state}; owner: ${task.owner ?? "unassigned"}`)
+      if (task.conclusion) receipt.push(`Conclusion: ${task.conclusion.record.id}@${task.conclusion.record.rev}; endorsed by ${task.conclusion.agreedBy.join(", ")}`)
+    } else if (type === "record.save") {
+      const record = state.records.filter((item) => item.id === id).at(-1)!
+      receipt.push(`Record ${record.id}@${record.rev}${record.path ? `: ${record.path}` : ""}`)
+    } else if (type.startsWith("dispatch.")) {
+      const dispatch = state.dispatches.find((item) => item.id === id)!
+      receipt.push(`Dispatch ${dispatch.id} @${dispatch.rev}: ${dispatch.state}`)
+    } else if (type.startsWith("checkout.")) receipt.push(`Checkout: ${state.checkout?.holder ?? "free"} @${state.checkoutRev}`)
+    else if (type.startsWith("scope.")) receipt.push(`Scope: ${state.scope.mode} @${state.scope.rev}`)
+    console.log(receipt.join("\n"))
     return 0
   } catch (error) { console.error(`ledger: ${error instanceof Error ? error.message : String(error)}`); return 1 }
 }

@@ -1,14 +1,14 @@
 # Review
 
-The route for judging a diff, branch, changeset, PR, or uncommitted changes. Quick and deep change the coverage and coordination, not what counts as evidence.
+The route for judging existing code or a diff, branch, changeset, PR, or uncommitted changes. Quick and deep change the coverage and coordination, not what counts as evidence.
 
 ## Choose the review
 
 State quick or deep and how far you are going so the user can redirect.
 
-| The change | Mode |
+| The target | Mode |
 |---|---|
-| A bounded change without a risk surface | Quick |
+| A bounded target without a risk surface | Quick |
 | Release-gating, too much material for one judgment context, or a risk surface | Deep; read [deep.md](./deep.md) for joint coordination |
 | The user asks for a deep or thorough review | Deep |
 | The user names a focus | Use the relevant mode within that scope; report which lenses were applied |
@@ -17,24 +17,24 @@ Risk surfaces are listed in good-code.md. If the scope is unclear, inspect the c
 
 ## Gather the input
 
-Inventory the requested revision or working-tree change, including existing local edits. Identify its goal, relevant rulings, files, and changed hunks without judging them. Record the baseline and where callers, owners, and project contracts can be found. Master can prepare this input; both investigators check whether it is correct and sufficient.
+Identify the requested target, goal, relevant rulings, files, callers, owners and project contracts before judging. For a change, inventory the requested revision or diff, including existing local edits. For existing code, retain its current version and assess the named behavior; do not invent a diff. Master can prepare this input; both investigators check whether it is correct and sufficient.
 
 ## Scope of judgment
 
-Read the changed files plus enough calling and owned code to understand behavior and structure. Code promoted to sole path, realtime duty, universal gate, or reference input is a review target even when unchanged. Within a change review, quality findings concern changed or newly imposed structure; do not turn unrelated pre-existing style into work. A defect in context is relevant when the change depends on or exposes it.
+Read the target files plus enough calling and owned code to understand behavior and structure. Code promoted to sole path, realtime duty, universal gate, or reference input is a review target even when unchanged. Within a change review, quality findings concern changed or newly imposed structure; do not turn unrelated pre-existing style into work. A defect in context is relevant when the change depends on or exposes it.
 
 ## Quick review
 
-1. Establish the goal in the user's terms and read the diff, callers, and owners within scope.
-2. Apply the relevant good-code.md lenses. Judge a fix or feature against good-change.md and evidence against findings.md.
+1. Establish the goal in the user's terms and read the target, callers, and owners within scope.
+2. Apply the relevant good-code.md lenses and evidence.md. Use good-change.md when developing or independently reviewing a candidate.
 3. Run checks that discriminate the relevant claims. Investigate failures and distinguish regressions from established baseline failures.
-4. Record findings and coverage. In fix mode, continue directly through good-change.md, Develop the candidate and Review the result. Report-only mode retains examined proposals and experiments.
+4. Record findings and coverage. In fix mode, continue directly through good-change.md, Develop the candidate and Review the result. In report-only mode, explain the proposed correction and its basis; develop an outside-checkout candidate only when it answers a remaining uncertainty or the user requests it.
 
-Use findings.md, Working record, throughout the review, including before findings exist. A clean quick review records its scope and validation without inventing an issue or candidate.
+Select and continue the record under evidence.md, Working record. When escalating to candidate development or deep investigation, carry the note and applicable evidence into that route's record; do not restart the review.
 
 ## Report
 
-Explain consequences in the user's language. The evidence content and dispositions are owned by findings.md; build the report from retained conclusions and evidence when a record is in use, not merely task counts. The response contains:
+Explain consequences in the user's language. Build the report from the retained note or ledger arguments, not task counts. evidence.md owns the evidence standard; findings.md owns candidate and joint-run dispositions when those apply. The response contains:
 - the goal and whether the reviewed behavior meets it, with any material mismatch;
 - substantive issues ranked by user impact, with the evidence basis and uncertainty;
 - each proposed fix or candidate and its current state; do not imply that a proposal is implemented or a saved candidate is reviewed;

@@ -1,13 +1,13 @@
 // Explicit commitments and retained evidence. No command executes project work.
 import { createHash } from "node:crypto"
-import { activeDispatch, eligibility } from "./work.ts"
+import { activeDispatch, eligibility, pendingWait } from "./work.ts"
 
-export const SCHEMA = 11
+export const SCHEMA = 12
 export type Actor = string
 export type ScopeMode = "report-only" | "fix" | "check-in"
 export type Permission = "read" | "write" | "check-in"
 export interface RecordRef { readonly id: string; readonly rev: number }
-export interface Wait { readonly kind: "user" | "external"; readonly reason: string }
+export interface Wait { readonly kind: "user" | "external" | "checkout"; readonly reason: string }
 export type Disposition = "done" | "stopped" | "cancelled" | "replaced"
 export interface Conclusion { readonly record: RecordRef; readonly disposition: Disposition; readonly children: readonly string[]; readonly author: Actor; readonly agreedBy: readonly Actor[] }
 export interface ArtifactRecord extends RecordRef {
@@ -42,7 +42,7 @@ export interface Task {
   readonly created: string
   readonly updated: string
 }
-export interface WorkerIdentity { readonly name: string; readonly pane: string; readonly session: string | null }
+export interface WorkerIdentity { readonly name: string; readonly pane: string | null; readonly session: string | null }
 export interface Dispatch {
   readonly id: string
   readonly rev: number
@@ -155,7 +155,7 @@ function checkTask(state: State, task: Task): void {
   oneOf(task.permission, ["read", "write", "check-in"], "permission")
   if (task.owner !== null) knownActor(state, task.owner)
   checkRefs(state, task.inputs)
-  if (task.wait) { oneOf(task.wait.kind, ["user", "external"], "wait kind"); nonempty(task.wait.reason, "wait reason") }
+  if (task.wait) { oneOf(task.wait.kind, ["user", "external", "checkout"], "wait kind"); nonempty(task.wait.reason, "wait reason") }
 }
 function updateTask(state: State, task: Task): State { return { ...state, tasks: state.tasks.map((old) => old.id === task.id ? task : old) } }
 function idleTask(state: State, task: Task): void { if (activeDispatch(state, task.id)) refuse(`${task.id} has an active dispatch; reconcile it first`) }
@@ -177,7 +177,7 @@ export function transition(before: State, command: Command): Result {
       case "task.add": {
         nonempty(command.id, "task id")
         if (taskById(state, command.id)) refuse(`task ${command.id} already exists`)
-        const task: Task = { id: command.id, rev: 1, version: 1, title: command.title, outcome: command.outcome, owner: command.owner === undefined ? actor : command.owner, state: "open", started: false, note: command.note ?? "", next: command.next, permission: command.permission ?? "read", inputs: command.inputs ?? [], wait: command.wait ?? null, conclusion: null, attention: command.wait ? state.revision + 1 : 0, acknowledged: 0, created: at, updated: at }
+        const task: Task = { id: command.id, rev: 1, version: 1, title: command.title, outcome: command.outcome, owner: command.owner === undefined ? actor : command.owner, state: "open", started: false, note: command.note ?? "", next: command.next, permission: command.permission ?? "read", inputs: command.inputs ?? [], wait: command.wait ?? null, conclusion: null, attention: command.wait && command.wait.kind !== "checkout" ? state.revision + 1 : 0, acknowledged: 0, created: at, updated: at }
         if (task.owner !== actor && task.owner !== null) master(actor)
         checkTask(state, task)
         state = { ...state, tasks: [...state.tasks, task] }; note = task.wait ? `${task.outcome}; waiting on ${task.wait.kind}: ${task.wait.reason}` : task.outcome
@@ -204,7 +204,8 @@ export function transition(before: State, command: Command): Result {
         const material = resolvesUserWait || ["outcome", "permission", "inputs"].some((key) => Object.hasOwn(command, key) && JSON.stringify(command[key as keyof typeof command]) !== JSON.stringify(task[key as keyof Task]))
         const waitChanged = command.wait !== undefined && JSON.stringify(command.wait) !== JSON.stringify(task.wait)
         if (material || waitChanged) { idleTask(state, task); if (task.state !== "open") refuse("reopen a terminal task before changing its promised result"); if (material && !resolvesUserWait) nonempty(command.reason ?? "", "reconciliation reason") }
-        const next: Task = { ...task, rev: task.rev + 1, version: task.version + Number(material), updated: at, title: command.title ?? task.title, outcome: command.outcome ?? task.outcome, note: command.note ?? task.note, next: command.next ?? task.next, permission: command.permission ?? task.permission, inputs, wait: command.wait === undefined ? task.wait : command.wait, attention: waitChanged ? state.revision + 1 : task.attention, started: material ? false : task.started }
+        const reportedWaitChanged = waitChanged && [task.wait, command.wait].some((wait) => wait && wait.kind !== "checkout")
+        const next: Task = { ...task, rev: task.rev + 1, version: task.version + Number(material), updated: at, title: command.title ?? task.title, outcome: command.outcome ?? task.outcome, note: command.note ?? task.note, next: command.next ?? task.next, permission: command.permission ?? task.permission, inputs, wait: command.wait === undefined ? task.wait : command.wait, attention: reportedWaitChanged ? state.revision + 1 : task.attention, started: material ? false : task.started }
         checkTask(state, next); state = updateTask(state, next)
         const describeWait = (wait: Wait | null) => wait ? `${wait.kind}: ${wait.reason}` : "none"
         note = [waitChanged ? `wait ${describeWait(task.wait)} -> ${describeWait(next.wait)}` : "", command.resolution ? `user ruling ${command.resolution.id}@${command.resolution.rev}` : "", command.reason ?? command.note ?? ""].filter(Boolean).join("; ")
@@ -232,14 +233,14 @@ export function transition(before: State, command: Command): Result {
       }
       case "task.publish": {
         const task = getTask(state, command); investigator(state, actor); idleTask(state, task)
-        if (task.wait) refuse("resolve the wait explicitly before publishing a conclusion")
+        if (pendingWait(state, task)) refuse("resolve the wait before publishing a conclusion")
         oneOf(command.disposition, ["done", "stopped", "cancelled", "replaced"], "disposition")
         checkRefs(state, [command.result])
         const children = command.children ?? []
         if (command.disposition === "replaced") checkReplacement(state, task.id, children)
         else if (children.length) refuse("only a replacement conclusion has children")
         const conclusion: Conclusion = { record: command.result, disposition: command.disposition, children: [...children], author: actor, agreedBy: [actor] }
-        state = updateTask(state, { ...task, state: command.disposition, conclusion, started: false, rev: task.rev + 1, version: task.version + 1, attention: state.revision + 1, updated: at })
+        state = updateTask(state, { ...task, state: command.disposition, conclusion, wait: null, started: false, rev: task.rev + 1, version: task.version + 1, attention: state.revision + 1, updated: at })
         note = `${command.disposition}: ${command.result.id}@${command.result.rev}`; break
       }
       case "task.agree": {
@@ -252,7 +253,7 @@ export function transition(before: State, command: Command): Result {
       case "task.ack": {
         master(actor); const task = getTask(state, command)
         if (task.attention <= task.acknowledged) refuse("no unread outcome to acknowledge")
-        state = updateTask(state, { ...task, acknowledged: task.attention, rev: task.rev + 1, updated: at })
+        state = updateTask(state, { ...task, acknowledged: task.attention })
         note = "master read the outcome; this is not agreement"; break
       }
       case "task.reopen": {
@@ -274,7 +275,6 @@ export function transition(before: State, command: Command): Result {
       }
       case "checkout.take": {
         revision(state.checkoutRev, command.rev, "checkout"); nonempty(command.purpose, "checkout purpose")
-        if (state.scope.mode === "report-only") refuse("report-only scope does not permit shared source edits")
         if (state.checkout) refuse(`checkout held by ${state.checkout.holder}; explicit release or recovery required`)
         state = { ...state, checkoutRev: state.checkoutRev + 1, checkout: { holder: actor, purpose: command.purpose, since: at, rev: state.checkoutRev + 1 } }; note = command.purpose
         break
@@ -311,7 +311,7 @@ export function transition(before: State, command: Command): Result {
         const allowed: Record<Dispatch["state"], readonly Dispatch["state"][]> = { reserved: ["reserved", "running", "finished", "stopped"], running: ["running", "finished", "stopped"], finished: [], stopped: [] }
         if (!allowed[dispatch.state].includes(command.state)) refuse(`cannot move ${dispatch.state} dispatch to ${command.state}`)
         const worker = command.worker ?? dispatch.worker
-        if (worker) { nonempty(worker.name, "worker name"); nonempty(worker.pane, "worker pane"); if (worker.session !== null) nonempty(worker.session, "worker session") }
+        if (worker) { nonempty(worker.name, "worker name"); if (worker.pane !== null) nonempty(worker.pane, "worker pane"); if (worker.session !== null) nonempty(worker.session, "worker session") }
         if (dispatch.worker && command.worker && JSON.stringify(dispatch.worker) !== JSON.stringify(command.worker)) refuse("worker identity cannot change; reconcile this dispatch and reserve another")
         if (command.state === "running" && !worker) refuse("running execution needs its actual worker identity")
         if (command.inspectAfter) timestamp(command.inspectAfter)

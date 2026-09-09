@@ -21,7 +21,7 @@ Record the user's symptom, expected experience, affected version and environment
 
 Find the shortest useful observation that distinguishes the symptom from expected behavior. Inspect enough code and environment to locate an entry point, replay path, or test seam. This reconnaissance does not commit you to a causal theory.
 
-When possible, produce one agent-runnable command that exposes the exact symptom and can be repeated against a candidate. Reduce irrelevant inputs, pin controllable time or randomness, and shorten the iteration. A trace replay, integration test, running-instance script, differential comparison, or harness may serve; findings.md, Evidence, decides what each establishes.
+When possible, produce one agent-runnable command that exposes the exact symptom and can be repeated against a candidate. Reduce irrelevant inputs, pin controllable time or randomness, and shorten the iteration. A trace replay, integration test, running-instance script, differential comparison, or harness may serve; evidence.md decides what each establishes.
 
 For intermittent failures, retain the observed rate and conditions and improve reproducibility without claiming determinism you did not achieve. For telemetry from shipped builds, an assertion over captured rows can locate affected cases but cannot show that a local fix changed the shipped behavior. State that limitation and seek a code-level check when one can reach the mechanism.
 
@@ -35,7 +35,7 @@ If the full loop is unavailable, retain the best signal, what it establishes, an
 4. Develop a candidate as understanding becomes concrete, per good-change.md. The reproducer and useful experiments stay with the change; the candidate can test a causal hypothesis before another reviewer agrees. Trace sibling mechanisms and related causes before claiming the wider problem resolved.
 5. Validate, retain, and independently review the candidate through good-change.md. Report-only work retains its examined proposal and experiments for later continuation.
 
-Use findings.md, Working record, from the initial investigation, or continue the shared record in a deep run. Cover every input cluster with a supported cause or an explicit gap; an export assertion alone is not verification of a code cause.
+Use evidence.md, Working record, from the initial investigation, or continue the shared record in a deep run. Cover every input cluster with a supported cause or an explicit gap; an export assertion alone is not verification of a code cause.
 
 ## Report
 

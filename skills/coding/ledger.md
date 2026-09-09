@@ -1,6 +1,6 @@
 # Shared investigation
 
-Read when starting or resuming substantive work, publishing a conclusion, replacing an issue, or editing a shared checkout. findings.md owns the argument and evidence standard; this file owns recording and coordination. deep.md owns joint investigation and runtime controls.
+Read when using the ledger, publishing its conclusions, replacing an issue, or editing a shared checkout. evidence.md owns evidence standards; findings.md owns the retained arguments and decisions; this file owns recording and coordination. deep.md owns joint investigation and runtime controls.
 
 ## Start and resume
 
@@ -34,13 +34,13 @@ The run's recorded conclusions are jointly agreed only when every registered nod
 
 ## Master visibility
 
-Publication, agreement changes, reopening and changed waits retain unread attention for master. Master reads the affected node, argument and timeline since the last acknowledgement, then summarizes meaningful changes for the user: chosen and rejected approaches, why scope changed, impossible outcomes, blockers and required rulings. Group related updates without waiting for the whole run to end. The timeline preserves successive changes even if several occur before master reads them.
+Publication, agreement changes, reopening and changes to or from user/external waits retain unread attention for master. Routine checkout waits do not. Master reads the affected node, argument and timeline since the last acknowledgement, then summarizes meaningful changes for the user: chosen and rejected approaches, why scope changed, impossible outcomes, blockers and required rulings. Group related updates without waiting for the whole run to end. The timeline preserves successive changes even if several occur before master reads them.
 
-After reading and accounting for those changes, master acknowledges the node's current revision. Acknowledgement records visibility only; it does not agree with the conclusion or resolve a wait. Merely reading a status report does not clear attention. Reasons live in the record, not duplicated in every runtime prompt. An active master must pull unread outcomes at work boundaries; an idle master can be woken by the coordinator.
+After reading and accounting for those changes, master acknowledges the node's current revision. Acknowledgement records visibility only; it does not revise the task, agree with the conclusion or resolve a wait. Merely reading a status report does not clear attention. Reasons live in the record, not duplicated in every runtime prompt. An active master must pull unread outcomes at work boundaries; an idle master can be woken by the coordinator.
 
 ## Child executions
 
-Reserve one dispatch for an action task before launching a child. Record the returned worker identity and observed running state; a reservation is not a confirmed launch. The task's action owner remains the child's parent. Use dispatch show to recover the exact identity, revision and observations after context loss. An active dispatch prevents duplicate launch, transfer or conclusion changes on that node until the execution is reconciled.
+Reserve one dispatch for an action task before launching a child. Record its actual runtime handle as name and retain pane/session identifiers when that runtime supplies them; use null for unavailable fields, never an invented pane. Record the observed running state; a reservation is not a confirmed launch. The task's action owner remains the child's parent. Use dispatch show to recover the exact identity, revision and observations after context loss and inspect it through its original runtime. An active dispatch prevents duplicate launch, transfer or conclusion changes on that node until the execution is reconciled.
 
 A child returns evidence and its argument to its parent. Retain the actual attribution and supplied input versions in the record content; the parent is its recorder, not necessarily its author. The investigators still make their own judgments and record their own agreement. A child cannot cast a peer's vote. Child completion alone does not conclude the node.
 
@@ -48,7 +48,9 @@ Record finished or stopped only from observed outcomes; retain partial evidence 
 
 ## Shared checkout
 
-One writer holds the shared checkout. Acquire it successfully before any shared edit, including docs and temporary probes. Task ownership and peer agreement do not grant the checkout. Hold it while a build consumes mutable inputs, or use an immutable copy. Review saved candidate and baseline bytes, not an unidentified mix in a moving tree.
+One actor holds the shared checkout. Acquire it successfully before any shared edit, including docs and temporary probes. Task ownership and peer agreement do not grant the checkout. The hold serializes access; it grants no source-edit or check-in authority. Report-only investigators can take it to keep build and test inputs stable. Hold it while a build consumes mutable inputs, or use an immutable copy. Review saved candidate and baseline bytes, not an unidentified mix in a moving tree.
+
+A busy checkout blocks shared edits and mutable-input checks, not investigation. Continue independent code reading, saved-candidate review, or other issues. When a task's next remaining action needs the checkout, set `wait=checkout` with that action as its reason, not an external wait. Eligibility follows current availability: free or already held by that task's owner. Release makes waiting work eligible without a clearing mutation or a new permission decision; the owner must still acquire the checkout before using it. Clear the wait when further work no longer needs shared inputs. Do not idle while other useful work is available.
 
 Before releasing, retain candidate, baseline including user edits, validation and unfinished work; remove temporary instrumentation without undoing candidate or user changes. Release a finished batch even if other nodes remain. A missing writer never automatically frees the hold. Master recovery requires evidence that it stopped or cooperates and that its work is preserved.
 
@@ -62,4 +64,4 @@ Routine results and disclosures are recorded, not sent to peers first. Urgent in
 
 Ordinary argument or stale-revision refusals with no mutation are invocation repair: inspect, correct and continue. Inspect the record before retrying an uncertain outcome. Do not replay a saved mutation merely to obtain a wake.
 
-Schema 11 does not migrate old task/review records or invent peer assent. Keep old runs on their pinned helper. A deliberate continuation carries forward applicable arguments, candidates, unresolved choices and responsibility into the new format, with old records linked and preserved. It need not repeat still-applicable investigation.
+Schema 12 does not migrate old task/review records or invent peer assent. Keep old runs on their pinned helper. A deliberate continuation carries forward applicable arguments, candidates, unresolved choices and responsibility into the new format, with old records linked and preserved. It need not repeat still-applicable investigation.

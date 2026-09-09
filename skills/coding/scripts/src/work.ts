@@ -1,5 +1,5 @@
 // Attention is derived from decisions; no graph edge asserts engineering truth.
-import { sameRefs, type Actor, type Dispatch, type State, type Task } from "./protocol.ts"
+import { sameRefs, type Actor, type Dispatch, type State, type Task, type Wait } from "./protocol.ts"
 
 export function activeDispatch(state: State, taskId: string): Dispatch | undefined {
   return state.dispatches.find((dispatch) => dispatch.task === taskId && (dispatch.state === "reserved" || dispatch.state === "running"))
@@ -14,12 +14,18 @@ export function runComplete(state: State): boolean {
   return state.tasks.length > 0 && state.tasks.every((task) => agreed(state, task)) && !state.checkout && !state.dispatches.some((dispatch) => dispatch.state === "reserved" || dispatch.state === "running")
 }
 export interface Eligibility { readonly allowed: boolean; readonly blockers: readonly string[] }
+/** Checkout availability is an observed condition, not a second state to clear on release. */
+export function pendingWait(state: State, task: Task): Wait | null {
+  if (task.wait?.kind === "checkout" && (!state.checkout || state.checkout.holder === task.owner)) return null
+  return task.wait
+}
 export function eligibility(state: State, task: Task, actor: Actor, action: "start" | "dispatch"): Eligibility {
   const blockers: string[] = []
   if (!Object.hasOwn(state.names, actor)) blockers.push(`unknown actor ${actor}`)
   if (task.owner !== actor) blockers.push(task.owner === null ? "task is unassigned; claim it first" : `task belongs to ${task.owner}`)
   if (task.state !== "open") blockers.push(`task is ${task.state}`)
-  if (task.wait) blockers.push(`waiting on ${task.wait.kind}: ${task.wait.reason}`)
+  const wait = pendingWait(state, task)
+  if (wait) blockers.push(`waiting on ${wait.kind}: ${wait.reason}`)
   if (state.scope.mode === "report-only" && task.permission !== "read") blockers.push("scope is report-only")
   if (task.permission === "check-in") {
     if (state.scope.mode !== "check-in") blockers.push("scope does not permit check-in")
@@ -47,10 +53,6 @@ export function workSignals(state: State, actor: Actor): readonly WorkSignal[] {
       const authority = eligibility(state, task, task.owner ?? actor, "dispatch").blockers.filter((reason) => reason.startsWith("scope") || reason.startsWith("explicit current"))
       if (authority.length) signals.push({ key: `authority:${task.id}`, basis: JSON.stringify([task.version, state.scope.rev, authority]), reason: authority.join("; ") })
     }
-  }
-  const checkout = state.checkout
-  if (actor === "master" && checkout && !state.tasks.some((task) => task.state === "open" && task.owner === checkout.holder)) {
-    signals.push({ key: "checkout", basis: String(state.checkoutRev), reason: `checkout still held by ${checkout.holder}; inspect preservation and release with its holder` })
   }
   if (actor === "master" && runComplete(state)) {
     signals.push({ key: "run-results-ready", basis: JSON.stringify(state.tasks.map((task) => [task.id, task.version, task.conclusion])), reason: "all conclusions and replacements have investigator agreement; report outcomes and limits, not inferred successful delivery" })

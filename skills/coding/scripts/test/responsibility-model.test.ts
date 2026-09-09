@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import fc from "fast-check"
 import { taskById, transition, type Command, type State } from "../src/protocol.ts"
-import { activeDispatch, agreed, eligibility, runComplete, workSignals } from "../src/work.ts"
+import { activeDispatch, agreed, eligibility, pendingWait, runComplete, workSignals } from "../src/work.ts"
 import { at, env, initial, apply, add, save } from "./domain-fixture.ts"
 
 function responsibility(state: State): void {
@@ -16,14 +16,20 @@ function responsibility(state: State): void {
       continue
     }
     // An acknowledged wait is deliberately parked, not stranded ready work.
-    if (task.wait) { assert.ok(task.wait.reason); assert.ok(task.attention > 0); continue }
+    const wait = pendingWait(state, task)
+    if (wait) {
+      assert.ok(wait.reason)
+      if (wait.kind === "checkout") assert.ok(state.checkout && state.checkout.holder !== task.owner)
+      else assert.ok(task.attention > 0)
+      continue
+    }
     assert.ok(keys.has("task:" + task.id) || keys.has("unassigned:" + task.id) || keys.has("authority:" + task.id), "unresolved node has no reachable actor: " + task.id)
   }
   assert.equal(runComplete(state), state.tasks.length > 0 && state.tasks.every((task) => agreed(state, task)) && !state.checkout && !state.dispatches.some((dispatch) => ["reserved", "running"].includes(dispatch.state)))
 }
 
 test("generated replacement/agreement/wait/dispatch/ownership interleavings preserve reachable responsibility", () => {
-  fc.assert(fc.property(fc.array(fc.record({ n: fc.integer({ min: 0, max: 3 }), action: fc.constantFrom("publishA", "publishB", "replace", "agreeA", "agreeB", "reopen", "note", "wait", "clear", "ack", "release", "claimA", "claimB", "reserve", "stop", "scope") }), { maxLength: 60 }), (steps) => {
+  fc.assert(fc.property(fc.array(fc.record({ n: fc.integer({ min: 0, max: 3 }), action: fc.constantFrom("publishA", "publishB", "replace", "agreeA", "agreeB", "reopen", "note", "wait", "checkoutWait", "checkoutTake", "checkoutRelease", "clear", "ack", "release", "claimA", "claimB", "reserve", "stop", "scope") }), { maxLength: 60 }), (steps) => {
     let state = apply(initial(), save("argument"))
     for (let i = 0; i < 4; i++) state = apply(state, add("n" + i, i % 2 ? "B" : "A"))
     for (const [index, step] of steps.entries()) {
@@ -40,6 +46,9 @@ test("generated replacement/agreement/wait/dispatch/ownership interleavings pres
         case "reserve": command = { type: "dispatch.reserve", ...env(actor), id: "child-" + index, task: task.id, taskRev: task.rev, inspectAfter: at }; break
         case "stop": { const dispatch = activeDispatch(state, task.id); command = { type: "dispatch.update", ...env("master"), id: dispatch?.id ?? "missing", rev: dispatch?.rev ?? 1, state: "stopped", observation: "confirmed process stopped" }; break }
         case "scope": command = { type: "scope.set", ...env("master"), rev: state.scope.rev, mode: state.scope.mode === "fix" ? "report-only" : "fix", source: "user direction" }; break
+        case "checkoutWait": command = { type: "task.set", ...env("master"), ...target, wait: { kind: "checkout", reason: "next batch needs stable shared inputs" } }; break
+        case "checkoutTake": command = { type: "checkout.take", ...env(actor), rev: state.checkoutRev, purpose: "shared input batch" }; break
+        case "checkoutRelease": command = { type: "checkout.release", ...env(state.checkout?.holder ?? actor), rev: state.checkoutRev, reason: "batch retained" }; break
         default: command = { type: "task.set", ...env("master"), ...target, ...(step.action === "wait" ? { wait: { kind: "external", reason: "service down" } } : step.action === "clear" ? { wait: null } : { note: "checkpoint" }) }
       }
       const result = transition(state, command)
