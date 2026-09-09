@@ -1,6 +1,6 @@
 # Good change
 
-Read when choosing a change's design or boundary. These principles apply at every level; they do not require an investigation record, independent reviewer, or team. SKILL.md owns authority and the selected level. For deep work, investigation.md owns the method.
+Design and boundary judgment for implementation, review and diagnosis. These principles apply at every level; they do not require an investigation record, independent reviewer, or team. SKILL.md owns read selection, authority and the selected level. For deep work, investigation.md owns the method.
 
 ## Establish the outcome
 

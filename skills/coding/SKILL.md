@@ -5,13 +5,25 @@ description: "Use when implementing or changing code, reviewing code, a diff, br
 
 # Coding
 
+## Read for the work
+
+For a specified mechanical or presentation edit, the target and relevant knowledge suffice. Otherwise, before substantive code inspection or edits, read the applicable guidance below. This applies at every level, including dispatched assignments. Select by the code and decision in scope, not by the level's name.
+
+| Work in scope | Read |
+|---|---|
+| Code implementation, review or diagnosis | [good-code.md](./good-code.md): Values and the relevant lenses; [good-change.md](./good-change.md): design and boundary judgment |
+| C++ | [cpp.md](./cpp.md) |
+| Unreal Engine | [unreal.md](./unreal.md), plus cpp.md when the code is C++ |
+
+If investigation reaches another language, engine or design boundary, load its guidance before judging that code. Already-read guidance need not be loaded again while it remains available in context.
+
 ## Choose the level
 
 Use the user's explicit directive, not your estimate of difficulty. Match these selectors case-insensitively:
 
 | User directive | Level | Read |
 |---|---|---|
-| No selector | Normal | The normal path below and [good-code.md](./good-code.md) |
+| No selector | Normal | The normal path below |
 | `deep` or `deeply`, directing how to do this task | Deep investigation | [investigation.md](./investigation.md) |
 | `deep` or `deeply` together with `with two models` or `with multiple models`, directing this task | Joint investigation | [investigation.md](./investigation.md), then [joint.md](./joint.md) |
 
@@ -23,7 +35,7 @@ State deep or joint when selected so the user can correct it. Normal work needs 
 
 ## Normal work
 
-Read the target and applicable project instructions. Apply good-code.md's Values and relevant lenses; for C++ also read [cpp.md](./cpp.md), and for Unreal [unreal.md](./unreal.md). Use [good-change.md](./good-change.md) when choosing a change's design or boundary. For a specified mechanical or presentation edit, the target and relevant knowledge suffice.
+Read the target and applicable project instructions. Apply the guidance selected under Read for the work.
 
 Make the requested change, review, or diagnosis directly. Inspect enough surrounding code to understand its actual effect. For a review, report supported findings within the requested scope; for diagnosis, distinguish the cause from a hypothesis. An unresolved question calls for useful inspection or a focused check, not automatic promotion to deep.
 

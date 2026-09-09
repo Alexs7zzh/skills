@@ -2,7 +2,7 @@
 
 Read only when the user selects deep or joint investigation under SKILL.md. This method adds causal reasoning and retained evidence, not a database or a mandatory second agent. Joint work adds joint.md. The selected level does not authorize source edits that the user did not request.
 
-Read [good-code.md](./good-code.md) for judgment, [evidence.md](./evidence.md) for checks and the working note, and [findings.md](./findings.md) for retained claims and continuity. When developing a candidate, apply [good-change.md](./good-change.md). Read cpp.md or unreal.md only for their language or engine.
+SKILL.md's Read for the work applies before this method. Read [evidence.md](./evidence.md) for checks and the working note, and [findings.md](./findings.md) for retained claims and continuity.
 
 ## Establish the question
 
