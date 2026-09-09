@@ -2,10 +2,10 @@
 import { createHash } from "node:crypto"
 import { activeDispatch, eligibility, pendingWait } from "./work.ts"
 
-export const SCHEMA = 12
+export const SCHEMA = 13
 export type Actor = string
-export type ScopeMode = "report-only" | "fix" | "check-in"
-export type Permission = "read" | "write" | "check-in"
+export type ScopeMode = "report-only" | "fix"
+export type Permission = "read" | "write"
 export interface RecordRef { readonly id: string; readonly rev: number }
 export interface Wait { readonly kind: "user" | "external" | "checkout"; readonly reason: string }
 export type Disposition = "done" | "stopped" | "cancelled" | "replaced"
@@ -58,7 +58,6 @@ export interface Dispatch {
   readonly updated: string
 }
 export interface Scope { readonly mode: ScopeMode; readonly rev: number; readonly source: string; readonly by: Actor; readonly at: string }
-export interface Authorization { readonly task: string; readonly version: number; readonly inputs: readonly RecordRef[]; readonly scopeRev: number; readonly executor: Actor; readonly source: string; readonly by: Actor; readonly at: string }
 export interface State {
   readonly schema: typeof SCHEMA
   readonly revision: number
@@ -71,7 +70,6 @@ export interface State {
   readonly dispatches: readonly Dispatch[]
   readonly checkout: { readonly holder: Actor; readonly purpose: string; readonly since: string; readonly rev: number } | null
   readonly checkoutRev: number
-  readonly authorizations: readonly Authorization[]
 }
 
 export function initialState(options: { goal: string; names: Readonly<Record<Actor, string>>; investigators?: readonly Actor[]; scope: ScopeMode; source: string; at?: string }): State {
@@ -88,8 +86,8 @@ export function initialState(options: { goal: string; names: Readonly<Record<Act
   for (const actor of investigators) if (!Object.hasOwn(options.names, actor)) refuse(`unknown investigator ${actor}`)
   if (investigators.length === 2 && investigators.includes("master")) refuse("master cannot substitute for a peer in a joint run")
   if (peers.length && (investigators.length !== peers.length || peers.some((peer) => !investigators.includes(peer)))) refuse("every named peer must be an investigator; omit auxiliary child identities from names")
-  oneOf(options.scope, ["report-only", "fix", "check-in"], "scope")
-  return { schema: SCHEMA, revision: 0, goal: options.goal, names: { ...options.names }, investigators: [...investigators], scope: { mode: options.scope, rev: 1, source: options.source, by: "master", at: options.at ?? new Date().toISOString() }, tasks: [], records: [], dispatches: [], checkout: null, checkoutRev: 0, authorizations: [] }
+  oneOf(options.scope, ["report-only", "fix"], "scope")
+  return { schema: SCHEMA, revision: 0, goal: options.goal, names: { ...options.names }, investigators: [...investigators], scope: { mode: options.scope, rev: 1, source: options.source, by: "master", at: options.at ?? new Date().toISOString() }, tasks: [], records: [], dispatches: [], checkout: null, checkoutRev: 0 }
 }
 
 interface Envelope<T extends string> { readonly type: T; readonly actor: Actor; readonly at: string }
@@ -119,7 +117,6 @@ export type Command =
   | (Envelope<"dispatch.reserve"> & { readonly id: string; readonly task: string; readonly taskRev: number; readonly inspectAfter: string })
   | (Envelope<"dispatch.update"> & Target & { readonly state: Dispatch["state"]; readonly worker?: WorkerIdentity; readonly inspectAfter?: string; readonly observation: string })
   | (Envelope<"scope.set"> & { readonly rev: number; readonly mode: ScopeMode; readonly source: string })
-  | (Envelope<"scope.authorize"> & { readonly id: string; readonly rev: number; readonly scopeRev: number; readonly executor: Actor; readonly inputs: readonly RecordRef[]; readonly source: string })
 export type CommandType = Command["type"]
 export interface Event { readonly at: string; readonly actor: Actor; readonly command: CommandType | "init"; readonly row: string; readonly note: string; readonly data?: Command }
 export interface Moment extends Event { readonly sequence: number; readonly revision: number }
@@ -136,10 +133,6 @@ function owner(task: Task, actor: Actor): void { if (task.owner !== actor && act
 export function taskById(state: State, id: string): Task | undefined { return state.tasks.find((task) => task.id === id) }
 export function recordByRef(state: State, ref: RecordRef): ArtifactRecord | undefined { return state.records.find((record) => record.id === ref.id && record.rev === ref.rev) }
 export function latestRecord(state: State, id: string): ArtifactRecord | undefined { return state.records.filter((record) => record.id === id).at(-1) }
-export function sameRefs(a: readonly RecordRef[], b: readonly RecordRef[]): boolean {
-  const keys = (refs: readonly RecordRef[]) => refs.map((ref) => `${ref.id}@${ref.rev}`).sort()
-  return JSON.stringify(keys(a)) === JSON.stringify(keys(b))
-}
 function checkRefs(state: State, refs: readonly RecordRef[]): void {
   if (new Set(refs.map((ref) => `${ref.id}@${ref.rev}`)).size !== refs.length) refuse("input references must be unique")
   for (const ref of refs) if (!recordByRef(state, ref)) refuse(`missing record ${ref.id}@${ref.rev}`)
@@ -152,7 +145,7 @@ function getTask(state: State, target: Target): Task {
 }
 function checkTask(state: State, task: Task): void {
   nonempty(task.title, "title"); nonempty(task.outcome, "outcome"); nonempty(task.next, "next action")
-  oneOf(task.permission, ["read", "write", "check-in"], "permission")
+  oneOf(task.permission, ["read", "write"], "permission")
   if (task.owner !== null) knownActor(state, task.owner)
   checkRefs(state, task.inputs)
   if (task.wait) { oneOf(task.wait.kind, ["user", "external", "checkout"], "wait kind"); nonempty(task.wait.reason, "wait reason") }
@@ -320,18 +313,8 @@ export function transition(before: State, command: Command): Result {
         break
       }
       case "scope.set": {
-        master(actor); revision(state.scope.rev, command.rev, "scope"); oneOf(command.mode, ["report-only", "fix", "check-in"], "scope"); nonempty(command.source, "human instruction source")
+        master(actor); revision(state.scope.rev, command.rev, "scope"); oneOf(command.mode, ["report-only", "fix"], "scope"); nonempty(command.source, "human instruction source")
         state = { ...state, scope: { mode: command.mode, rev: state.scope.rev + 1, source: command.source, by: actor, at } }; note = command.source
-        break
-      }
-      case "scope.authorize": {
-        master(actor); revision(state.scope.rev, command.scopeRev, "scope")
-        const task = getTask(state, command); knownActor(state, command.executor)
-        if (state.scope.mode !== "check-in" || task.permission !== "check-in") refuse("check-in authorization requires check-in scope and task permission")
-        if (task.state !== "open") refuse("authorize an open task")
-        checkRefs(state, command.inputs); if (!sameRefs(command.inputs, task.inputs)) refuse("authorization inputs must exactly match task inputs")
-        nonempty(command.source, "explicit human authorization source")
-        state = { ...state, authorizations: [...state.authorizations, { task: task.id, version: task.version, inputs: command.inputs, scopeRev: state.scope.rev, executor: command.executor, source: command.source, by: actor, at }] }; note = command.source
         break
       }
       default: refuse(`unknown command ${(command as { type: string }).type}`)

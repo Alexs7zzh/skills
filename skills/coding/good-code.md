@@ -1,8 +1,6 @@
 # Good code
 
-Properties of the resulting code, used in writing, review, and diagnosis. Read Values for every judgment and the lenses whose mechanisms the work touches. The route sets the scope; these properties do not expand it. Sweeps return the applicable objects under Enumerate.
-
-**Risk surfaces:** concurrency, a lock-free or transition protocol, ownership or lifetime, a realtime path, externally delivered data.
+Properties of the resulting code, used at every level in writing, review and diagnosis. Read Values and the lenses whose mechanisms the work touches. Apply them within the requested scope; they do not select a level, require a team, or turn a direct edit into an exhaustive sweep. Enumerate is a coverage aid for a requested investigation or review, not a mandatory report for each change.
 
 ## Values
 
@@ -59,11 +57,11 @@ For each recovery loop, name the observation, changed prerequisite, or safe retr
 
 **Structural quality.** Investigate self-declared gates, repeated knowledge, and defenses that do not achieve their stated purpose using the deletion test. Establish whether they own a distinct enforcement boundary, reduce a relevant risk, or simplify a maintenance task before judging them. An ad-hoc conditional in an unrelated flow suggests misplaced policy; name the boundary it belongs to. Growth calls for decomposition when distinct responsibilities or invariants become hard to reason about. Look for a reframe that removes branches or layers while preserving obligations. A quality finding names a concrete future cost, not a taste.
 
-**Test design.** Expected results need a source independent of the implementation decision under test. A test that computes the answer the same way can repeat the defect. Name the symmetries the generator imposes, such as zero-mean signals, identical channels, on-grid values, or design-unit parameters; inspect omitted dimensions that matter to the claim. For stateful systems, test changes of responsibility, inputs, scope and cancellation during ongoing work, not only starting in each supported mode. A queued action is not proven usable until its actor can perform it under the same facts; a waiting state needs a reachable resolver, not just a nonempty field. A threshold assertion without its baseline comparison asserts one side of a trade. Tests tied to internal shape can break on a behavior-preserving refactor. Choose what to validate per evidence.md; do not add tests that merely restate the implementation.
+**Test design.** Expected results need a source independent of the implementation decision under test. A test that computes the answer the same way can repeat the defect. Name the symmetries the generator imposes, such as zero-mean signals, identical channels, on-grid values, or design-unit parameters; inspect omitted dimensions that matter to the claim. For stateful systems, test changes of responsibility, inputs, scope and cancellation during ongoing work, not only starting in each supported mode. A queued action is not proven usable until its actor can perform it under the same facts; a waiting state needs a reachable resolver, not just a nonempty field. A threshold assertion without its baseline comparison asserts one side of a trade. Tests tied to internal shape can break on a behavior-preserving refactor. Choose checks for the claim; deep investigations use evidence.md's retained evidence procedure. Do not add tests that merely restate the implementation.
 
 ## Enumerate
 
-Across the scoped sweeps, account for each applicable object below, with its site, claim, and evidence or gap. Partition the objects between sweeps; each sweep need not repeat the whole list:
+When sweeping a requested review or investigation, use these objects to check coverage within that scope. In deep work, retain significant claims and gaps with their sites and evidence; normal work need not produce an inventory. Partition the objects between sweeps rather than repeating the list:
 
 - every constant with physical meaning: its source in a contract, negotiation, derivation, or measurement; inspect real inputs or logs when the claim depends on delivered values
 - every assumption about externally delivered data

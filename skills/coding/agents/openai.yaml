@@ -1,4 +1,4 @@
 interface:
   display_name: "Coding"
-  short_description: "Review, diagnose, and implement with evidence, independent checks, and retained context"
+  short_description: "Normal coding, deep investigation, or deep with multiple models"
   default_prompt: "Use $coding for this code task."

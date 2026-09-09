@@ -14,9 +14,11 @@ name the shell explicitly. Existing capture directories are never overwritten.
 stdout.log and stderr.log retain bytes as they arrive; start.json records the invocation.
 receipt.json is written only after the child and its output streams close. Selected input
 files are copied before launch; this does not claim they are the process's only inputs.
+run verifies the retained bytes and returns start, receipt, and stdout/stderr log paths.
+Read those logs to interpret the result; no separate inspect is needed for a fresh capture.
 run returns the child exit code, or nonzero for launch failure, interruption or capture error.
 
-inspect checks retained file hashes and prints the recorded termination and output paths.
+inspect checks retained file hashes for reused captures or recovery and returns the same facts.
 It does not run a command or call an execution successful. With no closing receipt it
 reports incomplete capture and returns nonzero; partial logs may still contain evidence.
 An interrupted capture is inspectable but never a completed check, even with exit code 0.
@@ -43,8 +45,10 @@ interface Receipt {
 function fact(bytes: Buffer): FileFact {
   return { bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") }
 }
-function save(path: string, value: unknown): void {
-  writeFileSync(path, JSON.stringify(value, null, 2) + "\n", { flag: "wx", mode: 0o600 })
+function save(path: string, value: unknown): FileFact {
+  const bytes = Buffer.from(JSON.stringify(value, null, 2) + "\n")
+  writeFileSync(path, bytes, { flag: "wx", mode: 0o600 })
+  return fact(bytes)
 }
 function regular(path: string): Buffer {
   if (!statSync(path).isFile()) throw new Error(`not a regular file: ${path}`)
@@ -104,38 +108,51 @@ async function run(args: readonly string[]): Promise<number> {
       return { source: input.source, retained, ...fact(input.bytes) }
     }),
   }
-  save(join(directory, "start.json"), start)
-  const out = openSync(join(directory, "stdout.log"), "wx", 0o600)
-  const err = openSync(join(directory, "stderr.log"), "wx", 0o600)
+  const startFact = save(join(directory, "start.json"), start)
+  const stdout = { hash: createHash("sha256"), bytes: 0 }, stderr = { hash: createHash("sha256"), bytes: 0 }
+  const descriptors: number[] = []
   let interrupt: NodeJS.Signals | null = null, launchError: string | null = null, captureError: string | null = null
   let code: number | null = null, signal: NodeJS.Signals | null = null
   try {
+    const out = openSync(join(directory, "stdout.log"), "wx", 0o600); descriptors.push(out)
+    const err = openSync(join(directory, "stderr.log"), "wx", 0o600); descriptors.push(err)
     const child = spawn(argv[0]!, argv.slice(1), { cwd, stdio: ["ignore", "pipe", "pipe"] })
     const forward = (received: NodeJS.Signals) => { interrupt ??= received; child.kill(received) }
     const onInt = () => forward("SIGINT"), onTerm = () => forward("SIGTERM")
     process.on("SIGINT", onInt); process.on("SIGTERM", onTerm)
-    const retain = (fd: number, bytes: Buffer) => {
+    const retain = (fd: number, observed: typeof stdout, bytes: Buffer) => {
       if (captureError) return
-      try { let offset = 0; while (offset < bytes.length) offset += writeSync(fd, bytes, offset) }
+      try {
+        let offset = 0
+        while (offset < bytes.length) {
+          const written = writeSync(fd, bytes, offset)
+          if (written <= 0) throw new Error("capture write made no progress")
+          observed.hash.update(bytes.subarray(offset, offset + written)); observed.bytes += written
+          offset += written
+        }
+      }
       catch (error) { captureError = String(error); child.kill("SIGTERM") }
     }
     try {
-      child.stdout.on("data", (bytes: Buffer) => retain(out, bytes))
-      child.stderr.on("data", (bytes: Buffer) => retain(err, bytes))
+      child.stdout.on("data", (bytes: Buffer) => retain(out, stdout, bytes))
+      child.stderr.on("data", (bytes: Buffer) => retain(err, stderr, bytes))
       child.on("error", (error) => { launchError = String(error) })
       await new Promise<void>((done) => child.on("close", (exitCode, exitSignal) => { code = exitCode; signal = exitSignal; done() }))
     } finally { process.off("SIGINT", onInt); process.off("SIGTERM", onTerm) }
-  } finally { closeSync(out); closeSync(err) }
+  } finally { for (const fd of descriptors) closeSync(fd) }
   const receipt: Receipt = {
     schema: 1, id: start.id, endedAt: new Date().toISOString(),
     termination: captureError ? "capture-failed" : launchError ? "launch-failed" : interrupt ? "interrupted" : signal ? "signalled" : "exited",
     exitCode: code, signal, interrupt, error: captureError ?? launchError,
-    start: fact(regular(join(directory, "start.json"))),
-    stdout: fact(regular(join(directory, "stdout.log"))), stderr: fact(regular(join(directory, "stderr.log"))),
+    start: startFact,
+    stdout: { bytes: stdout.bytes, sha256: stdout.hash.digest("hex") },
+    stderr: { bytes: stderr.bytes, sha256: stderr.hash.digest("hex") },
   }
   save(join(directory, "receipt.json"), receipt)
-  console.log(JSON.stringify({ directory, ...receipt }, null, 2))
-  return receipt.termination === "exited" ? code ?? 1 : 1
+  const verified = inspect(directory)
+  if (!verified.receipt) throw new Error(`incomplete fresh capture: ${directory}`)
+  console.log(JSON.stringify({ directory, ...verified, stdout: join(directory, "stdout.log"), stderr: join(directory, "stderr.log") }, null, 2))
+  return verified.receipt.termination === "exited" ? verified.receipt.exitCode ?? 1 : 1
 }
 
 export async function main(args: readonly string[]): Promise<number> {

@@ -1,5 +1,5 @@
 // Attention is derived from decisions; no graph edge asserts engineering truth.
-import { sameRefs, type Actor, type Dispatch, type State, type Task, type Wait } from "./protocol.ts"
+import { type Actor, type Dispatch, type State, type Task, type Wait } from "./protocol.ts"
 
 export function activeDispatch(state: State, taskId: string): Dispatch | undefined {
   return state.dispatches.find((dispatch) => dispatch.task === taskId && (dispatch.state === "reserved" || dispatch.state === "running"))
@@ -27,11 +27,6 @@ export function eligibility(state: State, task: Task, actor: Actor, action: "sta
   const wait = pendingWait(state, task)
   if (wait) blockers.push(`waiting on ${wait.kind}: ${wait.reason}`)
   if (state.scope.mode === "report-only" && task.permission !== "read") blockers.push("scope is report-only")
-  if (task.permission === "check-in") {
-    if (state.scope.mode !== "check-in") blockers.push("scope does not permit check-in")
-    const authorization = [...state.authorizations].reverse().find((entry) => entry.task === task.id)
-    if (!authorization || authorization.scopeRev !== state.scope.rev || authorization.version !== task.version || authorization.executor !== actor || !sameRefs(authorization.inputs, task.inputs)) blockers.push("explicit current check-in authorization required")
-  }
   if (activeDispatch(state, task.id)) blockers.push("active dispatch must be reconciled first")
   if (action === "start" && task.started) blockers.push("task already started")
   return { allowed: blockers.length === 0, blockers }
@@ -50,7 +45,7 @@ export function workSignals(state: State, actor: Actor): readonly WorkSignal[] {
     if (task.attention > task.acknowledged) signals.push({ key: `outcome:${task.id}`, basis: String(task.attention), reason: "read the retained outcome or blocker, summarize consequential changes, then acknowledge" })
     if (task.state === "open" && task.owner === null) signals.push({ key: `unassigned:${task.id}`, basis: String(task.version), reason: "assign this continuing investigation" })
     if (task.state === "open" && !activeDispatch(state, task.id)) {
-      const authority = eligibility(state, task, task.owner ?? actor, "dispatch").blockers.filter((reason) => reason.startsWith("scope") || reason.startsWith("explicit current"))
+      const authority = eligibility(state, task, task.owner ?? actor, "dispatch").blockers.filter((reason) => reason.startsWith("scope"))
       if (authority.length) signals.push({ key: `authority:${task.id}`, basis: JSON.stringify([task.version, state.scope.rev, authority]), reason: authority.join("; ") })
     }
   }

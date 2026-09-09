@@ -7,10 +7,10 @@ Read when creating, reviewing, testing, or changing the coding skill. Read GOAL.
 Each document owns one kind of decision:
 - SKILL.md owns routing, authority, scope of action, and common terms.
 - good-code.md owns properties of code and conditional mechanism cues.
-- good-change.md owns turning a goal or issue into a reviewed change.
-- evidence.md owns evidence standards and the choice of a compact working note or ledger; findings.md owns longer-lived records, user decisions, continuity, and completion.
-- review.md and diagnose.md own how their inputs are gathered and investigated.
-- ledger.md owns work, agreement, replacement links, retained records, dispatch and checkout mechanics; deep.md owns equal-investigator coordination and the two-family runtime; cpp.md and unreal.md own conditional domain cues.
+- good-change.md owns design and change principles at every level, without selecting investigation or independent review.
+- investigation.md owns the explicitly selected deep method for reviews, diagnoses and changes; evidence.md owns its capture and working note; findings.md owns retained claims, decisions and continuity.
+- joint.md owns equal-investigator judgment, agreement, replacements, completion and runtime controls; ledger.md owns its recording, dispatch and checkout mechanics. No normal or solo deep route uses the database.
+- cpp.md and unreal.md own conditional domain cues.
 
 A pointer names when to read its target. Keep field definitions and decision rules at their home; do not copy them into every route. Keep project and version facts conditional and verifiable against the target.
 
@@ -24,6 +24,8 @@ Settle the collaboration outcomes and evidence obligations before changing scrip
 
 Run the workspace skill validator and the nearest realistic workflow. Test the original failure class, an unseen sibling, a near negative, and a known-good path in fresh contexts. Review changed instructions for conflicting routes, repeated rules, unnecessary waiting, and information lost on resumption. Report which checks actually ran and which did not.
 
+For level changes, test the actual workflow as well as classification: a normal presentation edit and runtime fix, a deep investigation without a ledger or required reviewer, and joint coordination. Include selector words in filenames or quoted material, negation, follow-ups and an unrelated next task. A nominally normal response that still runs deep bookkeeping fails the route. Stable scenarios live in evals/levels.md; keep their expected outcomes aligned with GOAL.md.
+
 For evidence behavior, inspect the chronological tool results and intermediate note writes, not just the final report. An execution claim requires the corresponding result to have returned before that claim. A later matching receipt cannot repair a premature assertion. The capture helper preserves process facts; this independent trial check judges whether the agent used them honestly.
 
 ## Live trials
@@ -32,4 +34,4 @@ Keep skill maintenance as the run's goal when using a project task as a trial. B
 
 Stop automatically once evidence captures a meaningful skill failure: allowed work is blocked by the helper, required judgment context is skipped, planned or unavailable evidence is reported as observed, scope or the trial objective is lost, or coordination repeatedly needs manual repair. Preserve the failing invocation and expected behavior. Do not finish the workload, wait for all conclusions, or ask the user to tell you to stop. An ordinary repaired typo, a disproved code hypothesis, and a deliberately failing regression test are not by themselves skill failures.
 
-Pause coordination, interrupt the trial workers, inspect in-flight jobs, and preserve pending changes and evidence without discarding them. Confirm the workers and owned jobs have stopped before editing their inputs or repairing the skill. Follow deep.md for safe runtime stops; do not run a cleanup investigation in the interrupted workers. Then continue the authorized skill repair and test it in a small fresh fixture; stopping a workload does not complete the maintenance task. Resume a real-project trial only when it is the next necessary check and its scope is still authorized.
+Interrupt the trial workers, inspect in-flight jobs, and preserve pending changes and evidence without discarding them. In a joint trial, pause coordination first and follow joint.md for safe runtime stops. Confirm the workers and owned jobs have stopped before editing their inputs or repairing the skill; do not run a cleanup investigation in the interrupted workers. Then continue the authorized skill repair and test it in a small fresh fixture; stopping a workload does not complete the maintenance task. Resume a real-project trial only when it is the next necessary check and its scope is still authorized.

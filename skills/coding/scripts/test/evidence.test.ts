@@ -25,13 +25,17 @@ test("capture preserves literal argv, selected input bytes and raw output withou
   const script = 'process.stdout.write(Buffer.from([0, 255, 10])); process.stderr.write("FAIL: a check can print this and exit zero");'
   const result = execute(["run", capture, "--cwd", directory, "--input", "input.txt", "--", ...node("-e", script, "literal $() ; value")])
   assert.equal(result.status, 0, result.stderr)
-  const observation = inspect(capture)
+  const observation = JSON.parse(result.stdout)
+  assert.equal(observation.directory, capture)
   assert.deepEqual(observation.start.argv, node("-e", script, "literal $() ; value"))
   assert.equal(observation.start.cwd, directory)
   assert.equal(observation.receipt!.termination, "exited")
   assert.equal(observation.receipt!.exitCode, 0)
-  assert.deepEqual(readFileSync(join(capture, "stdout.log")), Buffer.from([0, 255, 10]))
-  assert.match(readFileSync(join(capture, "stderr.log"), "utf8"), /^FAIL:/)
+  assert.equal(observation.stdout, join(capture, "stdout.log"))
+  assert.equal(observation.stderr, join(capture, "stderr.log"))
+  assert.deepEqual(readFileSync(observation.stdout), Buffer.from([0, 255, 10]))
+  assert.match(readFileSync(observation.stderr, "utf8"), /^FAIL:/)
+  assert.deepEqual(JSON.parse(execute(["inspect", capture]).stdout), observation, "fresh and reused captures have the same handoff")
   assert.equal(readFileSync(join(capture, "input-0"), "utf8"), "before")
   writeFileSync(input, "after")
   assert.equal(inspect(capture).start.inputs[0]!.source, input, "later source edits do not rewrite the recorded input")
@@ -39,14 +43,53 @@ test("capture preserves literal argv, selected input bytes and raw output withou
 
 test("nonzero exits and launch failure retain actual outcomes, never expected output", () => {
   const directory = root(), red = join(directory, "red"), absent = join(directory, "absent")
-  assert.equal(execute(["run", red, "--", ...node("-e", 'console.log("actual mismatch"); process.exit(7)')]).status, 7)
+  const failure = execute(["run", red, "--", ...node("-e", 'console.log("actual mismatch"); process.exit(7)')])
+  assert.equal(failure.status, 7)
+  assert.equal(JSON.parse(failure.stdout).receipt.exitCode, 7)
+  assert.equal(readFileSync(JSON.parse(failure.stdout).stdout, "utf8"), "actual mismatch\n")
   assert.equal(inspect(red).receipt!.exitCode, 7)
   assert.equal(inspect(red).receipt!.termination, "exited")
   assert.equal(execute(["inspect", red]).status, 0, "inspect checks capture integrity, not workload success")
-  assert.equal(execute(["run", absent, "--", join(directory, "not-an-executable")]).status, 1)
+  const launch = execute(["run", absent, "--", join(directory, "not-an-executable")])
+  assert.equal(launch.status, 1)
+  assert.equal(JSON.parse(launch.stdout).receipt.termination, "launch-failed")
   assert.equal(inspect(absent).receipt!.termination, "launch-failed")
   assert.match(inspect(absent).receipt!.error!, /ENOENT/)
   assert.equal(readFileSync(join(absent, "stdout.log"), "utf8"), "")
+})
+
+test("run rejects changed retained bytes before returning a verified handoff", () => {
+  const directory = root(), capture = join(directory, "capture"), input = join(directory, "input")
+  // These bytes decode to the same replacement character; verification must compare raw bytes.
+  writeFileSync(input, Buffer.from([255]))
+  const result = execute(["run", capture, "--input", input, "--", ...node("-e", 'require("fs").writeFileSync(process.argv[1], Buffer.from([254]))', join(capture, "input-0"))])
+  assert.equal(result.status, 1)
+  assert.equal(result.stdout, "", "failed verification must not return verified facts")
+  assert.match(result.stderr, /capture bytes changed: .*input-0/)
+  assert.equal(existsSync(join(capture, "receipt.json")), true, "retain the capture for investigation")
+  assert.throws(() => inspect(capture), /capture bytes changed/)
+})
+
+test("invocation verification uses the bytes saved before launch", () => {
+  const directory = root(), capture = join(directory, "capture")
+  const script = 'const fs = require("node:fs"); const path = process.argv[1]; const start = JSON.parse(fs.readFileSync(path, "utf8")); start.argv = ["never-executed"]; fs.writeFileSync(path, JSON.stringify(start));'
+  const result = execute(["run", capture, "--", ...node("-e", script, join(capture, "start.json"))])
+  assert.equal(result.status, 1)
+  assert.equal(result.stdout, "")
+  assert.match(result.stderr, /capture bytes changed: .*start.json/)
+  assert.throws(() => inspect(capture), /capture bytes changed/)
+})
+
+test("output verification uses process-stream observations, not the closing log contents", () => {
+  for (const target of ["stdout.log", "stderr.log"]) {
+    const directory = root(), capture = join(directory, "capture")
+    const script = 'require("node:fs").writeFileSync(process.argv[1], "not emitted by the process stream\\n")'
+    const result = execute(["run", capture, "--", ...node("-e", script, join(capture, target))])
+    assert.equal(result.status, 1)
+    assert.equal(result.stdout, "")
+    assert.match(result.stderr, /capture bytes changed/)
+    assert.throws(() => inspect(capture), /capture bytes changed/)
+  }
 })
 
 test("a capture cannot overwrite an earlier observation or execute through invalid options", () => {
@@ -78,7 +121,8 @@ test("running output stays partial and interruption cannot become completed succ
   const script = 'process.on("SIGTERM", () => { console.log("stopped after first case"); process.exit(0) }); console.log("case 1 actually returned"); setInterval(() => {}, 1000)'
   const child = spawn(process.execPath, ["--no-warnings", source, "run", capture, "--", ...node("-e", script)], { stdio: ["ignore", "pipe", "pipe"] })
   t.after(() => { if (child.exitCode === null) child.kill("SIGTERM") })
-  let error = ""
+  let error = "", output = ""
+  child.stdout.on("data", (bytes: Buffer) => { output += bytes.toString() })
   child.stderr.on("data", (bytes: Buffer) => { error += bytes.toString() })
   const done = new Promise<number | null>((finish) => child.on("close", finish))
   const deadline = Date.now() + 5000
@@ -90,6 +134,10 @@ test("running output stays partial and interruption cannot become completed succ
   assert.equal(execute(["inspect", capture]).status, 1)
   child.kill("SIGTERM")
   assert.equal(await done, 1, error)
+  const returned = JSON.parse(output)
+  assert.equal(returned.receipt.termination, "interrupted")
+  assert.equal(returned.receipt.exitCode, 0)
+  assert.match(readFileSync(returned.stdout, "utf8"), /stopped after first case/)
   const result = inspect(capture)
   assert.equal(result.receipt!.termination, "interrupted")
   assert.equal(result.receipt!.interrupt, "SIGTERM")

@@ -1,7 +1,7 @@
 // Thin local adapter: parse explicit commands, retain files, transact, print facts.
 import { createHash } from "node:crypto"
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { dirname, join, resolve } from "node:path"
+import { basename, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { initialState, taskById, type Command, type RecordRef, type State, type ScopeMode } from "./protocol.ts"
 import { create, mutate, read } from "./store.ts"
@@ -11,12 +11,12 @@ import { coordinate, coordinationStatus } from "./coordinator.ts"
 const HELP = `ledger: equal investigators, conclusions and replacements. LEDGER_DIR=<run> LEDGER_ME=<actor>
 Local init defaults to actor master. Runtime coordination is optional and master-controlled.
 
-init goal=<text> source=<user instruction> [scope=report-only|fix|check-in]
+init goal=<text> source=<user instruction> [scope=report-only|fix]
      [names='{"master":"master-pane","A":"reviewer-a","B":"reviewer-b"}'] [investigators=A,B]
 Investigators default to non-master actors, or master alone in a local run.
 status [task-id] | report | timeline [actor-or-id] | show <task-or-record-id> [rev=N]
 
-task add ID title=... outcome=... next=... [owner=actor|none] [permission=read|write|check-in]
+task add ID title=... outcome=... next=... [owner=actor|none] [permission=read|write]
 task set ID rev=N [title=... outcome=... next=... note=... permission=...]
      [inputs=record@1,...]
      [wait=user|external|checkout|none waitReason=...] [reason=... resolution=ruling@N]
@@ -48,8 +48,7 @@ dispatch reserve ID task=ID taskRev=N inspectAfter=<ISO timestamp>
 dispatch update ID rev=N state=reserved|running|finished|stopped observation=...
      [worker='{"name":"actual-runtime-handle","pane":null,"session":null}' inspectAfter=...]
      Retain pane/session when supplied by the runtime; null means that field is unavailable.
-scope set rev=N mode=report-only|fix|check-in source=...
-scope authorize ID rev=N scopeRev=N executor=actor inputs=record@1,... source=...
+scope set rev=N mode=report-only|fix source=...
 
 coordinate status | once | watch [interval=2000]
 coordinate pause|resume reason=... | bind seat=actor reason=... | retry seat=actor checked=...
@@ -70,7 +69,7 @@ const SPECS: Record<string, string> = {
   "checkout.recover": "rev! stopped! preserved!",
   "dispatch.reserve": "id task! taskRev! inspectAfter!",
   "dispatch.update": "id rev! state! observation! worker inspectAfter",
-  "scope.set": "rev! mode! source!", "scope.authorize": "id rev! scopeRev! executor! inputs! source!",
+  "scope.set": "rev! mode! source!",
 }
 function fields(args: readonly string[], spec: string): Record<string, string> {
   const result: Record<string, string> = Object.create(null) as Record<string, string>
@@ -114,7 +113,7 @@ function command(type: string, values: Record<string, string>, actor: string, di
   const output: Record<string, unknown> = { type, actor, at: new Date().toISOString() }
   for (const [key, value] of Object.entries(values)) {
     if (["file", "waitReason"].includes(key)) continue
-    if (["rev", "taskRev", "scopeRev"].includes(key)) output[key] = integer(value, key)
+    if (["rev", "taskRev"].includes(key)) output[key] = integer(value, key)
     else if (key === "inputs") output[key] = refs(value)
     else if (key === "children") output[key] = value ? value.split(",") : []
     else if (key === "result" || key === "resolution") output[key] = reference(value)
@@ -164,7 +163,7 @@ export async function main(args: readonly string[]): Promise<number> {
       const source = dirname(dirname(fileURLToPath(import.meta.url)))
       const bin = join(directory, "bin")
       if (existsSync(bin)) throw new Error("bin already exists without a ledger; inspect the interrupted setup")
-      cpSync(source, bin, { recursive: true, filter: (entry) => !["node_modules", "test"].includes(entry.slice(entry.lastIndexOf("/") + 1)) })
+      cpSync(source, bin, { recursive: true, filter: (entry) => !["node_modules", "test"].includes(basename(entry)) })
       create(path, state)
       console.log(`Initialized schema ${state.schema}: ${directory}\nPinned helper: ${join(bin, "ledger.ts")}\n${renderStatus(state, actor)}`)
       return 0

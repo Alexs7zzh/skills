@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
@@ -134,6 +134,8 @@ test("non-pane child handles remain inspectable without weakening identity or ow
 
 test("actual CLI retains and publishes a file atomically using pinned helper", () => {
   const { directory, cli, snapshot } = fixture()
+  assert.equal(existsSync(join(directory, "bin", "test")), false)
+  assert.equal(existsSync(join(directory, "bin", "node_modules")), false)
   cli("A", add("investigate"))
   const output = cli("A", ["task", "publish", "investigate", "rev=1", "disposition=done", "file=" + source])
   assert.match(output, /Task investigate @2: done/)
@@ -211,14 +213,15 @@ test("child execution supplies retained evidence but does not substitute peer as
   assert.match(cli("B", ["status"]), /agree:fresh/)
 })
 
-test("scope narrowing retains authorized check-in as blocked work", () => {
-  const { cli } = fixture("check-in")
+test("scope narrowing retains implementation as blocked work and restoration needs no extra authorization", () => {
+  const { cli } = fixture()
   cli("A", ["record", "save", "candidate", "rev=0", "kind=candidate", "title=patch", "content=implementation"])
-  cli("A", add("commit", "permission=check-in", "inputs=candidate@1"))
-  cli("master", ["scope", "authorize", "commit", "rev=1", "scopeRev=1", "executor=A", "inputs=candidate@1", "source=user selected exact patch"])
+  cli("A", add("fix", "permission=write", "inputs=candidate@1"))
   cli("master", ["scope", "set", "rev=1", "mode=report-only", "source=user paused implementation"])
-  assert.match(cli("A", ["task", "start", "commit", "rev=1"], 1), /scope/)
-  assert.match(cli("master", ["status"]), /commit/)
+  assert.match(cli("A", ["task", "start", "fix", "rev=1"], 1), /scope/)
+  assert.match(cli("master", ["status"]), /fix/)
+  cli("master", ["scope", "set", "rev=2", "mode=fix", "source=user resumed implementation"])
+  cli("A", ["task", "start", "fix", "rev=1"])
 })
 
 test("ordinary invalid options have no mutation and old schema refuses without migration", () => {

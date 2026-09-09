@@ -43,16 +43,14 @@ test("dispatch uncertainty blocks changes that would interfere; evidence and not
   assert.deepEqual(state.tasks[0]!.conclusion!.agreedBy, ["B"])
 })
 
-test("scope and exact check-in authorization gate execution, not reporting an impossible outcome", () => {
-  let state = apply(initial(), { ...add("commit"), permission: "check-in" })
+test("scope gates implementation, not reporting a stopped outcome", () => {
+  let state = apply(initial(), { ...add("fix"), permission: "write" })
   state = apply(state, save("argument"))
-  assert.equal(eligibility(state, state.tasks[0]!, "A", "start").allowed, false)
-  state = apply(state, { type: "scope.set", ...env("master"), rev: 1, mode: "check-in", source: "user authorized selected check-in" })
-  state = apply(state, { type: "scope.authorize", ...env("master"), id: "commit", rev: 1, scopeRev: 2, executor: "A", inputs: [], source: "user selected this candidate" })
   assert.equal(eligibility(state, state.tasks[0]!, "A", "start").allowed, true)
-  state = apply(state, { type: "scope.set", ...env("master"), rev: 2, mode: "report-only", source: "user withdrew edit authority" })
-  assert.ok(workSignals(state, "master").some((s) => s.key === "authority:commit"))
-  state = publish(state, "commit", "B", "stopped")
+  state = apply(state, { type: "scope.set", ...env("master"), rev: 1, mode: "report-only", source: "user withdrew edit authority" })
+  assert.equal(eligibility(state, state.tasks[0]!, "A", "start").allowed, false)
+  assert.ok(workSignals(state, "master").some((s) => s.key === "authority:fix"))
+  state = publish(state, "fix", "B", "stopped")
   assert.equal(state.tasks[0]!.state, "stopped")
 })
 

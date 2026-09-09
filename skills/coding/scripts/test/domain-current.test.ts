@@ -32,12 +32,23 @@ test("comparison evidence accepts distinct versions but rejects repeated exact r
   assert.deepEqual(taskById(state, "compare")!.inputs, inputs)
   rejected(state, { ...save("duplicate"), inputs: [inputs[0]!, inputs[0]!] }, /unique/)
   rejected(state, { ...add("missing"), inputs: [{ id: "measurement", rev: 3 }] }, /missing record/)
-  state = apply(state, { type: "scope.set", ...env("master"), rev: 1, mode: "check-in", source: "user authorized selected comparison" })
-  state = apply(state, { type: "task.set", ...env(), id: "compare", rev: 1, permission: "check-in", reason: "user authorized integration" })
-  rejected(state, { type: "scope.authorize", ...env("master"), id: "compare", rev: 2, scopeRev: 2, executor: "A", inputs: [inputs[0]!], source: "incomplete selection" }, /exactly match/)
-  state = apply(state, { type: "scope.authorize", ...env("master"), id: "compare", rev: 2, scopeRev: 2, executor: "A", inputs: [...inputs].reverse(), source: "exact selected versions" })
-  state = apply(state, { type: "task.start", ...env(), id: "compare", rev: 2 })
+  state = apply(state, { type: "task.start", ...env(), id: "compare", rev: 1 })
   assert.equal(taskById(state, "compare")!.started, true)
+})
+
+test("agreement and an incidental note create no agreement-on-agreement duty", () => {
+  let state = apply(initial(), add("issue")); state = apply(state, save("argument")); state = publish(state, "issue")
+  state = apply(state, { type: "task.agree", ...env("B"), id: "issue", rev: 2 })
+  state = apply(state, { ...save("peer-note", "B"), kind: "note", content: "Additional explanation; claim and evidence are unchanged" })
+  state = apply(state, { type: "task.set", ...env(), id: "issue", rev: 3, note: "Peer's incidental explanation is retained in peer-note@1" })
+  for (const actor of ["A", "B"]) {
+    assert.equal(workSignals(state, actor).some((signal) => signal.key.startsWith("agree:")), false)
+    rejected(state, { type: "task.agree", ...env(actor), id: "issue", rev: 4 }, /already endorses/)
+  }
+  assert.equal(runComplete(state), true)
+  state = apply(state, { type: "task.ack", ...env("master"), id: "issue", rev: 4 })
+  assert.equal(agreed(state, state.tasks[0]!), true)
+  assert.equal(workSignals(state, "master").some((signal) => signal.key.startsWith("outcome:")), false)
 })
 
 test("publication endorses author only; stale peer writes refuse; substantive republish resets only peer", () => {
