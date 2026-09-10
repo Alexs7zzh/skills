@@ -49,3 +49,14 @@ Read when maintaining level selection or its routed procedures. Use fresh contex
 - **Joint layout, known-good:** continuation reuses an existing joint run's bound panes and monitor, even when they use an older layout. No duplicate tab, worker or watcher is created, and no active pane is moved to retrofit the default.
 
 Report each case actually run, its observed result and any untested branch. These are behavioral acceptance cases, not a mandate to execute every case for an unrelated wording edit.
+
+## Joint timing and reporting maintenance
+
+Use fresh readers with the candidate instructions and scenario facts; do not give them the expected response. These cases do not start project builds or modify a live run.
+
+- **Original publication burst:** the master already reported a fixed candidate and its runtime limit; an unchanged peer assent arrives. The reader reads and acknowledges the retained change, without treating acknowledgement as a mandatory user-facing update. A later new blocker is surfaced promptly.
+- **Sibling reporting:** a candidate is reopened because a new control contradicts its claim. The reader reports the changed conclusion and consequence, rather than hiding it as routine review churn.
+- **Near negative:** a user asks for a simple normal edit. No activity markers, ledger or mandatory pre-build peer approval are introduced.
+- **Known-good handoff:** the user asks both investigators to statically agree on two changes before the master builds them together. The reader preserves that owner/boundary and reports static readiness with execution pending, not validated completion.
+- **Historical timing:** a bounded old run has overlapping checkout waits and no activity markers. `insights` unions those waits, retains the cutoff and reports unrecorded self-review time as unknown. It does not add working and wait clocks into total labor.
+- **Interrupted activity:** a declared self-review starts and has no stop; another phase overlaps it. The report shows the open interval clipped to the requested end and unions declared activity time without fabricating a stop or a completed review.

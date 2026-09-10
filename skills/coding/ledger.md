@@ -36,6 +36,12 @@ Publication, agreement changes, reopening and changes to or from user/external w
 
 After reading and accounting for changes, master uses `task ack` with the node's current revision. It clears attention without revising the task, agreeing with the conclusion or resolving a wait. Reading a status report alone does not clear attention.
 
+## Timing inspection
+
+When asked how a joint run spent its time, use `insights` with an explicit interval for a resumed run. Compare recorded checkout holds and requests, peer-response spans, and sampled runtime states as separate clocks; they overlap and do not establish useful work, avoidable waiting or speedup. The report names missing data instead of inferring phase time from publication or `task start`.
+
+If phase timing is needed for future work, `activity start` and `activity stop` retain optional declared intervals at meaningful boundaries. They do not assign work, authorize execution or change agreement. Mark a phase only when you can identify its start and stop; leave an interrupted interval open rather than inventing an end. Use these ledger markers only in joint work. Do not add a timer call per tool or make markers mandatory.
+
 ## Child executions
 
 Reserve one dispatch for an action task before launching a child. Record its actual runtime handle as name and retain pane/session identifiers when that runtime supplies them; use null for unavailable fields, never an invented pane. Record the observed running state; a reservation is not a confirmed launch. The task's action owner remains the child's parent. Use dispatch show to recover the exact identity, revision and observations after context loss and inspect it through its original runtime. An active dispatch prevents duplicate launch, transfer or conclusion changes on that node until the execution is reconciled.

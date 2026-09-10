@@ -42,7 +42,7 @@ export function workSignals(state: State, actor: Actor): readonly WorkSignal[] {
       signals.push({ key: `task:${task.id}`, basis: JSON.stringify([task.version, state.scope.rev]), reason: task.next })
     }
     if (actor !== "master") continue
-    if (task.attention > task.acknowledged) signals.push({ key: `outcome:${task.id}`, basis: String(task.attention), reason: "read the retained outcome or blocker, summarize consequential changes, then acknowledge" })
+    if (task.attention > task.acknowledged) signals.push({ key: `outcome:${task.id}`, basis: String(task.attention), reason: "read the retained outcome or blocker and acknowledge; update the user only for a new consequential result, decision, limitation or blocker; group related updates" })
     if (task.state === "open" && task.owner === null) signals.push({ key: `unassigned:${task.id}`, basis: String(task.version), reason: "assign this continuing investigation" })
     if (task.state === "open" && !activeDispatch(state, task.id)) {
       const authority = eligibility(state, task, task.owner ?? actor, "dispatch").blockers.filter((reason) => reason.startsWith("scope"))

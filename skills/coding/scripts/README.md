@@ -26,3 +26,5 @@ Verification compares retained files with the invocation bytes saved before laun
 ## Checks
 
 Run `npm run check` here and `scripts/check-skills.sh` from the repository root. Tests cover conclusions, replacements, responsibility, scope and ownership, retained-result rollback, actual CLI use and fake-runtime delivery/inspection. They do not certify a real Herdr installation or production project run.
+
+For timing audits, `insights [from=<ISO>] [until=<ISO>] [format=markdown|json]` reads the ledger and optional coordinator audit without changing either. Use a cutoff to exclude later user waits. Runtime working/idle, checkout requests and declared activities are separate overlapping clocks. `activity start ID phase=... [task=ID]` / `activity stop ID` optionally retain declared boundaries as ordinary activity records; they neither schedule work nor grant assent. Unrecorded self-review time remains unknown.

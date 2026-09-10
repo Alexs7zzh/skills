@@ -7,6 +7,8 @@ import { initialState, taskById, type Command, type RecordRef, type State, type 
 import { create, mutate, read } from "./store.ts"
 import { renderReport, renderStatus, renderTimeline } from "./report.ts"
 import { coordinate, coordinationStatus } from "./coordinator.ts"
+import { activityCommand } from "./activity.ts"
+import { buildInsights, readRuntimeAudit, renderInsights } from "./insights.ts"
 
 const HELP = `ledger: equal investigators, conclusions and replacements. LEDGER_DIR=<run> LEDGER_ME=<actor>
 Local init defaults to actor master. Runtime coordination is optional and master-controlled.
@@ -15,6 +17,11 @@ init goal=<text> source=<user instruction> [scope=report-only|fix]
      [names='{"master":"master-pane","A":"reviewer-a","B":"reviewer-b"}'] [investigators=A,B]
 Investigators default to non-master actors, or master alone in a local run.
 status [task-id] | report | timeline [actor-or-id] | show <task-or-record-id> [rev=N]
+insights [from=<ISO>] [until=<ISO>] [format=markdown|json]
+     Read-only timing; default cutoff is the last ledger event, not now. Clocks overlap.
+activity start ID phase=investigate|self-review|peer-review|implement|validate|wait [task=ID]
+activity stop ID
+     Optional declared interval, retained as kind=activity record revisions. No work/assent change.
 
 task add ID title=... outcome=... next=... [owner=actor|none] [permission=read|write]
 task set ID rev=N [title=... outcome=... next=... note=... permission=...]
@@ -171,6 +178,23 @@ export async function main(args: readonly string[]): Promise<number> {
     if (group === "coordinate") return await coordinate(directory, args.slice(1))
     const snapshot = read(path)
     if (!Object.hasOwn(snapshot.state.names, actor)) throw new Error(`unknown actor ${actor}`)
+    if (group === "insights") {
+      const options = fields(args.slice(1), "from until format")
+      if (options.format && !["markdown", "json"].includes(options.format)) throw new Error("format must be markdown or json")
+      const report = buildInsights(snapshot, readRuntimeAudit(directory), options)
+      console.log(options.format === "json" ? JSON.stringify(report, null, 2) : renderInsights(report))
+      return 0
+    }
+    if (group === "activity") {
+      if (verb !== "start" && verb !== "stop") throw new Error("activity requires start or stop")
+      const id = rest[0]
+      if (!id || id.includes("=")) throw new Error("activity requires an id")
+      const options = fields(rest.slice(1), verb === "start" ? "phase! task" : "")
+      const result = mutate(path, (state) => activityCommand(state, actor, new Date().toISOString(), verb, id, options.phase, options.task))
+      const record = result.state.records.at(-1)!
+      console.log(`Saved declared activity ${verb}: ${id}; record ${record.id}@${record.rev}. This is elapsed intent, not measured reasoning.`)
+      return 0
+    }
     if (group === "dispatch" && verb === "show") {
       if (rest.length !== 1 || !rest[0] || rest[0].includes("=")) throw new Error("dispatch show requires exactly one id")
       const dispatch = snapshot.state.dispatches.find((item) => item.id === rest[0])
