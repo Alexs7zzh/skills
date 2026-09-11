@@ -19,8 +19,8 @@ function situation(state: State, task: Task): string {
   const dispatch = activeDispatch(state, task.id)
   if (dispatch) return `child ${dispatch.state}: ${dispatch.id}; parent ${dispatch.parent}; inspect ${dispatch.inspectAfter}`
   if (!task.owner) return "unassigned"
-  const gate = eligibility(state, task, task.owner, task.started ? "dispatch" : "start")
-  return gate.allowed ? (task.started ? "assigned; start recorded" : "assigned") : gate.blockers.join("; ")
+  const gate = eligibility(state, task, task.owner)
+  return gate.allowed ? "assigned" : gate.blockers.join("; ")
 }
 /** Shared children display once; later parents keep a cross-reference. */
 export function renderTree(state: State, rootId?: string): string {
@@ -34,7 +34,7 @@ export function renderTree(state: State, rootId?: string): string {
     if (!task) { lines.push(`${indent}- missing issue ${cell(id)}`); return }
     if (seen.has(id)) { lines.push(`${indent}- ↳ ${cell(id)} — shared issue; shown above`); return }
     seen.add(id)
-    lines.push(`${indent}- ${cell(id)} @${task.rev}: ${cell(task.title)} — ${cell(situation(state, task))}; owner: ${cell(task.owner)}`)
+    lines.push(`${indent}- ${cell(id)} @${task.rev}: ${cell(task.title)} — ${cell(situation(state, task))}; owner: ${cell(task.owner)}${task.dependsOn.length ? `; depends on ${task.dependsOn.map(cell).join(", ")}` : ""}`)
     for (const child of task.conclusion?.children ?? []) visit(child, depth + 1)
   }
   for (const root of roots) visit(root, 0)
@@ -57,7 +57,7 @@ export function renderStatus(state: State, actor: Actor, rootId?: string): strin
     `\nAttention for ${actor}:\n`,
     table(["Issue/action", "Reason"], workSignals(state, actor).map((signal) => [signal.key, signal.reason])),
     `\n${rootId ? `Issue ${rootId}` : "Investigation"}:\n`, renderTree(state, rootId),
-    "\nTask counts are not finding counts. Assignment and recorded starts are not observed runtime activity. Replaced is not fixed; agreement is not master acknowledgement.",
+    "\nTask counts are not finding counts. Assignment is not observed runtime activity. Replaced is not fixed; agreement is not master acknowledgement.",
   ].join("\n")
 }
 export function renderReport(state: State): string {

@@ -34,9 +34,9 @@ test("user-wait resolution retains exact ruling and attention without inferring 
   assert.equal(choice.wait, null)
   assert.equal(choice.version, 2)
   assert.deepEqual(choice.inputs, [{ id: "evidence", rev: 1 }, { id: "evidence", rev: 2 }, { id: "decision", rev: 2 }])
-  assert.equal(eligibility(state, taskById(state, "consumer")!, "B", "start").allowed, true)
+  assert.equal(eligibility(state, taskById(state, "consumer")!, "B").allowed, true)
   assert.ok(workSignals(state, "master").some((signal) => signal.key === "outcome:choice"))
-  assert.equal(taskById(state, "consumer")!.state, "open")
+  assert.equal((taskById(state, "consumer")!.conclusion?.disposition ?? "open"), "open")
 })
 
 test("prelinked ruling still advances material version when the user wait is resolved to an external wait", () => {
@@ -88,7 +88,7 @@ test("question clarification and ordinary external wait resolution do not manufa
   state = apply(state, { type: "task.set", actor: "A", at, id: "build", rev: 1, wait: null, note: "Service recovered" })
   assert.equal(taskById(state, "build")!.version, 1)
   assert.deepEqual(taskById(state, "build")!.inputs, [])
-  assert.equal(eligibility(state, taskById(state, "build")!, "A", "start").allowed, true)
+  assert.equal(eligibility(state, taskById(state, "build")!, "A").allowed, true)
 })
 
 test("peer can discuss and raise questions without taking action ownership or editing authority", () => {

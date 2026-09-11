@@ -88,7 +88,8 @@ test("declared activities retain revisions, expose interrupted intervals, and ne
   assert.equal(f.snapshot().state.checkout, null)
   assert.throws(() => activityCommand(f.snapshot().state, "B", at(7), "start", "read", "implement"), /already started/)
   assert.throws(() => activityCommand(f.snapshot().state, "A", at(7), "stop", "read"), /no open start/)
-  assert.throws(() => activityCommand(f.snapshot().state, "A", at(7), "start", "x", "made-up"), /phase/)
+  assert.doesNotThrow(() => activityCommand(f.snapshot().state, "A", at(7), "start", "x", "trace ownership"))
+  assert.throws(() => activityCommand(f.snapshot().state, "A", at(7), "start", "x", "  "), /phase/)
   assert.throws(() => activityCommand(f.snapshot().state, "A", at(7), "start", "x", "wait", "missing"), /missing task/)
 })
 
@@ -155,4 +156,32 @@ test("master-created tasks retain default owner and waits in local runs", () => 
   const report = buildInsights(f.snapshot(), absent, { until: at(4) })
   assert.equal(report.tasks[0]!.owner, "master")
   assert.equal(report.actors.find((actor) => actor.actor === "master")!.externalWaitMs, 3 * 60_000)
+})
+
+
+test("task wait timing ends at publication and resumes on reopening", () => {
+  const f = fixture(); f.add("candidate"); f.add("review")
+  f.command({ type: "task.set", actor: "A", at: at(2), id: "review", rev: 1, dependsOn: ["candidate"], reason: "needs candidate" })
+  f.publish("candidate", 5)
+  f.command({ type: "task.reopen", actor: "A", at: at(7), id: "candidate", rev: f.taskRev("candidate"), reason: "new evidence" })
+  const report = buildInsights(f.snapshot(), absent, { until: at(9) })
+  const waits = report.spans.filter((span) => span.kind === "dependency-wait")
+  assert.deepEqual(waits.map((span) => [span.from, span.until, span.open]), [[at(2), at(5), false], [at(7), at(9), true]])
+  assert.equal(report.actors.find((actor) => actor.actor === "A")!.dependencyWaitMs, 5 * 60_000)
+})
+
+
+test("fan-in dependencies retain their own clock alongside checkout waits and producer reopening", () => {
+  const f = fixture(); f.add("one"); f.add("two"); f.add("consumer")
+  f.command({ type: "task.set", actor: "A", at: at(1), id: "consumer", rev: f.taskRev("consumer"), dependsOn: ["one", "two"], reason: "combine independently produced inputs" })
+  f.take("B", 1); f.wait("consumer", 2, "checkout")
+  f.publish("one", 3); f.publish("two", 5)
+  f.release("B", 6); f.take("A", 7)
+  f.command({ type: "task.reopen", actor: "B", at: at(8), id: "one", rev: f.taskRev("one"), reason: "new evidence" })
+  f.publish("one", 10, 1)
+  const report = buildInsights(f.snapshot(), absent, { until: at(11) })
+  const a = report.actors.find((actor) => actor.actor === "A")!
+  assert.equal(a.dependencyWaitMs, 6 * 60_000, "1–5 plus 8–10, not a sum per producer")
+  assert.equal(a.checkoutWaitMs, 5 * 60_000, "2–7 remains separate from dependency time")
+  assert.deepEqual(report.tasks.find((task) => task.id === "consumer")!.dependsOn, ["one", "two"])
 })

@@ -14,11 +14,13 @@ Resume by reading status, your relevant nodes and their retained notes. Use stat
 
 Claim unassigned action work before taking it over; edit against the revision read. Release with a usable note and next action without waiting for the successor. Only master may reassign another actor's held work; execution and checkout holds must still be respected.
 
-Unassigned action work reaches master for assignment; it is not automatically assigned to whichever worker is idle. A peer's published conclusion creates agreement work independently of action ownership.
+Available unassigned work reaches investigators so either can claim it. A successful claim establishes ownership; a wake does not reserve work. A peer's published conclusion creates agreement work independently of action ownership.
 
 Either investigator can add a checkpoint note or raise a user wait on an open issue, regardless of action ownership. Reopen a concluded issue before marking it blocked. For a user decision identified through findings.md, set a user wait on the affected node. The action owner can set an external wait for missing access, observation or a resource. Name the resolver and what would allow work to continue. Changes to the assigned action's outcome, inputs, next action or execution permission stay with its owner or master; independently saved evidence needs no transfer.
 
-Master resolves a user wait with an exact, current, master-recorded ruling reference. The helper adds that ruling to the waiting task's inputs. External waits can be cleared by the action owner or master after the missing condition changes. To stop rather than keep waiting, explicitly clear the wait and publish the reason the investigation cannot continue; an unanswered user wait still needs a ruling, including a decision to cancel.
+Master resolves a user wait with an exact, current, master-recorded ruling reference. If the wait misclassified already-authorized work, retain the existing authority as the ruling rather than requesting it again. The helper adds that ruling to the waiting task's inputs. External waits can be cleared by the action owner or master after the missing condition changes. To stop rather than keep waiting, explicitly clear the wait and publish the reason the investigation cannot continue; an unanswered user wait still needs a ruling, including a decision to cancel.
+
+Use `dependsOn` for the task results needed before an action can proceed. All named producers must publish before the action is available; dependencies persist alongside user, external or checkout waits. Publication includes stopped, cancelled and replaced outcomes: read the results and judge what they permit. It does not certify success or agreement. Reopening a producer blocks dependent work again. Keep dependency changes explicit when the intended inputs change. Use an external wait for prerequisites outside the ledger. Continue independent work while inputs are pending. A pinned older helper keeps its original interface; retain missing dependency detail in the task's context without migrating a live run.
 
 ## Conclusions and replacements
 
@@ -32,15 +34,15 @@ Mutation receipts return affected revisions and retained references. `status ID`
 
 ## Master visibility
 
-Publication, agreement changes, reopening and changes to or from user/external waits retain unread attention for master. Routine checkout waits do not. The timeline preserves successive changes even if several occur before master reads them. Follow joint.md, Master and decisions, to read and report that attention.
+Publication, reopening and investigator changes to or from user/external waits retain unread attention for master. Assent alone and master-authored wait changes remain in the timeline without renewing attention; final readiness still wakes master. Existing unread attention is preserved. Routine checkout waits and dependencies do not notify master. The timeline preserves successive changes even if several occur before master reads them. Follow joint.md, Master and decisions, to read and report that attention.
 
 After reading and accounting for changes, master uses `task ack` with the node's current revision. It clears attention without revising the task, agreeing with the conclusion or resolving a wait. Reading a status report alone does not clear attention.
 
 ## Timing inspection
 
-When asked how a joint run spent its time, use `insights` with an explicit interval for a resumed run. Compare recorded checkout holds and requests, peer-response spans, and sampled runtime states as separate clocks; they overlap and do not establish useful work, avoidable waiting or speedup. The report names missing data instead of inferring phase time from publication or `task start`.
+When asked how a joint run spent its time, use `insights` with an explicit interval for a resumed run. Compare recorded checkout holds and requests, peer-response spans, and sampled runtime states as separate clocks; they overlap and do not establish useful work, avoidable waiting or speedup. The report names missing data instead of inferring phase time from publication or task ownership.
 
-If phase timing is needed for future work, `activity start` and `activity stop` retain optional declared intervals at meaningful boundaries. They do not assign work, authorize execution or change agreement. Mark a phase only when you can identify its start and stop; leave an interrupted interval open rather than inventing an end. Use these ledger markers only in joint work. Do not add a timer call per tool or make markers mandatory.
+If phase timing is needed for future work, `activity start` and `activity stop` retain optional declared intervals at meaningful boundaries. They do not assign work, authorize execution or change agreement. Choose a useful activity label; labels do not prescribe workflow stages. Mark an interval only when you can identify its start and stop; leave an interrupted interval open rather than inventing an end. Use these ledger markers only in joint work. Do not add a timer call per tool or make markers mandatory.
 
 ## Child executions
 

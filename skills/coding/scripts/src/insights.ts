@@ -18,7 +18,7 @@ export interface Span {
   startedAt: string; endedAt: string | null; from: string; until: string; durationMs: number; open: boolean
 }
 interface TaskTiming {
-  id: string; title: string; owner: string | null; wait: Wait | null
+  id: string; title: string; owner: string | null; wait: Wait | null; dependsOn: readonly string[]
   firstPublicationAt: string | null; latestPublicationAt: string | null; agreedAt: string | null
   author: string | null; agreedBy: string[]; publications: number; reopenings: number; responded: boolean
 }
@@ -74,17 +74,25 @@ export function buildInsights(snapshot: Snapshot, audit: RuntimeAudit, options: 
     spans.push({ actor, kind, task, label, startedAt, endedAt, from: iso(left), until: iso(right), durationMs: right - left, open: endedAt === null })
   }
   const tasks = new Map<string, TaskTiming>()
-  const waits = new Map<string, { actor: string; at: string; kind: string; reason: string }>()
+  const waits = new Map<string, { actor: string; at: string; kind: string; reason: string; task: string }>()
   let checkout: { actor: string; at: string; purpose: string } | null = null
   const counts: Record<string, Record<string, number>> = Object.fromEntries(Object.keys(snapshot.state.names).map((actor) => [actor, {}]))
   const markers = new Map<string, { actor: string; at: string; marker: ActivityMarker }>()
   function closeWait(id: string, at: string | null) {
     const wait = waits.get(id)
-    if (wait) { span(wait.actor, `${wait.kind}-wait`, wait.at, at, id, wait.reason); waits.delete(id) }
+    if (wait) { span(wait.actor, `${wait.kind}-wait`, wait.at, at, wait.task, wait.reason); waits.delete(id) }
   }
   function openWait(task: TaskTiming, at: string) {
     if (task.owner && task.wait && !(task.wait.kind === "checkout" && checkout?.actor === task.owner)) {
-      waits.set(task.id, { actor: task.owner, at, kind: task.wait.kind, reason: task.wait.reason })
+      waits.set(`wait:${task.id}`, { actor: task.owner, at, kind: task.wait.kind, reason: task.wait.reason, task: task.id })
+    }
+  }
+  function refreshDependencies(at: string) {
+    for (const task of tasks.values()) {
+      const key = `dependencies:${task.id}`
+      if (task.owner && !task.latestPublicationAt && task.dependsOn.some((id) => !tasks.get(id)?.latestPublicationAt)) {
+        if (!waits.has(key)) waits.set(key, { actor: task.owner, at, kind: "dependency", reason: task.dependsOn.join(", "), task: task.id })
+      } else closeWait(key, at)
     }
   }
   function decision(event: Moment, task: TaskTiming) {
@@ -114,25 +122,27 @@ export function buildInsights(snapshot: Snapshot, audit: RuntimeAudit, options: 
         checkout = null; break
       case "task.add": {
         const added: TaskTiming = { id: command.id, title: command.title, owner: command.owner === undefined ? event.actor : command.owner,
-          wait: command.wait ?? null, firstPublicationAt: null, latestPublicationAt: null, agreedAt: null, author: null, agreedBy: [], publications: 0, reopenings: 0, responded: false }
+          wait: command.wait ?? null, dependsOn: command.dependsOn ?? [], firstPublicationAt: null, latestPublicationAt: null, agreedAt: null, author: null, agreedBy: [], publications: 0, reopenings: 0, responded: false }
         tasks.set(command.id, added); openWait(added, event.at); break
       }
       case "task.set":
         if (task) {
           if (command.title !== undefined) task.title = command.title
-          if (command.wait !== undefined) { closeWait(task.id, event.at); task.wait = command.wait; openWait(task, event.at) }
+          if (command.dependsOn !== undefined) { closeWait(`dependencies:${task.id}`, event.at); task.dependsOn = command.dependsOn }
+          if (command.wait !== undefined) { closeWait(`wait:${task.id}`, event.at); task.wait = command.wait; openWait(task, event.at) }
         }
         break
       case "task.claim": case "task.release":
         if (task) {
-          closeWait(task.id, event.at)
+          closeWait(`wait:${task.id}`, event.at)
+          closeWait(`dependencies:${task.id}`, event.at)
           task.owner = command.type === "task.release" ? null : command.owner ?? event.actor
           openWait(task, event.at)
         }
         break
       case "task.publish":
         if (task) {
-          closeWait(task.id, event.at); task.wait = null
+          closeWait(`wait:${task.id}`, event.at); task.wait = null
           task.firstPublicationAt ??= event.at; task.latestPublicationAt = event.at
           task.author = event.actor; task.agreedBy = [event.actor]; task.responded = false
           task.agreedAt = snapshot.state.investigators.every((actor) => task.agreedBy.includes(actor)) ? event.at : null
@@ -167,6 +177,7 @@ export function buildInsights(snapshot: Snapshot, audit: RuntimeAudit, options: 
         break
       }
     }
+    refreshDependencies(event.at)
   }
   if (checkout) span(checkout.actor, "checkout", checkout.at, null, null, checkout.purpose)
   for (const id of [...waits.keys()]) closeWait(id, null)
@@ -200,7 +211,7 @@ export function buildInsights(snapshot: Snapshot, audit: RuntimeAudit, options: 
     const own = spans.filter((span) => span.actor === actor)
     const phases = [...new Set(own.filter((span) => span.kind === "activity").map((span) => span.label))]
     return { actor, name: snapshot.state.names[actor], commands: counts[actor] ?? {}, checkoutMs: unionMs(own.filter((span) => span.kind === "checkout")),
-      checkoutWaitMs: unionMs(own.filter((span) => span.kind === "checkout-wait")), userWaitMs: unionMs(own.filter((span) => span.kind === "user-wait")), externalWaitMs: unionMs(own.filter((span) => span.kind === "external-wait")),
+      dependencyWaitMs: unionMs(own.filter((span) => span.kind === "dependency-wait")), checkoutWaitMs: unionMs(own.filter((span) => span.kind === "checkout-wait")), userWaitMs: unionMs(own.filter((span) => span.kind === "user-wait")), externalWaitMs: unionMs(own.filter((span) => span.kind === "external-wait")),
       declaredActivityMs: phases.length ? unionMs(own.filter((span) => span.kind === "activity")) : null,
       phasesMs: Object.fromEntries(phases.map((phase) => [phase, unionMs(own.filter((span) => span.kind === "activity" && span.label === phase))])), runtime: runtime[actor],
       wakes: [...attempts.values()].filter((attempt) => attempt.seat === actor && inWindow(attempt.at)).reduce<Record<string, number>>((out, attempt) => { out[attempt.outcome] = (out[attempt.outcome] ?? 0) + 1; return out }, {}) }
@@ -224,7 +235,7 @@ const cell = (value: unknown) => String(value ?? "-").replaceAll("|", "\\|").rep
 const table = (headers: string[], rows: unknown[][]) => [headers, headers.map(() => "---"), ...rows].map((row) => `| ${row.map(cell).join(" | ")} |`).join("\n")
 export function renderInsights(report: ReturnType<typeof buildInsights>): string {
   return ["# Recorded coordination timing", `\nWindow: ${report.window.from} to ${report.window.until} (${duration(report.window.elapsedMs)}; ${report.window.endBasis}).`,
-    "\n## Actor clocks (overlapping)", table(["Actor", "Checkout", "Checkout request wait", "User wait", "External wait", "Declared activity", "Runtime unobserved"], report.actors.map((actor) => [actor.actor, duration(actor.checkoutMs), duration(actor.checkoutWaitMs), duration(actor.userWaitMs), duration(actor.externalWaitMs), duration(actor.declaredActivityMs), duration(actor.runtime?.unobservedMs)])),
+    "\n## Actor clocks (overlapping)", table(["Actor", "Checkout", "Checkout request wait", "User wait", "External wait", "Dependencies", "Declared activity", "Runtime unobserved"], report.actors.map((actor) => [actor.actor, duration(actor.checkoutMs), duration(actor.checkoutWaitMs), duration(actor.userWaitMs), duration(actor.externalWaitMs), duration(actor.dependencyWaitMs), duration(actor.declaredActivityMs), duration(actor.runtime?.unobservedMs)])),
     "\n## Observed runtime and declared phases", ...report.actors.map((actor) => `${actor.actor}: runtime ${JSON.stringify(Object.fromEntries(Object.entries(actor.runtime?.statesMs ?? {}).map(([key, ms]) => [key, duration(ms)])))}; declared phases ${JSON.stringify(Object.fromEntries(Object.entries(actor.phasesMs).map(([key, ms]) => [key, duration(ms)])))}; wakes ${JSON.stringify(actor.wakes)}`),
     "\n## Task convergence", table(["Task", "First publication", "Latest publication", "Agreement at cutoff", "Elapsed to agreement", "Publications", "Reopenings"], report.tasks.map((task) => [task.id, task.firstPublicationAt, task.latestPublicationAt, task.agreedAt ?? task.agreement, duration(task.convergenceMs), task.publications, task.reopenings])),
     `\nPeer response median: ${duration(report.peerResponseMedianMs)} (${report.peerResponses.length} decisions).`,

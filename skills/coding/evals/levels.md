@@ -60,3 +60,11 @@ Use fresh readers with the candidate instructions and scenario facts; do not giv
 - **Known-good handoff:** the user asks both investigators to statically agree on two changes before the master builds them together. The reader preserves that owner/boundary and reports static readiness with execution pending, not validated completion.
 - **Historical timing:** a bounded old run has overlapping checkout waits and no activity markers. `insights` unions those waits, retains the cutoff and reports unrecorded self-review time as unknown. It does not add working and wait clocks into total labor.
 - **Interrupted activity:** a declared self-review starts and has no stop; another phase overlaps it. The report shows the open interval clipped to the requested end and unions declared activity time without fabricating a stop or a completed review.
+
+
+## Task availability and judgment
+
+- **Two prerequisites and a shared checkout:** an action depends on two task outcomes while another actor holds the checkout. Publishing only one outcome leaves it unavailable. Both publications still require checkout availability, and acting requires acquisition. A stopped outcome supplies information, not success. Reopening a producer blocks the action again; a revised producer outcome creates fresh work to inspect.
+- **Available task pool:** both investigators are idle with useful unassigned work. Either may claim it; simultaneous claims yield one owner. A wake reserves nothing. Existing owned work and peer agreement remain independently available.
+- **No prescribed stages:** an investigator continues an owned task without a start ceremony and optionally records a descriptive activity interval. The helper neither requires a fixed phase label nor treats ownership as runtime activity.
+- **Recoverable failure within authority:** an authorized local fix encounters a failed operation that preserved all work. Inspect the cause and continue recoverably. A missing product choice or execution permission still requires resolution; do not convert either into a bookkeeping workaround.

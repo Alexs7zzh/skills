@@ -4,22 +4,15 @@ import { initialState, recordByRef, taskById } from "../src/protocol.ts"
 import { agreed, runComplete, workSignals } from "../src/work.ts"
 import { env, initial, apply, add, save, publish, rejected } from "./domain-fixture.ts"
 
-test("started action belongs to its ownership tenure, not its next owner", () => {
+test("ownership transfer preserves the promised result and prevents competing claims", () => {
   let state = apply(initial(), add("handoff"))
-  state = apply(state, { type: "task.start", ...env(), id: "handoff", rev: 1 })
-  state = apply(state, { type: "task.claim", ...env(), id: "handoff", rev: 2 })
-  assert.equal(taskById(state, "handoff")!.started, true, "same-owner resumption retains the start")
-  rejected(state, { type: "task.start", ...env(), id: "handoff", rev: 3 }, /already started/)
-  const baselineVersion = taskById(state, "handoff")!.version
-  state = apply(state, { type: "task.release", ...env(), id: "handoff", rev: 3, note: "evidence retained", next: "check remaining case" })
-  assert.equal(taskById(state, "handoff")!.started, false)
-  state = apply(state, { type: "task.claim", ...env("B"), id: "handoff", rev: 4 })
-  state = apply(state, { type: "task.start", ...env("B"), id: "handoff", rev: 5 })
-  state = apply(state, { type: "task.claim", ...env("master"), id: "handoff", rev: 6, owner: "A" })
-  assert.equal(taskById(state, "handoff")!.started, false, "direct master reassignment starts a new tenure too")
-  assert.equal(taskById(state, "handoff")!.version, baselineVersion, "transfer does not revise the promised outcome")
-  state = apply(state, { type: "task.start", ...env(), id: "handoff", rev: 7 })
-  assert.equal(taskById(state, "handoff")!.started, true)
+  const version = taskById(state, "handoff")!.version
+  rejected(state, { type: "task.claim", ...env("B"), id: "handoff", rev: 1 }, /only master/)
+  state = apply(state, { type: "task.release", ...env(), id: "handoff", rev: 1, note: "evidence retained", next: "check remaining case" })
+  state = apply(state, { type: "task.claim", ...env("B"), id: "handoff", rev: 2 })
+  rejected(state, { type: "task.claim", ...env(), id: "handoff", rev: 2 }, /rev/)
+  assert.equal(taskById(state, "handoff")!.owner, "B")
+  assert.equal(taskById(state, "handoff")!.version, version)
 })
 
 test("comparison evidence accepts distinct versions but rejects repeated exact references", () => {
@@ -32,8 +25,6 @@ test("comparison evidence accepts distinct versions but rejects repeated exact r
   assert.deepEqual(taskById(state, "compare")!.inputs, inputs)
   rejected(state, { ...save("duplicate"), inputs: [inputs[0]!, inputs[0]!] }, /unique/)
   rejected(state, { ...add("missing"), inputs: [{ id: "measurement", rev: 3 }] }, /missing record/)
-  state = apply(state, { type: "task.start", ...env(), id: "compare", rev: 1 })
-  assert.equal(taskById(state, "compare")!.started, true)
 })
 
 test("agreement and an incidental note create no agreement-on-agreement duty", () => {
@@ -78,7 +69,8 @@ test("master read acknowledgement neither endorses nor erases later attention", 
   assert.equal(agreed(state, state.tasks[0]!), false)
   assert.equal(workSignals(state, "master").some((s) => s.key === "outcome:issue"), false)
   state = apply(state, { type: "task.agree", ...env("B"), id: "issue", rev: 2 })
-  assert.ok(workSignals(state, "master").some((s) => s.key === "outcome:issue"))
+  assert.equal(workSignals(state, "master").some((s) => s.key === "outcome:issue"), false)
+  assert.ok(workSignals(state, "master").some((s) => s.key === "run-results-ready"))
   rejected(state, { type: "task.ack", ...env("master"), id: "issue", rev: 2 }, /rev/)
   state = apply(state, { type: "task.reopen", ...env("B"), id: "issue", rev: 3, reason: "new evidence refutes conclusion" })
   assert.equal(state.tasks[0]!.conclusion, null)
@@ -100,11 +92,11 @@ test("replacement allows shared children, rejects missing/empty/cyclic links and
     state = apply(state, { type: "task.agree", ...env(task.conclusion!.author === "A" ? "B" : "A"), id: task.id, rev: taskById(state, task.id)!.rev })
   }
   assert.equal(runComplete(state), true)
-  assert.equal(state.tasks[0]!.state, "replaced")
-  assert.equal(state.tasks[2]!.state, "stopped")
+  assert.equal((state.tasks[0]!.conclusion?.disposition ?? "open"), "replaced")
+  assert.equal((state.tasks[2]!.conclusion?.disposition ?? "open"), "stopped")
   state = apply(state, { type: "task.reopen", ...env("B"), id: "C", rev: taskById(state, "C")!.rev, reason: "new approach" })
   assert.equal(runComplete(state), false)
-  assert.equal(state.tasks[0]!.state, "replaced", "parent remains explanation, not computed proof")
+  assert.equal((state.tasks[0]!.conclusion?.disposition ?? "open"), "replaced", "parent remains explanation, not computed proof")
 })
 
 test("local mode and actor/runtime namespaces cannot erase a peer agreement", () => {

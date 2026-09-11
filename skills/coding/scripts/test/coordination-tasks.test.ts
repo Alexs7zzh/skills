@@ -183,17 +183,17 @@ test("only explicitly assigned eligible work wakes a worker, and busy workers pu
   assert.deepEqual(f.snapshot(), before, "observation and delivery do not change domain facts")
 })
 
-test("optional unassigned work reaches master attention without waking every idle worker", () => {
+test("available unassigned work reaches investigators without assigning it", () => {
   const f = fixture()
   f.add("possible-cleanup", null)
   f.bind(); f.resume(); f.idle(0, 1, 2); f.once(); f.once()
-  assert.equal(f.prompts().length, 1)
-  assert.equal(f.prompts()[0]![2], "pane-2")
-  assert.match(f.prompts()[0]![3]!, /unassigned|owner/i)
+  assert.equal(f.prompts().length, 2)
+  assert.deepEqual(f.prompts().map((prompt) => prompt[2]).sort(), ["pane-0", "pane-1"])
+  assert.match(f.prompts()[0]![3]!, /claim|unassigned/i)
   assert.equal(f.task("possible-cleanup").owner, null)
   f.command({ type: "task.set", actor: "master", at: AT, id: "possible-cleanup", rev: f.task("possible-cleanup").rev, note: "Evidence pointer retained for whoever claims this" })
   f.once()
-  assert.equal(f.prompts().length, 1, "note-only bookkeeping does not renew optional-work attention")
+  assert.equal(f.prompts().length, 2, "note-only bookkeeping does not renew optional-work attention")
 })
 
 test("notes do not complete work or renew its wake; explicit release changes who needs attention", () => {
@@ -203,11 +203,11 @@ test("notes do not complete work or renew its wake; explicit release changes who
   f.command({ type: "task.set", actor: "Alice", at: AT, id: "inspect-export", rev: f.task("inspect-export").rev, note: "I am idle; evidence is retained" })
   f.once()
   assert.equal(f.prompts().length, 1)
-  assert.equal(f.task("inspect-export").state, "open")
+  assert.equal((f.task("inspect-export").conclusion?.disposition ?? "open"), "open")
   f.command({ type: "task.release", actor: "Alice", at: AT, id: "inspect-export", rev: f.task("inspect-export").rev, note: "Available for another owner", next: "Continue export inspection" })
   f.once()
-  assert.equal(f.prompts().length, 2)
-  assert.equal(f.prompts().at(-1)![2], "pane-2")
+  assert.equal(f.prompts().length, 3)
+  assert.deepEqual(f.prompts().slice(-2).map((prompt) => prompt[2]).sort(), ["pane-0", "pane-1"])
   assert.equal(f.task("inspect-export").owner, null)
 })
 
@@ -228,7 +228,6 @@ test("checkout wait resumes after release while independent research remains ava
   assert.match(f.prompts()[1]![3]!, /task:edit-export/)
   assert.equal(f.snapshot().state.checkout, null, "a wake does not acquire the checkout")
   f.command({ type: "checkout.take", actor: "Alice", at: AT, rev: 2, purpose: "Apply the pending edit" })
-  f.command({ type: "task.start", actor: "Alice", at: AT, id: "edit-export", rev: f.task("edit-export").rev })
   f.publish("edit-export")
   assert.equal(f.task("edit-export").wait, null, "a satisfied internal wait does not obstruct publication")
 })
@@ -325,7 +324,7 @@ test("narrowed scope suspends the write commitment and brings its reconciliation
   assert.equal(f.prompts().length, 1)
   assert.equal(f.prompts()[0]![2], "pane-2")
   assert.match(f.prompts()[0]![3]!, /scope|report-only/)
-  assert.equal(f.task("fix-export").state, "open")
+  assert.equal((f.task("fix-export").conclusion?.disposition ?? "open"), "open")
   assert.equal(f.task("fix-export").owner, "Alice")
 })
 
@@ -364,7 +363,7 @@ test("a stopped child without a result returns work to its parent without replac
   assert.equal(f.prompts().length, 1)
   assert.equal(f.prompts()[0]![2], "pane-1")
   assert.doesNotMatch(f.prompts()[0]![3]!, /inspect child/)
-  assert.equal(f.task("read-candidate").state, "open")
+  assert.equal((f.task("read-candidate").conclusion?.disposition ?? "open"), "open")
   assert.equal(f.snapshot().state.dispatches.length, 1)
   assert.equal(f.snapshot().state.dispatches[0]!.state, "stopped")
 })
@@ -405,7 +404,7 @@ test("accepted without observed activity gets a policy inspection, never an auto
   assert.equal(f.prompts()[1]![2], "pane-2")
   assert.match(f.prompts()[1]![3]!, /no observed activity.*one-minute policy checkpoint.*not evidence of death/)
   assert.equal(f.prompts().filter((args) => args[2] === "pane-0").length, 1)
-  assert.equal(f.task("inspect-export").state, "open")
+  assert.equal((f.task("inspect-export").conclusion?.disposition ?? "open"), "open")
 })
 
 test("an activity inspection waits for an idle master and vanishes if the worker resumes", () => {
@@ -442,7 +441,7 @@ test("each agreed conclusion wakes idle master while remaining work continues; n
   assert.equal(f.prompts().length, 0)
   f.deliver("inspect-export"); f.once()
   assert.equal(f.prompts().length, 1, "intermediate conclusions reach master before the investigation ends")
-  assert.equal(f.task("inspect-import").state, "open")
+  assert.equal((f.task("inspect-import").conclusion?.disposition ?? "open"), "open")
   f.deliver("inspect-import"); f.idle(0, 1, 2); f.once(); f.once()
   assert.equal(f.prompts().length, 2)
   assert.equal(f.prompts()[0]![2], "pane-2")
@@ -451,7 +450,7 @@ test("each agreed conclusion wakes idle master while remaining work continues; n
   f.command({ type: "task.set", actor: "Alice", at: AT, id: "inspect-export", rev: f.task("inspect-export").rev, note: "More context for the retained result" })
   f.once(); f.once()
   assert.equal(f.prompts().length, 2)
-  assert.ok(f.snapshot().state.tasks.every((task) => task.state === "done"))
+  assert.ok(f.snapshot().state.tasks.every((task) => task.conclusion?.disposition === "done"))
 })
 
 test("either investigator's publication wakes its peer and idle master; acknowledgement is not assent", () => {
@@ -466,7 +465,7 @@ test("either investigator's publication wakes its peer and idle master; acknowle
     assert.deepEqual(f.prompts().map((args) => args[2]).sort(), [`pane-${peerIndex}`, "pane-2"].sort())
     assert.match(f.prompts().find((args) => args[2] === `pane-${peerIndex}`)![3]!, /read the conclusion and evidence; agree, revise, or reopen/)
     assert.match(f.prompts().find((args) => args[2] === "pane-2")![3]!, /retained outcome or blocker/)
-    assert.equal(f.task("continuing-investigation").state, "open")
+    assert.equal((f.task("continuing-investigation").conclusion?.disposition ?? "open"), "open")
     const conclusion = f.task("conclusion").conclusion
     f.command({ type: "task.ack", actor: "master", at: AT, id: "conclusion", rev: f.task("conclusion").rev })
     f.once()
@@ -475,8 +474,8 @@ test("either investigator's publication wakes its peer and idle master; acknowle
     assert.equal(f.prompts().length, 2, "acknowledgement neither re-wakes the peer nor ends its agreement duty")
     f.agree("conclusion")
     f.once(); f.once()
-    assert.equal(f.prompts().length, 3)
-    assert.equal(f.prompts().at(-1)![2], "pane-2", "peer assent becomes a new visible outcome")
+    assert.equal(f.prompts().length, 2, "assent alone does not wake master again")
+    assert.equal(f.prompts().at(-1)![2], "pane-2")
     assert.doesNotMatch(f.prompts().at(-1)![3]!, /all conclusions/, "other investigation is still active")
   }
 })
@@ -809,4 +808,66 @@ test("runtime child ignoring SIGTERM is bounded, reaped and leaves send uncertai
     if (watcher.exitCode === null) watcher.kill("SIGTERM")
     await exited
   }
+})
+
+
+test("task dependency waits suppress false stalls and publication wakes the dependent once", () => {
+  const f = fixture()
+  f.add("candidate"); f.add("review", "Bob"); f.add("independent", "Bob")
+  f.command({ type: "task.set", actor: "Bob", at: AT, id: "review", rev: 1, dependsOn: ["candidate"], reason: "Review needs the retained candidate" })
+  f.bind(); f.resume(); f.idle(1, 2); f.once()
+  assert.equal(f.prompts().length, 1)
+  assert.match(f.prompts()[0]![3]!, /task:independent/)
+  assert.doesNotMatch(f.prompts()[0]![3]!, /task:review/)
+  f.deliver("independent")
+  f.command({ type: "task.ack", actor: "master", at: AT, id: "independent", rev: f.task("independent").rev })
+  f.once(); f.once()
+  assert.equal(f.prompts().length, 1)
+  assert.doesNotMatch(f.ok("status"), /stalled/)
+  f.publish("candidate", "stopped"); f.once(); f.once()
+  assert.equal(f.prompts().filter((args) => args[2] === "pane-1").length, 2)
+  assert.match(f.prompts().findLast((args) => args[2] === "pane-1")![3]!, /task:review/)
+  assert.equal((f.task("review").conclusion?.disposition ?? "open"), "open", "a producer outcome is not completion of its consumer")
+})
+
+test("master-authored wait changes create no self wake and preserve unread investigator attention", () => {
+  const f = fixture()
+  f.add("decision")
+  f.command({ type: "task.set", actor: "master", at: AT, id: "decision", rev: 1, wait: { kind: "external", reason: "Provider unavailable" } })
+  f.bind(); f.resume(); f.idle(2); f.once()
+  assert.equal(f.prompts().length, 0)
+  f.command({ type: "task.set", actor: "Alice", at: AT, id: "decision", rev: 2, wait: { kind: "external", reason: "Provider now requires account access" } })
+  f.command({ type: "task.set", actor: "master", at: AT, id: "decision", rev: 3, wait: null })
+  f.once()
+  assert.equal(f.prompts().length, 1, "master mutation does not erase unread peer content")
+  f.command({ type: "task.ack", actor: "master", at: AT, id: "decision", rev: 4 })
+  f.command({ type: "task.set", actor: "master", at: AT, id: "decision", rev: 4, wait: { kind: "external", reason: "Await provider" } })
+  f.once()
+  assert.equal(f.prompts().length, 1)
+})
+
+
+test("all dependency publications and checkout availability govern action wakes, including changed producer versions", () => {
+  const f = fixture()
+  f.add("one", "Alice"); f.add("two", "Alice"); f.add("consumer", "Alice")
+  f.command({ type: "task.set", actor: "Alice", at: AT, id: "consumer", rev: 1, dependsOn: ["one", "two"], reason: "combine independently produced inputs", wait: { kind: "checkout", reason: "check combined result" } })
+  f.command({ type: "checkout.take", actor: "Bob", at: AT, rev: 0, purpose: "other validation" })
+  f.bind(); f.resume(); f.idle(0)
+  f.publish("one", "stopped"); f.once()
+  assert.doesNotMatch(f.prompts().at(-1)![3]!, /task:consumer/)
+  f.publish("two"); f.once()
+  assert.ok(f.prompts().every((prompt) => !prompt[3]!.includes("task:consumer")))
+  f.command({ type: "checkout.release", actor: "Bob", at: AT, rev: 1, reason: "done" })
+  f.once()
+  assert.match(f.prompts().at(-1)![3]!, /task:consumer/)
+  const count = f.prompts().length
+  f.agree("one"); f.once()
+  assert.equal(f.prompts().length, count, "peer agreement does not renew action inputs")
+  f.command({ type: "task.reopen", actor: "Alice", at: AT, id: "one", rev: f.task("one").rev, reason: "new input" })
+  f.once()
+  assert.doesNotMatch(f.prompts().at(-1)![3]!, /task:consumer/)
+  f.command({ type: "task.publish", actor: "Alice", at: AT, id: "one", rev: f.task("one").rev, disposition: "stopped", result: { id: "one-result", rev: 1 } })
+  f.once()
+  assert.match(f.prompts().at(-1)![3]!, /task:consumer/)
+  assert.equal(f.snapshot().state.checkout, null)
 })

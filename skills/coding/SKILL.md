@@ -54,7 +54,9 @@ Choose within those obligations for understandable ownership, state and failure 
 - **Change or fix requested:** develop recoverable local changes for the goal, including redesigns and related systems needed to solve it. Breadth is not a permission gate. Honor explicit restrictions and preserve existing work.
 - **Assessment or diagnosis only:** inspect and report; make no lasting source edits. Useful experiments or candidate patches stay outside the checkout unless temporary project edits are authorized.
 
-Carry the requested finish line, its source and applicable project restrictions through handoffs and resumed work. Reconcile earlier scope assumptions with later user rulings; local implementation authority does not extend to unrelated external effects. Ask only when a missing user decision prevents useful authorized progress. Name the blocked action, consequence, feasible options and recommendation. Continue work that does not need the answer. Deep and joint investigations retain these decisions under findings.md.
+Carry the current goal, authority, relevant evidence and remaining work through handoffs and resumption. Treat tools and procedures as ways to reach that goal within the user's constraints and applicable execution permissions. Investigate failed operations and choose recoverable next steps when the existing authority determines the result. Involve the user when proceeding needs their choice about the outcome, authority you do not have, or acceptance of lost existing work. Workflow records cannot override an execution permission denial.
+
+Ask only when a missing user decision prevents useful authorized progress. Name the blocked action, consequence, feasible options and recommendation. Continue work that does not need the answer. Deep and joint investigations retain these decisions under findings.md.
 
 ## Preserve work and evidence
 

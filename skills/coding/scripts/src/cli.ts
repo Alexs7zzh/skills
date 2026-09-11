@@ -19,22 +19,23 @@ Investigators default to non-master actors, or master alone in a local run.
 status [task-id] | report | timeline [actor-or-id] | show <task-or-record-id> [rev=N]
 insights [from=<ISO>] [until=<ISO>] [format=markdown|json]
      Read-only timing; default cutoff is the last ledger event, not now. Clocks overlap.
-activity start ID phase=investigate|self-review|peer-review|implement|validate|wait [task=ID]
+activity start ID phase=<description> [task=ID]
 activity stop ID
      Optional declared interval, retained as kind=activity record revisions. No work/assent change.
 
 task add ID title=... outcome=... next=... [owner=actor|none] [permission=read|write]
 task set ID rev=N [title=... outcome=... next=... note=... permission=...]
-     [inputs=record@1,...]
+     [inputs=record@1,...] [dependsOn=task-id,...|none]
      [wait=user|external|checkout|none waitReason=...] [reason=... resolution=ruling@N]
      Resolving a user wait requires master + a current kind=ruling record saved by master.
      Its exact resolution reference joins task inputs and bumps material version automatically.
      Other material changes require reason=. External waits remain owner-clearable.
      Checkout waits are eligible when the checkout is free or held by the task owner; no clearing mutation.
      Availability does not acquire the checkout. Keep independent investigation on other work moving.
+     All dependsOn outcomes must be published before work is available; inspect their meaning.
+     Dependencies remain while waiting for checkout or an external/user prerequisite.
      Either investigator may add notes or raise a user wait on a peer-owned issue.
 task claim ID rev=N [owner=actor] | task release ID rev=N note=... next=...
-task start ID rev=N   optional action checkpoint, not observed runtime liveness
 task publish ID rev=N disposition=done|stopped|cancelled|replaced result=record@N
      OR file=<conclusion argument> [children=task-id,...]
      Publishing endorses your argument and clears the peer's agreement; replaced needs children.
@@ -66,10 +67,10 @@ Mutations return a receipt. Use status for current work and cached runtime obser
 `
 
 const SPECS: Record<string, string> = {
-  "task.add": "id title! outcome! next! owner permission inputs wait waitReason note",
-  "task.set": "id rev! title outcome next note permission inputs wait waitReason reason resolution",
+  "task.add": "id title! outcome! next! owner permission inputs dependsOn wait waitReason note",
+  "task.set": "id rev! title outcome next note permission inputs dependsOn wait waitReason reason resolution",
   "task.claim": "id rev! owner", "task.release": "id rev! note! next!",
-  "task.start": "id rev!", "task.publish": "id rev! disposition! result file children",
+  "task.publish": "id rev! disposition! result file children",
   "task.agree": "id rev!", "task.ack": "id rev!", "task.reopen": "id rev! reason! next",
   "record.save": "id rev! kind! title! file content inputs authors",
   "checkout.take": "rev! purpose!", "checkout.release": "rev! reason!",
@@ -122,6 +123,7 @@ function command(type: string, values: Record<string, string>, actor: string, di
     if (["file", "waitReason"].includes(key)) continue
     if (["rev", "taskRev"].includes(key)) output[key] = integer(value, key)
     else if (key === "inputs") output[key] = refs(value)
+    else if (key === "dependsOn") output[key] = value && value !== "none" ? value.split(",") : []
     else if (key === "children") output[key] = value ? value.split(",") : []
     else if (key === "result" || key === "resolution") output[key] = reference(value)
     else if (key === "wait") output[key] = value === "none" ? null : { kind: value, reason: values.waitReason ?? "" }
@@ -230,7 +232,7 @@ export async function main(args: readonly string[]): Promise<number> {
     const receipt = [`Saved ${type}${id ? ` ${id}` : ""}; ledger revision ${state.revision}`]
     if (type.startsWith("task.")) {
       const task = taskById(state, id!)!
-      receipt.push(`Task ${task.id} @${task.rev}: ${task.state}; owner: ${task.owner ?? "unassigned"}`)
+      receipt.push(`Task ${task.id} @${task.rev}: ${task.conclusion?.disposition ?? "open"}; owner: ${task.owner ?? "unassigned"}`)
       if (task.conclusion) receipt.push(`Conclusion: ${task.conclusion.record.id}@${task.conclusion.record.rev}; endorsed by ${task.conclusion.agreedBy.join(", ")}`)
     } else if (type === "record.save") {
       const record = state.records.filter((item) => item.id === id).at(-1)!

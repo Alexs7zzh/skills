@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto"
 import { activeDispatch, eligibility, pendingWait } from "./work.ts"
 
-export const SCHEMA = 13
+export const SCHEMA = 15
 export type Actor = string
 export type ScopeMode = "report-only" | "fix"
 export type Permission = "read" | "write"
@@ -29,8 +29,7 @@ export interface Task {
   readonly title: string
   readonly outcome: string
   readonly owner: Actor | null
-  readonly state: "open" | Disposition
-  readonly started: boolean
+  readonly dependsOn: readonly string[]
   readonly note: string
   readonly next: string
   readonly permission: Permission
@@ -100,13 +99,13 @@ export interface TaskFields {
   readonly permission?: Permission
   readonly inputs?: readonly RecordRef[]
   readonly wait?: Wait | null
+  readonly dependsOn?: readonly string[]
 }
 export type Command =
   | (Envelope<"task.add"> & TaskFields & { readonly id: string; readonly owner?: Actor | null })
   | (Envelope<"task.set"> & Target & Partial<TaskFields> & { readonly reason?: string; readonly resolution?: RecordRef })
   | (Envelope<"task.claim"> & Target & { readonly owner?: Actor })
   | (Envelope<"task.release"> & Target & { readonly note: string; readonly next: string })
-  | (Envelope<"task.start"> & Target)
   | (Envelope<"task.publish"> & Target & { readonly result: RecordRef; readonly disposition: Disposition; readonly children?: readonly string[] })
   | (Envelope<"task.agree" | "task.ack"> & Target)
   | (Envelope<"task.reopen"> & Target & { readonly reason: string; readonly next?: string })
@@ -149,11 +148,22 @@ function checkTask(state: State, task: Task): void {
   if (task.owner !== null) knownActor(state, task.owner)
   checkRefs(state, task.inputs)
   if (task.wait) { oneOf(task.wait.kind, ["user", "external", "checkout"], "wait kind"); nonempty(task.wait.reason, "wait reason") }
+  if (new Set(task.dependsOn).size !== task.dependsOn.length) refuse("task dependencies must be unique")
+  const visited = new Set<string>()
+  const visit = (id: string): void => {
+    if (id === task.id) refuse(`dependency cycle through ${id}`)
+    if (visited.has(id)) return
+    visited.add(id)
+    const dependency = taskById(state, id)
+    if (!dependency) refuse(`missing dependency task ${id}`)
+    for (const parent of dependency.dependsOn) visit(parent)
+  }
+  for (const id of task.dependsOn) { nonempty(id, "dependency task"); visit(id) }
 }
 function updateTask(state: State, task: Task): State { return { ...state, tasks: state.tasks.map((old) => old.id === task.id ? task : old) } }
 function idleTask(state: State, task: Task): void { if (activeDispatch(state, task.id)) refuse(`${task.id} has an active dispatch; reconcile it first`) }
-function guard(state: State, task: Task, actor: Actor, action: "start" | "dispatch"): void {
-  const result = eligibility(state, task, actor, action)
+function guard(state: State, task: Task, actor: Actor): void {
+  const result = eligibility(state, task, actor)
   if (!result.allowed) refuse(result.blockers.join("; "))
 }
 
@@ -170,7 +180,7 @@ export function transition(before: State, command: Command): Result {
       case "task.add": {
         nonempty(command.id, "task id")
         if (taskById(state, command.id)) refuse(`task ${command.id} already exists`)
-        const task: Task = { id: command.id, rev: 1, version: 1, title: command.title, outcome: command.outcome, owner: command.owner === undefined ? actor : command.owner, state: "open", started: false, note: command.note ?? "", next: command.next, permission: command.permission ?? "read", inputs: command.inputs ?? [], wait: command.wait ?? null, conclusion: null, attention: command.wait && command.wait.kind !== "checkout" ? state.revision + 1 : 0, acknowledged: 0, created: at, updated: at }
+        const task: Task = { id: command.id, rev: 1, version: 1, title: command.title, outcome: command.outcome, owner: command.owner === undefined ? actor : command.owner, dependsOn: command.dependsOn ?? [], note: command.note ?? "", next: command.next, permission: command.permission ?? "read", inputs: command.inputs ?? [], wait: command.wait ?? null, conclusion: null, attention: actor !== "master" && command.wait && ["user", "external"].includes(command.wait.kind) ? state.revision + 1 : 0, acknowledged: 0, created: at, updated: at }
         if (task.owner !== actor && task.owner !== null) master(actor)
         checkTask(state, task)
         state = { ...state, tasks: [...state.tasks, task] }; note = task.wait ? `${task.outcome}; waiting on ${task.wait.kind}: ${task.wait.reason}` : task.outcome
@@ -178,8 +188,8 @@ export function transition(before: State, command: Command): Result {
       }
       case "task.set": {
         const task = getTask(state, command)
-        const sharedDiscussion = state.investigators.includes(actor) && task.state === "open"
-          && !["outcome", "permission", "inputs", "next", "resolution"].some((key) => Object.hasOwn(command, key))
+        const sharedDiscussion = state.investigators.includes(actor) && !task.conclusion
+          && !["outcome", "permission", "inputs", "dependsOn", "next", "resolution"].some((key) => Object.hasOwn(command, key))
           && (command.wait === undefined || command.wait?.kind === "user")
         if (!sharedDiscussion) owner(task, actor)
         const resolvesUserWait = task.wait?.kind === "user" && command.wait !== undefined && command.wait?.kind !== "user"
@@ -194,11 +204,11 @@ export function transition(before: State, command: Command): Result {
           if (latestRecord(state, resolution.id)?.rev !== resolution.rev) refuse("resolution ruling is historical; retain and reference the current ruling")
           inputs = [...inputs.filter((ref) => ref.id !== resolution.id), resolution]
         } else if (command.resolution !== undefined) refuse("resolution applies only when resolving an existing user wait")
-        const material = resolvesUserWait || ["outcome", "permission", "inputs"].some((key) => Object.hasOwn(command, key) && JSON.stringify(command[key as keyof typeof command]) !== JSON.stringify(task[key as keyof Task]))
+        const material = resolvesUserWait || ["outcome", "permission", "inputs", "dependsOn"].some((key) => Object.hasOwn(command, key) && JSON.stringify(command[key as keyof typeof command]) !== JSON.stringify(task[key as keyof Task]))
         const waitChanged = command.wait !== undefined && JSON.stringify(command.wait) !== JSON.stringify(task.wait)
-        if (material || waitChanged) { idleTask(state, task); if (task.state !== "open") refuse("reopen a terminal task before changing its promised result"); if (material && !resolvesUserWait) nonempty(command.reason ?? "", "reconciliation reason") }
-        const reportedWaitChanged = waitChanged && [task.wait, command.wait].some((wait) => wait && wait.kind !== "checkout")
-        const next: Task = { ...task, rev: task.rev + 1, version: task.version + Number(material), updated: at, title: command.title ?? task.title, outcome: command.outcome ?? task.outcome, note: command.note ?? task.note, next: command.next ?? task.next, permission: command.permission ?? task.permission, inputs, wait: command.wait === undefined ? task.wait : command.wait, attention: reportedWaitChanged ? state.revision + 1 : task.attention, started: material ? false : task.started }
+        if (material || waitChanged) { idleTask(state, task); if (task.conclusion) refuse("reopen a terminal task before changing its promised result"); if (material && !resolvesUserWait) nonempty(command.reason ?? "", "reconciliation reason") }
+        const reportedWaitChanged = actor !== "master" && waitChanged && [task.wait, command.wait].some((wait) => wait && ["user", "external"].includes(wait.kind))
+        const next: Task = { ...task, rev: task.rev + 1, version: task.version + Number(material), updated: at, title: command.title ?? task.title, outcome: command.outcome ?? task.outcome, note: command.note ?? task.note, next: command.next ?? task.next, permission: command.permission ?? task.permission, inputs, dependsOn: command.dependsOn ?? task.dependsOn, wait: command.wait === undefined ? task.wait : command.wait, attention: reportedWaitChanged ? state.revision + 1 : task.attention }
         checkTask(state, next); state = updateTask(state, next)
         const describeWait = (wait: Wait | null) => wait ? `${wait.kind}: ${wait.reason}` : "none"
         note = [waitChanged ? `wait ${describeWait(task.wait)} -> ${describeWait(next.wait)}` : "", command.resolution ? `user ruling ${command.resolution.id}@${command.resolution.rev}` : "", command.reason ?? command.note ?? ""].filter(Boolean).join("; ")
@@ -206,41 +216,37 @@ export function transition(before: State, command: Command): Result {
       }
       case "task.claim": {
         const task = getTask(state, command); idleTask(state, task)
-        if (task.state !== "open") refuse("only open tasks can be claimed")
+        if (task.conclusion) refuse("only open tasks can be claimed")
         const claimant = command.owner ?? actor; knownActor(state, claimant)
         if (claimant !== actor || task.owner !== null && task.owner !== actor) master(actor)
-        state = updateTask(state, { ...task, owner: claimant, started: claimant === task.owner && task.started, rev: task.rev + 1, updated: at }); note = `assigned to ${claimant}`
+        state = updateTask(state, { ...task, owner: claimant, rev: task.rev + 1, updated: at }); note = `assigned to ${claimant}`
         break
       }
       case "task.release": {
         const task = getTask(state, command); owner(task, actor); idleTask(state, task)
-        if (task.state !== "open") refuse("only open tasks can be released")
+        if (task.conclusion) refuse("only open tasks can be released")
         nonempty(command.note, "handoff note"); nonempty(command.next, "next action")
-        state = updateTask(state, { ...task, owner: null, started: false, note: command.note, next: command.next, rev: task.rev + 1, updated: at }); note = command.note
-        break
-      }
-      case "task.start": {
-        const task = getTask(state, command); guard(state, task, actor, "start")
-        state = updateTask(state, { ...task, started: true, rev: task.rev + 1, updated: at }); note = task.next
+        state = updateTask(state, { ...task, owner: null, note: command.note, next: command.next, rev: task.rev + 1, updated: at }); note = command.note
         break
       }
       case "task.publish": {
         const task = getTask(state, command); investigator(state, actor); idleTask(state, task)
         if (pendingWait(state, task)) refuse("resolve the wait before publishing a conclusion")
+        if (task.dependsOn.some((id) => !taskById(state, id)?.conclusion)) refuse("read the pending dependency outcomes before publishing, or revise dependencies to reflect the changed work")
         oneOf(command.disposition, ["done", "stopped", "cancelled", "replaced"], "disposition")
         checkRefs(state, [command.result])
         const children = command.children ?? []
         if (command.disposition === "replaced") checkReplacement(state, task.id, children)
         else if (children.length) refuse("only a replacement conclusion has children")
         const conclusion: Conclusion = { record: command.result, disposition: command.disposition, children: [...children], author: actor, agreedBy: [actor] }
-        state = updateTask(state, { ...task, state: command.disposition, conclusion, wait: null, started: false, rev: task.rev + 1, version: task.version + 1, attention: state.revision + 1, updated: at })
+        state = updateTask(state, { ...task, conclusion, wait: null, rev: task.rev + 1, version: task.version + 1, attention: state.revision + 1, updated: at })
         note = `${command.disposition}: ${command.result.id}@${command.result.rev}`; break
       }
       case "task.agree": {
         const task = getTask(state, command); investigator(state, actor); idleTask(state, task)
         if (!task.conclusion) refuse("there is no published conclusion to agree with")
         if (task.conclusion.agreedBy.includes(actor)) refuse("this investigator already endorses the conclusion")
-        state = updateTask(state, { ...task, conclusion: { ...task.conclusion, agreedBy: [...task.conclusion.agreedBy, actor] }, rev: task.rev + 1, attention: state.revision + 1, updated: at })
+        state = updateTask(state, { ...task, conclusion: { ...task.conclusion, agreedBy: [...task.conclusion.agreedBy, actor] }, rev: task.rev + 1, updated: at })
         note = "agreed with current conclusion"; break
       }
       case "task.ack": {
@@ -251,9 +257,9 @@ export function transition(before: State, command: Command): Result {
       }
       case "task.reopen": {
         const task = getTask(state, command); investigator(state, actor); idleTask(state, task); nonempty(command.reason, "reopening reason")
-        if (task.state === "open") refuse("task is already open")
+        if (!task.conclusion) refuse("task is already open")
         nonempty(command.next ?? task.next, "next action")
-        state = updateTask(state, { ...task, state: "open", conclusion: null, started: false, next: command.next ?? task.next, note: command.reason, version: task.version + 1, rev: task.rev + 1, attention: state.revision + 1, updated: at })
+        state = updateTask(state, { ...task, conclusion: null, next: command.next ?? task.next, note: command.reason, version: task.version + 1, rev: task.rev + 1, attention: state.revision + 1, updated: at })
         note = command.reason; break
       }
       case "record.save": {
@@ -289,7 +295,7 @@ export function transition(before: State, command: Command): Result {
         nonempty(command.id, "dispatch id"); if (state.dispatches.some((item) => item.id === command.id)) refuse("dispatch id already exists")
         const task = getTask(state, { id: command.task, rev: command.taskRev })
         if (task.owner !== actor) refuse("only the task owner can reserve its execution")
-        guard(state, task, actor, "dispatch"); timestamp(command.inspectAfter)
+        guard(state, task, actor); timestamp(command.inspectAfter)
         const dispatch: Dispatch = { id: command.id, rev: 1, task: task.id, taskVersion: task.version, inputs: task.inputs, parent: actor, worker: null, state: "reserved", inspectAfter: command.inspectAfter, observations: [], created: at, updated: at }
         state = { ...state, dispatches: [...state.dispatches, dispatch] }; note = `reserved ${task.id} for ${actor}`
         break

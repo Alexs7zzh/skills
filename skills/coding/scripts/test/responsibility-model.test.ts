@@ -15,21 +15,24 @@ function responsibility(state: State): void {
       assert.ok(state.names[dispatch.parent]); assert.ok(Number.isFinite(Date.parse(dispatch.inspectAfter)))
       continue
     }
-    // An acknowledged wait is deliberately parked, not stranded ready work.
+    // A recorded wait has a reachable resolver even when master authored it.
     const wait = pendingWait(state, task)
     if (wait) {
       assert.ok(wait.reason)
       if (wait.kind === "checkout") assert.ok(state.checkout && state.checkout.holder !== task.owner)
-      else assert.ok(task.attention > 0)
+      else if (wait.kind === "external") {
+        assert.ok(transition(state, { type: "task.set", ...env("master"), id: task.id, rev: task.rev, wait: null }).ok)
+      } else assert.ok(state.names.master)
       continue
     }
-    assert.ok(keys.has("task:" + task.id) || keys.has("unassigned:" + task.id) || keys.has("authority:" + task.id), "unresolved node has no reachable actor: " + task.id)
+    if (task.dependsOn.some((id) => !taskById(state, id)?.conclusion)) continue
+    assert.ok(keys.has("task:" + task.id) || keys.has("claim:" + task.id) || keys.has("authority:" + task.id), "unresolved node has no reachable actor: " + task.id)
   }
   assert.equal(runComplete(state), state.tasks.length > 0 && state.tasks.every((task) => agreed(state, task)) && !state.checkout && !state.dispatches.some((dispatch) => ["reserved", "running"].includes(dispatch.state)))
 }
 
 test("generated replacement/agreement/wait/dispatch/ownership interleavings preserve reachable responsibility", () => {
-  fc.assert(fc.property(fc.array(fc.record({ n: fc.integer({ min: 0, max: 3 }), action: fc.constantFrom("publishA", "publishB", "replace", "agreeA", "agreeB", "reopen", "note", "wait", "checkoutWait", "checkoutTake", "checkoutRelease", "clear", "ack", "release", "claimA", "claimB", "reserve", "stop", "scope") }), { maxLength: 60 }), (steps) => {
+  fc.assert(fc.property(fc.array(fc.record({ n: fc.integer({ min: 0, max: 3 }), action: fc.constantFrom("publishA", "publishB", "replace", "agreeA", "agreeB", "reopen", "note", "wait", "checkoutWait", "dependencies", "checkoutTake", "checkoutRelease", "clear", "ack", "release", "claimA", "claimB", "reserve", "stop", "scope") }), { maxLength: 60 }), (steps) => {
     let state = apply(initial(), save("argument"))
     for (let i = 0; i < 4; i++) state = apply(state, add("n" + i, i % 2 ? "B" : "A"))
     for (const [index, step] of steps.entries()) {
@@ -47,6 +50,7 @@ test("generated replacement/agreement/wait/dispatch/ownership interleavings pres
         case "stop": { const dispatch = activeDispatch(state, task.id); command = { type: "dispatch.update", ...env("master"), id: dispatch?.id ?? "missing", rev: dispatch?.rev ?? 1, state: "stopped", observation: "confirmed process stopped" }; break }
         case "scope": command = { type: "scope.set", ...env("master"), rev: state.scope.rev, mode: state.scope.mode === "fix" ? "report-only" : "fix", source: "user direction" }; break
         case "checkoutWait": command = { type: "task.set", ...env("master"), ...target, wait: { kind: "checkout", reason: "next batch needs stable shared inputs" } }; break
+        case "dependencies": command = { type: "task.set", ...env("master"), ...target, dependsOn: ["n" + ((step.n + 1) % 4)], reason: "needs producer outcome" }; break
         case "checkoutTake": command = { type: "checkout.take", ...env(actor), rev: state.checkoutRev, purpose: "shared input batch" }; break
         case "checkoutRelease": command = { type: "checkout.release", ...env(state.checkout?.holder ?? actor), rev: state.checkoutRev, reason: "batch retained" }; break
         default: command = { type: "task.set", ...env("master"), ...target, ...(step.action === "wait" ? { wait: { kind: "external", reason: "service down" } } : step.action === "clear" ? { wait: null } : { note: "checkpoint" }) }
@@ -56,7 +60,7 @@ test("generated replacement/agreement/wait/dispatch/ownership interleavings pres
       responsibility(state)
       for (const actor of ["A", "B", "master"]) {
         const now = taskById(state, task.id)!
-        assert.equal(transition(state, { type: "task.start", ...env(actor), id: now.id, rev: now.rev }).ok, eligibility(state, now, actor, "start").allowed)
+        assert.equal(transition(state, { type: "dispatch.reserve", ...env(actor), id: "probe-" + index, task: now.id, taskRev: now.rev, inspectAfter: at }).ok, eligibility(state, now, actor).allowed)
       }
     }
   }), { numRuns: 200, seed: 90411 })

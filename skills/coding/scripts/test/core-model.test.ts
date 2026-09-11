@@ -46,12 +46,12 @@ test("dispatch uncertainty blocks changes that would interfere; evidence and not
 test("scope gates implementation, not reporting a stopped outcome", () => {
   let state = apply(initial(), { ...add("fix"), permission: "write" })
   state = apply(state, save("argument"))
-  assert.equal(eligibility(state, state.tasks[0]!, "A", "start").allowed, true)
+  assert.equal(eligibility(state, state.tasks[0]!, "A").allowed, true)
   state = apply(state, { type: "scope.set", ...env("master"), rev: 1, mode: "report-only", source: "user withdrew edit authority" })
-  assert.equal(eligibility(state, state.tasks[0]!, "A", "start").allowed, false)
+  assert.equal(eligibility(state, state.tasks[0]!, "A").allowed, false)
   assert.ok(workSignals(state, "master").some((s) => s.key === "authority:fix"))
   state = publish(state, "fix", "B", "stopped")
-  assert.equal(state.tasks[0]!.state, "stopped")
+  assert.equal((state.tasks[0]!.conclusion?.disposition ?? "open"), "stopped")
 })
 
 test("SQLite batches reject stale writes without partial records, events, or delivery versions", () => {
@@ -59,7 +59,7 @@ test("SQLite batches reject stale writes without partial records, events, or del
   try {
     create(path, initial()); mutate(path, () => add("work"))
     const before = read(path)
-    assert.throws(() => mutate(path, () => [save("orphan"), { type: "task.start", ...env(), id: "work", rev: 0 }]), /rev/)
+    assert.throws(() => mutate(path, () => [save("orphan"), { type: "task.set", ...env(), id: "work", rev: 0, note: "stale edit" }]), /rev/)
     assert.deepEqual(read(path), before)
     mutate(path, () => ({ type: "task.set", ...env(), id: "work", rev: 1, note: "idle with same next action" }))
     assert.deepEqual(read(path).workVersions, before.workVersions)
