@@ -24,11 +24,20 @@ Keep one evolving note from the start. Its current understanding, evidence point
 
 These steps can overlap. A known cause need not be rediscovered; a failing test is not mandatory for every kind of change. Preserve interrupted or partial evidence without calling it completion. Batch independent checks on stable inputs; a check whose design depends on an earlier result belongs after that result is read.
 
-For a recurring field failure, examine whether the project's detection or recovery policy should have exposed it and whether it did. A missing detector matters when it defeats an actual obligation, not because another watchdog could be added.
+For each harmful recurring field failure, examine whether the project's detection or recovery policy should have exposed it and whether it did. If the evidence does not yet support a causal repair, inspect bounded containment and observability changes at owned seams. A probe earns implementation only when it names the exact signal and consumer, distinguishes live alternatives, and states which later decision each result changes. "Need more evidence" is a question, not a terminal disposition: name how to obtain it, or explain why no safe owned seam can produce it. Do not add a detector or log that cannot change behavior or an engineering decision.
 
 ## Conclude and continue
 
-Account for the requested questions with supported outcomes or explicit gaps. A stopped, disproved, impossible or intentionally unchanged outcome is not a successful fix. Further work needs a remaining uncertainty or uncovered obligation, not repeated clean passes or pass counts.
+Account for the requested questions with supported outcomes or explicit gaps. For each material issue, report:
+
+- the affected client, server, library, platform or external boundary and who can change it;
+- the strongest causal account, counterevidence and confidence;
+- a direct repair, containment or recovery change, or a discriminating probe;
+- the candidate's concrete seam, expected decision value, cost or risk, and validation route.
+
+An intentionally unchanged outcome is complete only after examining plausible bounded repair, containment and observability seams and explaining why none can improve the user outcome or make the next decision more informed. External or third-party ownership does not by itself justify stopping when an owned boundary can detect, contain or explain the failure. A stopped, disproved, impossible or intentionally unchanged outcome is not a successful fix.
+
+Further work needs a remaining uncertainty or uncovered obligation, not repeated clean passes or pass counts.
 
 Report the goal, supported findings and their consequences, implemented changes or proposals, evidence and limits, and unresolved decisions. Rank substantive findings by impact and group minor ones. Say what was actually checked and which candidate/environment the result covers. Keep long logs and routine detail in the retained artifacts; do not turn every note into a report to the user.
 
