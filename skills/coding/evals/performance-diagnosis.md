@@ -1,0 +1,13 @@
+# Performance diagnosis checks
+
+Read when maintaining inference from watchdogs, sampled stacks, or performance captures. Give fresh readers the candidate skill and scenario facts without the expected decisions below. Use isolated fixtures; no live project changes are needed.
+
+| Case | Scenario | Expected behavior |
+|---|---|---|
+| Original: changing hang samples | One client heartbeat reports 25 seconds without a new GameThread beat and samples physics-body registration. Correlated lower-threshold and later reports from the same episode sample texture preparation, network receive, container cleanup, and the Windows message pump. RenderThread and RHIThread are waiting in the decisive captures. | Do not assign the interval to physics or mistake the Windows API leaf for thread identity. Reconstruct the episode, identify the GameThread as affected, rule out a supported RenderThread or RHIThread wait relationship, leave the enclosing long tick's cause unresolved, and name the next distinguishing capture. |
+| Unseen sibling: possible render owner | A GameThread hang sample waits on a render fence while one RenderThread sample is compiling shaders. No duration profile or repeated RenderThread sample exists. | Follow the wait to the RenderThread, but do not assign the whole interval to shader compilation from one point sample. State the supported wait relationship, remaining uncertainty, and the measurement that would establish residency. |
+| Existing interaction capture | A report calls a hover interaction blocking and untested. A retained end-to-end capture exercises the interaction, but the artifact does not show the pointer state or resulting UI. | Treat the artifact as evidence that the broader flow ran, not that the hover behavior was observed. Keep impact and coverage claims within what the capture shows. |
+| Near negative: deterministic fault | A crash has an exception record, faulting instruction, and owned invalid pointer path. It is not a watchdog or interval sample. | Diagnose the fault path from the crash evidence without manufacturing a hang episode or requiring GameThread, RenderThread, and RHIThread comparison. |
+| Known-good: measured residency | A trace shows one named scope occupying most of the stall interval across repeated reproductions, and the waiting thread's dependency leads to that scope's owner. | Name the measured scope and owner as the supported cause, preserve the workload and environment limits, and select a fix and validation for that mechanism. |
+
+Report which evidence supports the thread relationship, interval attribution, impact, and disposition. A scenario response checks judgment; an executed fixture checks the product behavior. Neither establishes behavior in an unexecuted workload.

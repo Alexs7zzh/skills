@@ -40,6 +40,8 @@ For every protocol passed as clean, name the interleaving windows walked and why
 
 **Performance.** Judge every loop at production scale. The shipping default path is first-class even when the request centers the new code. Cost the steady-state path of hot loops yourself, by operation count or compiled replica. A benchmark is evidence only for the path it exercised, and early-outs make the common case the unmeasured one. Scale dev-machine numbers to the weakest supported hardware. Multiply inner O(N) sweeps inside per-callback loops against the budget.
 
+A watchdog or sampled stack proves where a thread was at capture, not how long it stayed there or which dependency controlled the interval. For a hang or stall, reconstruct the episode: identify what the timer measures, compare samples from the same process across reporters and issue groups, and inspect whether the affected thread and its plausible owners are running or waiting. If one episode samples different paths, report a long enclosing unit of work until a profile or repeated residency establishes a narrower cause.
+
 **Data flow and invariants.** Mechanisms:
 - Quantization constants: a grid with tolerance smaller than its step is blind between grid points.
 - A validation fed the validator's own constants is tautological and can never fire.

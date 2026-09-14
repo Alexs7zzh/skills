@@ -6,7 +6,7 @@ Design and boundary judgment for implementation, review and diagnosis. These pri
 
 For a feature, identify the intended experience and the scenarios that distinguish success from a merely completed implementation. Separate user rulings from implementation choices. For a defect, identify the bad state and the mechanism that produces it. For a maintenance change, name the concrete task or failure boundary made easier to reason about. Do not invent a bug to justify a requested feature.
 
-Walk the relevant callers, owners and failure paths before selecting the boundary. Existing docs and tests are sources to check against the goal, not reasons to preserve accidental behavior. Keep an acceptance explanation proportional to the choice the user needs to understand.
+Walk the relevant callers, owners and failure paths before selecting the boundary. Check existing docs, tests, and retained captures before calling a behavior blocking or untested; incidental coverage counts only when the artifact shows the relevant state. They are evidence to check against the goal, not reasons to preserve accidental behavior. Keep an acceptance explanation proportional to the choice the user needs to understand.
 
 ## Choose the boundary
 
@@ -18,6 +18,8 @@ Walk the relevant callers, owners and failure paths before selecting the boundar
 - **Sweep the mechanism.** Inspect sibling sites that share the cause, contract or workaround before claiming the class is fixed. Broaden the sweep only when it can change that claim or the fix boundary.
 
 ## Check the result
+
+Disproving one proposed cause does not resolve the observed failure. State what remains unexplained and the observation that would distinguish it.
 
 Choose checks for the actual claim. A defect reproducer before and after the change is useful when it distinguishes the cause and correction. A structural change may need preserved-behavior checks and an ownership argument; a feature needs acceptance scenarios. Do not manufacture a red run for a claim that predicts no behavior change, or present a replica as tested production wiring.
 
