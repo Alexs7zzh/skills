@@ -40,7 +40,9 @@ Keep original concerns and their continuing replacements visible. Both investiga
 
 When a user changes scope, retain the instruction and adjust affected commitments explicitly. Restricted work stays visible rather than disappearing.
 
-Pull unread outcome attention during active work and whenever woken. Read the argument and timeline since acknowledgement, then acknowledge as ledger.md describes. Give the user an update when it adds a consequential result, decision, limitation or blocker beyond the last update; group related publication and peer-review changes. An unchanged conclusion gaining assent does not require a separate user-facing message. Surface new approval needs, changed scope and final limitations promptly. Acknowledging visibility is neither engineering approval nor an obligation to narrate every transition. Routine waiting on an active peer need not interrupt the user; an active process is not proof of progress.
+Pull unread outcome attention when the master is active or woken. Read the argument and timeline since acknowledgement, then acknowledge as ledger.md describes. Give the user an update when it adds a consequential result, decision, limitation or blocker beyond the last update; group related publication and peer-review changes. An unchanged conclusion gaining assent does not require a separate user-facing message. Surface new approval needs, changed scope and final limitations promptly. Acknowledging visibility is neither engineering approval nor an obligation to narrate every transition.
+
+Keep the master available as the communication window. Once current user input and unread master attention are handled, yield the user-facing turn while the coordinator and investigators continue. Do not keep the turn open with foreground waits, status polling, or unchanged progress updates. A busy process alone is neither progress nor a reason for the master to stay active. If the user asks for progress, inspect one current snapshot, report what it establishes and yield again; the request does not start continuous monitoring. Yielding does not stop the watcher or workers.
 
 ## Runtime
 

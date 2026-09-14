@@ -54,6 +54,10 @@ Report each case actually run, its observed result and any untested branch. Thes
 
 Use fresh readers with the candidate instructions and scenario facts; do not give them the expected response. These cases do not start project builds or modify a live run.
 
+- **Foreground availability:** the coordinator and both investigators are running, with no unread master outcome or user wait. The master yields the user-facing turn without a foreground wait, polling loop or unchanged progress update. The watcher and workers remain running and addressable.
+- **Progress request:** while that work continues, the user asks for progress. The master inspects one current snapshot, reports what it establishes and yields again; it does not turn the request into continuous monitoring.
+- **Attention wake:** the coordinator wakes the master for a new approval need or consequential blocker. The master reads the retained context and surfaces the choice promptly instead of yielding merely because investigators remain busy.
+- **Final readiness:** the coordinator wakes the master after the last agreement and released execution. The master verifies the retained outcomes and limits, reports completion and does not leave foreground waiting behind.
 - **Original publication burst:** the master already reported a fixed candidate and its runtime limit; an unchanged peer assent arrives. The reader reads and acknowledges the retained change, without treating acknowledgement as a mandatory user-facing update. A later new blocker is surfaced promptly.
 - **Sibling reporting:** a candidate is reopened because a new control contradicts its claim. The reader reports the changed conclusion and consequence, rather than hiding it as routine review churn.
 - **Near negative:** a user asks for a simple normal edit. No activity markers, ledger or mandatory pre-build peer approval are introduced.
