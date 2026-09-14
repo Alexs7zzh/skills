@@ -11,6 +11,7 @@ Some relationships are easier to understand through a diagram or code-shape sket
 - **The question chooses the view.** Logic, call flow, component structure, file responsibility, and a change need different representations. Use the smallest view that preserves what the user needs to understand.
 - **Detail earns its place.** Include ownership, order, state, and boundaries when omitting them would distort the explanation. Do not recreate the entire codebase as a diagram.
 - **Concrete and inspectable.** Use real names and relevant state. A focused HTML artifact can help when a static sketch cannot carry the interaction or density.
+- **Purpose before mechanism.** Code exists to deliver an experience or outcome, so an explanation of a feature or system starts from what it promises and the decisions behind that, then the design, then the code shape, then details. A reviewer judges each level against the one above it.
 - **Available without ceremony.** Visual explanation is an optional capability. It does not introduce a mandatory design approval phase into coding or planning.
 
 ## Boundary

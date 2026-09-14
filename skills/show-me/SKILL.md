@@ -122,6 +122,6 @@ Bash(open path/to/show-me-{description}.html)
 
 ### guidance
 
-Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to answer the user's current question or the options to resolve the current discussion point.
+When the topic is a feature or system rather than one mechanism, order the views from the promise down: the user experience and the decisions behind it, then the design, then the code shape, then details. Skip levels the question does not need. Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to answer the user's current question or the options to resolve the current discussion point.
 
 You may use one of these, you may use several, it is unlikely you will use all of them. Use your judgement and don't overwhelm the user.
