@@ -20,6 +20,7 @@ Place unresolved work by what is known:
 - **Defined question, unknown answer.** Create an actionable record even if blocked; name the prerequisite needed to answer it.
 - **In scope, question not yet clear.** Keep a loose note in the owning map, including what discovery could make it specific. Turn it into tasks when the questions become clear, removing the replaced note rather than duplicating it.
 - **Out of scope.** Record the exclusion and its reason. Do not let it enter ready work unless the scope is explicitly changed. Being vague or difficult does not make wanted work out of scope.
+- **Result-gated branches.** When a measurement or experiment selects between approaches, write in that issue before it runs either the decision rule (threshold, noise band, which branch each outcome selects) or, when the user wants to judge from the data, exactly which data the decision needs and that the user decides. Create a branch issue only when it is already sharp; otherwise keep it as a note in the owning record and let the result graduate it.
 
 ## Express dependencies
 
