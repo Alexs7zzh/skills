@@ -33,6 +33,10 @@ Keep the chosen level through follow-ups to the same task unless the user change
 
 State deep or joint when selected so the user can correct it. Normal work needs no mode announcement. Level selects method, not authority to act.
 
+## Judged proposals
+
+When the user says `judged` or `with a judge`, or the workflow you are running names it, read [proposal.md](./proposal.md) before investigating. The investigator and fresh judge share its next-action standard. It composes with any level and does not change authority. `judge` in code, a filename or quoted material is not a selector.
+
 ## Normal work
 
 Read the target and applicable project instructions. Apply the guidance selected under Read for the work.

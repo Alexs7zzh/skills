@@ -9,7 +9,7 @@ Retain what the work needs to explain:
 | Content | What matters |
 |---|---|
 | Issue | Claim, site, trigger, consequence, supporting evidence and current disposition |
-| Proposed fix | Goal or issues answered, intended change, consequential tradeoffs and discriminating validation |
+| Proposed fix | Goal or issues answered, intended change, consequential tradeoffs and discriminating validation; under proposal.md, that file's slots |
 | Candidate | Recoverable implementation, exact baseline, dependency versions and applicable validation |
 | Decision | User's answer and reason, affected work and unresolved choice |
 | Coverage | Requested objects or scenarios covered, still open or explicitly unverified |

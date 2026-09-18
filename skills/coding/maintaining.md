@@ -10,6 +10,7 @@ Each document owns one kind of decision:
 - good-change.md owns design and change principles at every level, without selecting investigation or independent review.
 - investigation.md owns the explicitly selected deep method for reviews, diagnoses and changes; evidence.md owns its capture and working note; findings.md owns retained claims, decisions and continuity.
 - joint.md owns equal-investigator judgment, agreement, replacements, completion and runtime controls; ledger.md owns its recording, dispatch and checkout mechanics. No normal or solo deep route uses the database.
+- proposal.md owns the proposal's slots, the judge, the batch pause and its hand-off.
 - cpp.md and unreal.md own conditional domain cues.
 
 A pointer names when to read its target. Keep field definitions and decision rules at their home; do not copy them into every route. Keep project and version facts conditional and verifiable against the target.
@@ -24,6 +25,7 @@ Settle the collaboration outcomes and evidence obligations before changing scrip
 
 For changes to failure ownership or outcome verification, use the bounded cases in [evals/failure-handling.md](evals/failure-handling.md).
 For changes to performance evidence interpretation, use the bounded cases in [evals/performance-diagnosis.md](evals/performance-diagnosis.md).
+For changes to the judge or the proposal's slots, use the bounded cases in [evals/proposal.md](evals/proposal.md). Maintain the judge from the user's recorded decisions on batch lists; classify each disagreement as a reasoning error, a ruling the judge lacked, new evidence or a changed priority before changing its questions.
 
 Run the workspace skill validator and the nearest realistic workflow. Test the original failure class, an unseen sibling, a near negative, and a known-good path in fresh contexts. Review changed instructions for conflicting routes, repeated rules, unnecessary waiting, and information lost on resumption. Report which checks actually ran and which did not.
 
