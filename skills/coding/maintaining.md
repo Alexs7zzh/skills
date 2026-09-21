@@ -25,6 +25,7 @@ Settle the collaboration outcomes and evidence obligations before changing scrip
 
 For changes to failure ownership or outcome verification, use the bounded cases in [evals/failure-handling.md](evals/failure-handling.md).
 For changes to performance evidence interpretation, use the bounded cases in [evals/performance-diagnosis.md](evals/performance-diagnosis.md).
+For changes to authoritative state or capability dependencies, use the bounded cases in [evals/capability-dependencies.md](evals/capability-dependencies.md).
 For changes to the judge or the proposal's slots, use the bounded cases in [evals/proposal.md](evals/proposal.md). Maintain the judge from the user's recorded decisions on batch lists; classify each disagreement as a reasoning error, a ruling the judge lacked, new evidence or a changed priority before changing its questions.
 
 Run the workspace skill validator and the nearest realistic workflow. Test the original failure class, an unseen sibling, a near negative, and a known-good path in fresh contexts. Review changed instructions for conflicting routes, repeated rules, unnecessary waiting, and information lost on resumption. Report which checks actually ran and which did not.
