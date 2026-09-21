@@ -25,6 +25,8 @@ Read for Unreal Engine work, alongside cpp.md for C++. A mechanism points to wha
 **Realtime and engine threading**
 - The frame and audio-callback budgets are the contract. Check allocation and logging costs on the actual path; log-argument construction ahead of the verbosity check counts even when no line is emitted. An allocation-free policy belongs to the paths whose latency contract requires it.
 - Game thread owns UObjects; render-state mutation goes through `ENQUEUE_RENDER_COMMAND`; SDK and task-graph callbacks name their delivery thread in their contract, not in your assumption.
+- An engine getter that returns a reference into another thread's struct is not synchronization. `FMixerDevice::GetPlatformDeviceInfo()` is rewritten on the audio thread during device swaps; copy it there with `FAudioThread::RunCommandOnAudioThread`, which runs inline when that thread is disabled.
+- `FPlatformTime::Seconds()` is `mach_absolute_time` on Apple and stops during system sleep; `FDateTime::UtcNow()` can be corrected backwards. A freshness or expiry bound needs a sleep-inclusive monotonic clock: `mach_continuous_time`, `QueryInterruptTimePrecise`.
 - AudioMixer source resampling is pull-model: the source advances at the mixer's output rate regardless of the asset or device rate. The mixer rate is the timebase.
 - For `USoundGenerator` block sizing, inspect the target's requested sample count, overrides and leftover-frame handling rather than assuming device callback size determines each pull.
 
