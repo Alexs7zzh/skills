@@ -1,6 +1,6 @@
 ---
 name: planning
-description: "Use when the user asks to plan or scope a feature, grill them about an idea or backlog, turn a discussion into a spec or issues, organize or revise a roadmap or work dependencies, or configure project task tracking."
+description: "Use when the user asks to review issues or a backlog, plan or scope a feature, grill them about an idea, turn a discussion into a spec or issues, organize or revise a roadmap or work dependencies, or configure project task tracking."
 ---
 
 # Planning
@@ -14,7 +14,7 @@ Establish or update actionable intent at the entry point the user requested. Rea
 | Create, split, migrate, or revise issues and dependencies | [map.md](./map.md) |
 | Configure task tracking, resolve an issue reference, or find where work should be stored | [project.md](./project.md) |
 
-Add another method when the work calls for it, retaining the established context. An interview can end with answers; a brief is not required before issues. A request to implement or review existing work does not start this workflow merely because execution requires some planning. Use the coding skill when available for that work. Do not add a visual walkthrough or approval phase the user did not request.
+When reviewing existing feature issues, read interview.md and lead the response with its decision pass before listing local issue defects. Do this for a read-only review as well as a proposed rewrite; an issue review that checks only internal consistency can miss a smaller route to the outcome. When creating or materially revising solution-shaped feature issues, fill or reuse that pass before map.md, even if the request only says to update issues. Use map.md alone for administrative edits or splits that preserve settled intent. An interview can end with answers; a brief is not required before issues. A request to implement or review existing code does not start this workflow merely because execution requires some planning. Use the coding skill when available for that work. Do not add a visual walkthrough or approval phase the user did not request.
 
 Read [GOAL.md](./GOAL.md) when discussing or changing this skill's purpose or values.
 

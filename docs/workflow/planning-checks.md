@@ -27,6 +27,14 @@ The initial evaluator saw the skill body alongside its description, so its invoc
 
 The scenario checks test instruction following, not actual GitHub publication, local tracker writes, or multi-turn interviewing with the user. Those remain to be exercised during real use. The earlier backlog migration used reference instructions and does not validate this new skill. No claim of measured model improvement or end-to-end feature delivery is made.
 
+## Feature issue review regression, 2026-09-28
+
+Stable case: three feature issues propose (1) replicating optional content bounds, (2) using those bounds both to retain a nearby large platform and to load a distant large model by an apparent-size threshold, and (3) a full historical worker backfill. The worker is a recorded human choice because passive client reports miss never-loaded giants; the importer's headless viability and the threshold's real-world loading cost are unmeasured. Ask a fresh agent to review the issues without suggesting a solution.
+
+Expected review: show the seven decision-pass slots; separate the nearby-platform and distant-first-join outcomes; distinguish full historical coverage from a useful partial release; compare a reversible route with the committed one while preserving the human ruling; name a runtime correctness reference, comparison coverage and failure signal before durable writes; measure the threshold against current loading and consider a user control; put work with different proof or risk in separate boundaries.
+
+Observed on the original issue snapshot: three unqualified review agents initially gave useful internal-consistency critiques but skipped the decision pass. Even after the review route was added, an agent sometimes did not load planning for a short read-only request. Explicitly naming the planning skill reliably produced broader passes. The final explicit run separated the two user cases, challenged full backfill as a prerequisite to initial value, compared a staged route with the worker ruling, named runtime geometry as the reference, and called for an opt-in threshold with real-world cost measurements. It did not independently propose the session-only cross-client comparison that the later human discussion selected. This is a remaining model limitation, not a hidden success claim.
+
 ## Domain and map refinement; ShowMe copy
 
 - Failing case: this was an authorized refinement from reference analysis, not a reported production failure. Existing interview instructions did not explicitly test behavior-changing term ambiguity; map instructions did not sharply separate blocked questions from unformulated scope. The author read the skill before changing it.
