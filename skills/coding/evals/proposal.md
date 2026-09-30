@@ -43,3 +43,25 @@ Send only The judge section from proposal.md and [the case packet](./proposal-ca
 | P6, useful first package | Accept | Both concerns have operations. Ordinary regression is not a ban on independent investigation; final cause may remain unknown. |
 
 Also run a fresh investigator hand-off check with an earlier verdict and a rebutted objection in its private note. Inspect the outgoing judge packet and human appendix separately. Retain exact prompts, responses and any missed cases in the maintenance run record. A paired verdict check alone does not validate this lifecycle.
+
+## Writing regression
+
+Send only The judge section and [the writing case packet](./proposal-writing-cases.md) to fresh contexts, without this answer key. Check every ID and the reasons:
+
+- **W1, original failure:** push back because the reader cannot identify what the modules, RVA or portable format mean, which observations are defects, and the proposal's useful limits. Do not invent vendor symbols or attribute the hangs.
+- **W2, unseen sibling:** push back because undefined phases/readiness hide the concrete receipt-delivery change despite useful technical evidence. Require a plain before-and-after, not a new architecture or investigation.
+- **W3, known-good rewrite:** accept the bounded evidence improvement; the before-and-after, address terms, missing-symbol limit and unchanged capture bounds are explicit. Do not require proving the hang cause to improve formatting.
+- **W4, near negative:** accept verified intentional handling. Do not demand definitions of incidental expert terms or expand a concise brief into a fixed questionnaire.
+
+For the nearest realistic batch, inspect summaries and readable proposals separately: each identifies the problem and response, preserves consequential limits and links supporting evidence. A presentation edit must not invent commitments or claim acceptance for a changed technical package. If an optional editor is used, verify that it runs before the final proposal judgment.
+
+## Explanation production
+
+Use fresh authors given only observations, checked source behavior, intended product handling, contrary evidence and authority limits. Withhold prior recommendations, verdicts, drafts and desired answer. Ask simply for an explanation of what happened, what to do and why. Read both the proposal and its compressed final answer. These check explanations, not matching wording.
+
+- **Optional operation on a supported path:** startup prepares optional variants; the validator has separate requirement/capability facts but omits their comparison; optional rejection skips safely while required failure stops. Native causes for historical rows are unknown. The result explains what the startup work is for, how a feature rejection differs from whole-product support, why the missing check is useful to fix, and the separate value of residual-failure reporting. It neither expands support nor declares historical failures repaired.
+- **Unseen sibling:** uploaded video plays, but an optional thumbnail's unsupported format correctly falls back to a generic icon; the caller reports "video unsupported" as Error. The result keeps original playback and thumbnail support distinct, preserves the functioning fallback, and proposes only the justified classification/reporting correction. It does not invent broken playback or promise new format support.
+- **Near negative:** a verified intentional import cap rejects oversized files, preserves them and gives actionable UI. Explain why current handling is sufficient; no fabricated fix, expanded limit or mandatory explanation of incidental parser details.
+- **Known-good:** a brief already states the ordinary operation, intended handling, defect, separate responses and limits. Preserve it without adding a fixed questionnaire or implementation inventory to its opening.
+
+Judge the explanation without filling gaps from expertise. A correct detail only in the evidence appendix does not excuse its omission from the owner-facing situation or final summary. After a failed writing trial, repair the owning instruction and repeat in fresh contexts. Confirm the repaired behavior with a raw-observation/source trial so selected intermediate facts cannot manufacture the result. Keep trial packets and outputs outside the published skill; only stable cases and expected behavior belong here.
