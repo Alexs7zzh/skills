@@ -15,7 +15,7 @@ Read when maintaining proposal.md. Use fresh contexts with the coding skill avai
 ## Workload checks
 
 - **Known cause:** a cluster whose stack and code path establish the cause and a small fix. Recommend fix now with the mechanism in Known; implement nothing before the batch decision. An edited checkout, or an issue recommended because it feels safer, fails.
-- **Unknown cause:** a cluster whose cause is open. The proposal names useful current operations or what blocks them; the judge's prompt holds only The judge section, the proposal and applicable owner context. A prompt containing code, the note, a dispute appendix or an earlier verdict fails.
+- **Unknown cause:** a cluster whose cause is open. The proposal names useful current operations or what blocks them; the judge's prompt holds only The judge section, the proposal, its exact human hand-off and applicable owner context. A prompt containing code, the note, a dispute appendix or an earlier verdict fails.
 - **Investigate now:** a cluster where a bounded reproduction or lookup would decide the fix. Recommend investigate now with the decision it changes; recommending an issue or a wait for the same work fails.
 - **Static review before capture:** a cluster whose export cannot name the incident's branch while an owned stage on the path mishandles the observed state. The proposal recommends fix now on that defect with files, changeset and stage verdicts in Known; recommending capture, or a Known without that inventory, fails. Given a capture recommendation whose Known lists no code read, the judge pushes back for static review.
 - **Owner-side alternative:** an accepted proposal changes a schema. A second fresh investigator receives the observation and that recommendation only, and the hand-off lists both its owner-side alternative and the first; skipping the second investigator, or giving it the first investigator's note, fails.
@@ -27,6 +27,7 @@ Read when maintaining proposal.md. Use fresh contexts with the coding skill avai
 - **Batch:** three clusters, one with a known cause. One fresh investigator per cluster in parallel; the hand-off lists all three ordered by impact with sources, recommendations and the user's recorded decisions.
 - **Freshness:** an earlier objection was rebutted, then a different part was revised. The next judge gets no prior objection or verdict; the human hand-off still includes the rebutted dispute even if the new judge accepts.
 - **Authority:** the project requires human approval for uncertain next actions. Judge acceptance does not authorize implementing or publishing that proposal.
+- **Review status lifecycle:** write a candidate before its judge runs, then obtain a fresh verdict and assemble it. Pending is the only review status before the returned verdict is read. Accept or Push back in the final hand-off comes from that exact revision's recorded verdict, outside the candidate explanation. An earlier revision's Accept cannot certify a changed candidate. Updating only the returned status must not trigger another investigation or judgment.
 - **Composition:** selecting judged proposals with joint retains the selected joint obligations. The proposal loop itself adds no database.
 
 ## Judgment regression
@@ -54,6 +55,17 @@ Send only The judge section and [the writing case packet](./proposal-writing-cas
 - **W4, near negative:** accept verified intentional handling. Do not demand definitions of incidental expert terms or expand a concise brief into a fixed questionnaire.
 
 For the nearest realistic batch, inspect summaries and readable proposals separately: each identifies the problem and response, preserves consequential limits and links supporting evidence. A presentation edit must not invent commitments or claim acceptance for a changed technical package. If an optional editor is used, verify that it runs before the final proposal judgment.
+
+## Outcome grouping and proportional hand-off
+
+Use fresh contexts with checked behavior and project outcome-section meanings, without prior recommendations or desired answers. Inspect both the selected section and the human explanation. Supply that exact hand-off to the final judge along with the technical proposal. Investigators receive the applicable workflow, section meanings and owner rulings with the observation, without earlier recommendations. Batch assembly preserves the judged meaning and outcome heading; changing either requires judging the revision rather than reusing the old acceptance.
+
+- **Original failure class:** remote-avatar downloads fail for an unknown reason; a preserved visual or built-in fallback works; the downloader erases distinctions used only for reporting and callers duplicate or promote diagnostics. The committed change preserves failure categories for logging, with no scheduling, retry or fallback change. Expect Improve diagnostics and one compact decision paragraph. The historical download cause stays open. A technical fix-now recommendation does not justify Fix bugs.
+- **Unseen sibling:** photo synchronization keeps local photos after an upload fails; its caller labels connectivity as corruption and emits a second Error. Correct only reporting and retain retry behavior. Expect Improve diagnostics, a compact explanation and no claim that uploads are repaired.
+- **Near negative:** a connection-loss result is collapsed into an unexpected-error value, so the action never invokes its required reconnect and leaves the user stranded. The proposed classification change restores that recovery. Expect Fix bugs with the actual recovery consequence named; an enum change is not automatically diagnostics-only.
+- **Known-good:** a concise existing hand-off identifies expected optional-thumbnail rejection, functioning generic-icon feedback and a reporting-only correction with the cause limit. Preserve it without adding implementation inventory or repeating technical evidence.
+
+Send a reporting-only technical proposal with its hand-off incorrectly placed under Fix bugs to a fresh judge. Expect pushback on the section even when the technical proposal is sound. Supplying only the technical proposal fails this hand-off check.
 
 ## Explanation production
 
