@@ -8,19 +8,20 @@ The owner knows the product and decides what to approve. They have not read the 
 
 ## Shape
 
-Write these parts in this order, as short paragraphs. Use the project's labels when it supplies them; otherwise label each part with its bold name. The whole block after the occurrence and impact lines stays under 250 words, and most cases need about 150. A reporting-only or no-action case stays under 100. A longer block is keeping proposal content. The budget is a ceiling, not a target.
+Write these parts in this order, as short paragraphs. Use the project's labels when it supplies them; otherwise label each part with its bold name. Length is whatever the decision needs and nothing more. A one-line severity change needs a few sentences; a cause fix with an open attribution question needs more. Word count is not a goal in either direction: a block that runs long is usually keeping proposal content, and a block padded to fill every part of the shape is as bad. Most cases land between about 100 and 250 words after the occurrence and impact lines; treat that as a signal to recheck, not a rule.
 
 - **What happened.** When it happens: the user action or system event. What the player or system saw. Whether the behavior is a bug, expected, or still unclassified. If the owner would not otherwise know what the feature is doing, spend one or two sentences on the ordinary case before the failure. Counts go only where the project's occurrence and impact labels ask for them, and each of those labels is one line.
 - **Why our code is at fault.** One or two sentences: what the code does today and what it should do instead. Name the mechanism in product words (the retry count, the message, the request, the cleanup job), not subsystem words (the resize driver, the failure boundary, the acknowledgement). Skip this part when no code change is recommended.
 - **What to do.** The change in one to three plain sentences. Then, if an owner could reasonably expect more, one sentence on what it will not do: the join still fails, the hang is not prevented. Then where the work lands, in a few words: engine or project, backend, copy that needs translation, a platform that needs its own check.
-- **Caveat.** The one uncertainty that could change the decision, and what to do if it turns out wrong. Two sentences at most. Omit when there is none.
-- **Optional** or **Related.** A separately approvable question the proposal commits to, or a sibling case, each in one or two sentences that say what the owner is choosing there. An alternative the proposal rejected is not optional work; leave it out.
+- **Caveat.** The one uncertainty that could change the decision, and what to do if it turns out wrong. Two sentences at most. Omit when there is none. A planned effect of the fix is not a caveat; it belongs in What to do.
+- **Optional** or **Related.** A separately approvable question the proposal commits to, or a sibling case, each in one or two sentences of the form "approve X separately; its answer tells you Y" or "case N decides whether X". An alternative the proposal rejected is not optional work; leave it out.
 
 Review status and links follow in the project's format.
 
 ## Rules
 
-- Every term is one the owner already uses or is explained in the same sentence. A proposal term that needs a definition is a cue to describe what it does instead.
+- Every term is one the owner already uses or is explained in the same sentence. A proposal term that needs a definition is a cue to describe what it does, or to delete the sentence when the owner decides nothing about it. Deleting is usually right; explaining adds new terms, and the explanation itself then needs the proposal.
+- Keep the proposal's certainty. Plain is not the same as sure. "Not measured" stays "not measured"; a row count stays a row count, not an incident count; one observed trigger is not the trigger; a consequence of the fix is not today's behavior; a cause the proposal leaves open is not assigned to one side. Write the fix's scope exactly as committed, neither wider nor narrower.
 - One mechanism sentence per defect.
 - A number appears only when it changes what the owner decides. "Two views, one user" belongs. Pixel dimensions, seconds to four decimals and timestamps do not.
 - State what is unproven once, in the caveat. Do not hedge every sentence.
@@ -39,16 +40,17 @@ Sweep the draft and delete each of these. They stay in the linked proposal.
 - "Nothing has been built or tested yet" and approval reminders. The status line carries them.
 - A second statement of a limit already in the caveat.
 - Every option of a sibling case. Say what the owner chooses there and link it.
+- A count converted to a unit the proposal did not count, and an occurrence line that needs a reread to see how its numbers relate.
 
 ## The writer
 
-A fresh context receives this file, the accepted technical proposal, the project's section labels and the applicable owner rulings. No investigation note, raw logs, code, earlier drafts or verdicts. Write the hand-off, run the delete sweep, then read it as the owner and answer from the text alone: what broke, when, is our code wrong, what will change, what will not. Rewrite any sentence that needed the proposal to answer. Count the words against the budget.
+A fresh context receives this file, the accepted technical proposal, the project's section labels and the applicable owner rulings. No investigation note, raw logs, code, earlier drafts or verdicts. Write the hand-off, run the delete sweep, then read it as the owner and answer from the text alone: what broke, when, is our code wrong, what will change, what will not. Rewrite any sentence that needed the proposal to answer. Then cut any sentence whose removal leaves those five answers intact.
 
 Where the proposal is unclear or contradictory, ask the investigator. Do not guess and do not research. Add no claim, remedy or commitment the proposal does not make. Dropping technical detail is the job. Dropping a limit or owner choice that changes the decision is not allowed.
 
 ## The writing judge
 
-A fresh context receives this file, the hand-off and the technical proposal. Read only the hand-off first and write one line each: what broke, when, is our code wrong, what will change, what will not. If any line needs a guess, push back and quote the sentence that failed. Then compare with the proposal. Push back if the hand-off makes a claim the proposal does not, drops a limit or owner choice that changes the decision, implies a failed operation will succeed when the work changes reporting only, sits under a section whose meaning its committed work does not satisfy, or exceeds the budget with items from the delete list. Shortness, dropped file names and dropped preserved-behavior lists are not defects. Do not repair the text from your own expertise; name what is missing. Writing review shares proposal.md's three-review budget; after that, the batch carries the latest revision with the open objection.
+A fresh context receives this file, the hand-off and the technical proposal. Read only the hand-off first and write one line each: what broke, when, is our code wrong, what will change, what will not. If any line needs a guess, push back and quote the sentence that failed. Then compare with the proposal. Push back if the hand-off makes a claim the proposal does not, drops a limit or owner choice that changes the decision, implies a failed operation will succeed when the work changes reporting only, sits under a section whose meaning its committed work does not satisfy, or exceeds the budget with items from the delete list. Shortness, dropped file names and dropped preserved-behavior lists are not defects. Push back only for an answer that needed a guess, a claim the proposal does not make or makes with less certainty, a dropped limit or owner choice that changes the decision, a wrong section, or delete-list content. Length by itself is never a reason; a sentence that could go but harms nothing is a note, not a push-back. Do not repair the text from your own expertise; name what is missing. Writing review shares proposal.md's three-review budget; after that, the batch carries the latest revision with the open objection.
 
 ## Example
 
