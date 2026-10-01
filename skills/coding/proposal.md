@@ -4,7 +4,7 @@ Read when the user says `judged` or `with a judge`, or a workflow you are runnin
 
 ## One pause, then the work
 
-Every cluster ends in a proposal with a recommendation, whether or not you could fix it now. A judge checks the proposal, a fresh writer turns the accepted proposal into the owner's hand-off under [handoff.md](./handoff.md), the batch lists every hand-off, and the user decides at that one pause. Ordinary implementation waits for that decision; when the user approves a fix or an investigation, do it under the run's authority with the ordinary change review. Filing an issue records the proposal; it does not handle the incident.
+Every cluster ends in a proposal with a recommendation, whether or not you could fix it now. A judge checks the proposal, a fresh writer turns the accepted proposal into the owner's hand-off under [handoff.md](./handoff.md), the batch lists every hand-off, and the user decides at that one pause. Ordinary implementation waits for that decision; when the user approves a fix or an investigation, do it under the run's authority with the ordinary change review. Filing an issue records the proposal; it does not handle the incident. When the user asks to file, publish under handoff.md, Publishing as an issue or comment.
 
 Judge acceptance assesses a next action. It grants no authority to implement, publish issues, close incidents or expand scope. Follow the user's requested stopping point and the project's approval boundaries.
 
