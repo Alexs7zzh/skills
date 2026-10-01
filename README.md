@@ -25,6 +25,7 @@ npx skills add Alexs7zzh/skills --skill coding
 The repository publishes these skills:
 
 - `agent-messaging` writes prompts, briefs, dispatches, and handoffs that another agent can act on.
+- `avatar-check` checks a VRM avatar against what MEs loads and, when asked, writes an optimized copy.
 - `coding` handles code changes, reviews, and diagnosis.
 - `show-me` explains with diagrams, code-shape sketches, and focused HTML artifacts.
 - `skill-authoring` creates, reviews, tests, and maintains agent skills.

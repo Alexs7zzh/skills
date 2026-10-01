@@ -1,0 +1,4 @@
+interface:
+  display_name: "Avatar Check"
+  short_description: "Check a VRM avatar against MEs and optionally write a smaller copy"
+  default_prompt: "Use $avatar-check to check this avatar file."
