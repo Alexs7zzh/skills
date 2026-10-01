@@ -11,8 +11,7 @@ Read for Unreal Engine work, alongside cpp.md for C++. A mechanism points to wha
 - Trace how a stored `UObject` reference participates in GC. A raw pointer alone neither retains its target nor guarantees nulling. In UE5, a `TObjectPtr` used as a reflected strong reference needs `UPROPERTY`; use `TWeakObjectPtr` when observing destruction without ownership. Check the target's [object-pointer contract](https://dev.epicgames.com/documentation/en-us/unreal-engine/object-pointers-in-unreal-engine). Resolving once and retaining a raw pointer across a frame or async gap defeats the weak reference.
 - `FTimerManager`, `FTSTicker`, and `FHttpRequest` completion delegates can outlive their receivers; inspect the binding and teardown paths before accepting a captured `this`.
 - Engine async results have a supported completion and reading context. For trace data (`QueryTraceData`), inspect the allowed frame phase and callback context before consuming it from a Slate active timer or another scheduler.
-- Before adding manual failure completion around `FHttpRequest::ProcessRequest()`, inspect whether the target implementation already invokes the completion delegate on that path.
-- Before reporting a missing Slate active-timer unregister, inspect whether widget destruction owns that cleanup in the target engine.
+- Before reporting missing cleanup or missing failure completion, inspect whether the target engine already owns it on that path. Examples: widget destruction can unregister Slate active timers; `FHttpRequest::ProcessRequest()` can invoke the completion delegate on its own failure path.
 - `GetWorld()` can be null during teardown and in CDOs; code reachable from editor or shutdown paths must tolerate it. Cross-PIE-session caching of world objects needs a world-teardown hook.
 - GC can run between an async request and its game-thread completion; captures across that gap follow the GC rules above.
 

@@ -39,16 +39,16 @@ For every protocol passed as clean, name the interleaving windows walked and why
 - Failure paths that return without transitioning, leaving in-progress forever.
 - Retry residue from the previous attempt.
 - Requested state confused with observed state. For a long-lived capability, intent can remain enabled while availability changes. Turning it off cancels recovery; a late completion must not turn it back on.
-- Every waiting state keeps a live resolver. Every retry loop keeps a durable brake whose accounting survives the churn the loop itself causes.
+- Every waiting state has something that can resolve it. Every retry loop has a limit whose count survives the resets the loop itself causes, such as reconnects or re-created objects.
 
-**Performance.** Judge every loop at production scale. The shipping default path is first-class even when the request centers the new code. Cost the steady-state path of hot loops yourself, by operation count or compiled replica. A benchmark is evidence only for the path it exercised, and early-outs make the common case the unmeasured one. Scale dev-machine numbers to the weakest supported hardware. Multiply inner O(N) sweeps inside per-callback loops against the budget.
+**Performance.** Judge every loop at production scale. Judge the shipping default path even when the request is about new code. Cost the steady-state path of hot loops yourself, by operation count or compiled replica. A benchmark is evidence only for the path it exercised, and early-outs make the common case the unmeasured one. Scale dev-machine numbers to the weakest supported hardware. Multiply inner O(N) sweeps inside per-callback loops against the budget.
 
 A watchdog or sampled stack proves where a thread was at capture, not how long it stayed there or which dependency controlled the interval. For a hang or stall, reconstruct the episode: identify what the timer measures, compare samples from the same process across reporters and issue groups, and inspect whether the affected thread and its plausible owners are running or waiting. If one episode samples different paths, report a long enclosing unit of work until a profile or repeated residency establishes a narrower cause.
 
 **Data flow and invariants.** Mechanisms:
 - Quantization constants: a grid with tolerance smaller than its step is blind between grid points.
 - A validation fed the validator's own constants is tautological and can never fire.
-- Fabricated success-shaped results. "Done" notifications emitted before durability.
+- Results that look like success before the work is durable, such as a "done" notification emitted before the write commits.
 - Write-only fields, a documented but unimplemented contract.
 - Comparators ignoring fields consumers react to.
 - Optional interface methods, defaulting to no-op, for capabilities the system requires in every reachable state.
@@ -62,7 +62,7 @@ For each recovery loop, name the observation, changed prerequisite, or safe retr
 
 **Structural quality.** Investigate self-declared gates, repeated knowledge, and defenses that do not achieve their stated purpose using the deletion test. Establish whether they own a distinct enforcement boundary, reduce a relevant risk, or simplify a maintenance task before judging them. An ad-hoc conditional in an unrelated flow suggests misplaced policy; name the boundary it belongs to. Growth calls for decomposition when distinct responsibilities or invariants become hard to reason about. Look for a reframe that removes branches or layers while preserving obligations. A quality finding names a concrete future cost, not a taste.
 
-**Test design.** Expected results need a source independent of the implementation decision under test. A test that computes the answer the same way can repeat the defect. Name the symmetries the generator imposes, such as zero-mean signals, identical channels, on-grid values, or design-unit parameters; inspect omitted dimensions that matter to the claim. For stateful systems, test changes of responsibility, inputs, scope and cancellation during ongoing work, not only starting in each supported mode. A queued action is not proven usable until its actor can perform it under the same facts; a waiting state needs a reachable resolver, not just a nonempty field. A threshold assertion without its baseline comparison asserts one side of a trade. Tests tied to internal shape can break on a behavior-preserving refactor. Choose checks for the claim; deep investigations use evidence.md's retained evidence procedure. Do not add tests that merely restate the implementation.
+**Test design.** Expected results need a source independent of the implementation decision under test. A test that computes the answer the same way can repeat the defect. Name the symmetries the generator imposes, such as zero-mean signals, identical channels, on-grid values, or design-unit parameters; inspect omitted dimensions that matter to the claim. For stateful systems, test changes of responsibility, inputs, scope and cancellation during ongoing work, not only starting in each supported mode. Test that a queued or waiting state can actually be resolved by its actor under the same facts, not only that its field is set. A threshold assertion without its baseline comparison asserts one side of a trade. Tests tied to internal shape can break on a behavior-preserving refactor. Choose checks for the claim; deep investigations use evidence.md's retained evidence procedure. Do not add tests that merely restate the implementation.
 
 ## Enumerate
 

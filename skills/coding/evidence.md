@@ -16,7 +16,7 @@ State the claim and a plausible alternative that would make it wrong. Choose a c
 
 Choose probe inputs independently of the design's convenient constants or symmetries. Test through shipped code when the claim includes its wiring; a replica establishes only the mechanism it reproduces. For intermittent failures, retain conditions and measured frequency without claiming determinism.
 
-If no available check can distinguish the alternatives, narrow the claim or leave the uncertainty open, saying what would resolve it and why it is unavailable. Do not manufacture a failing test, treat every missing seam as an architecture defect, or ask the user to waive an arbitrary log requirement. Testability is an issue when it prevents an assurance the project actually needs.
+If no available check can distinguish the alternatives, narrow the claim or leave the uncertainty open, saying what would resolve it and why it is unavailable. Do not manufacture a failing test or treat every missing seam as an architecture defect. Testability is an issue when it prevents an assurance the project actually needs.
 
 ## Capture and interpret
 
@@ -24,7 +24,7 @@ Keep planned checks separate from observed results. A plan names the question, m
 
 For an investigation test, probe or measurement you execute, use `node --no-warnings <skill>/scripts/evidence.ts run`; its help supplies the interface. It retains the literal command, selected input snapshots, raw output and actual termination. It uses the same authorization and input-ownership rules as the direct command and requires no database.
 
-A completed `run` verifies the fresh capture and returns `start`, `receipt`, and the `stdout`/`stderr` paths. Read the output supporting the claim before recording an interpretation. No immediate `inspect` command is needed after this verified handoff. Use `inspect` when reusing a capture or checking it after interruption or suspected changes. Receipt creation does not establish a passing test; an interrupted or running capture supports only the partial observations actually received.
+A completed `run` verifies the fresh capture and returns `start`, `receipt`, and the `stdout`/`stderr` paths. Read the output supporting the claim before recording an interpretation. No immediate `inspect` command is needed after a completed `run`. Use `inspect` when reusing a capture or checking it after interruption or suspected changes. Receipt creation does not establish a passing test; an interrupted or running capture supports only the partial observations actually received.
 
 Record the capture path, the observation and claim it supports, applicable candidate/baseline and environment, and remaining uncertainty. Selected snapshots are not proof that every build input was captured: stabilize the actual inputs or preserve an immutable candidate, and name the combination exercised.
 
@@ -42,7 +42,7 @@ Use labels when they help group findings:
 - **Restructure:** a concrete maintenance cost or failure mechanism that structural change removes. Apply good-code.md's deletion test.
 - **Hardening:** a real defect with low current impact.
 - **Nit:** a minor improvement with no substantive impact.
-- **telemetry-quality:** a defect in telemetry, judged against its logging or pipeline contract.
+- **Telemetry quality:** a defect in telemetry, judged against its logging or pipeline contract.
 
 Lead with user consequences, ranking findings by impact and grouping minor items. Low measured impact does not prove an invariant sound; investigate numbers that lower severity as carefully as those that raise it. A human ruling suppresses only claims its rationale addresses. New evidence can justify a clearly identified alternative, not silently replace the ruling.
 

@@ -43,9 +43,9 @@ Read the target and applicable project instructions. Apply the guidance selected
 
 Make the requested change, review, or diagnosis directly. Inspect enough surrounding code to understand its actual effect. For a review, report supported findings within the requested scope; for diagnosis, distinguish the cause from a hypothesis. An unresolved question calls for useful inspection or a focused check, not automatic promotion to deep.
 
-Check what is needed to establish the requested result. A direct CSS color change ordinarily needs the declaration and diff inspected, not browser setup or before-and-after screenshots. Render it when an actual question about the cascade or visual result requires that observation. For a logic change, choose a relevant test or code argument; do not claim runtime behavior from an unexecuted check.
+Check what is needed to establish the requested result. A one-line value change ordinarily needs the declaration and diff inspected, not a runtime setup or before-and-after screenshots. Run or render it when a real question about the result needs that observation. For a logic change, choose a relevant test or code argument; do not claim runtime behavior from an unexecuted check.
 
-Normal work requires no ledger, investigation dossier, capture runner, saved-candidate package, or separate reviewer. Keep a short handoff only when unfinished work needs to survive a context switch. Report the result and the checks actually made, with material limits; do not manufacture an issue, a checklist of skipped ceremonies, or a test merely to close a workflow.
+Normal work requires no ledger, investigation dossier, capture runner, saved-candidate package, or separate reviewer. Keep a short continuation note only when unfinished work needs to survive a context switch. Report the result and the checks actually made, with material limits; do not manufacture an issue or a test merely to close a workflow, and do not list the procedures you skipped.
 
 ## Authority and judgment
 
@@ -58,7 +58,7 @@ Choose within those obligations for understandable ownership, state and failure 
 - **Change or fix requested:** develop recoverable local changes for the goal, including redesigns and related systems needed to solve it. Breadth is not a permission gate. Honor explicit restrictions and preserve existing work.
 - **Assessment or diagnosis only:** inspect and report; make no lasting source edits. Useful experiments or candidate patches stay outside the checkout unless temporary project edits are authorized.
 
-Carry the current goal, authority, relevant evidence and remaining work through handoffs and resumption. Treat tools and procedures as ways to reach that goal within the user's constraints and applicable execution permissions. Investigate failed operations and choose recoverable next steps when the existing authority determines the result. Involve the user when proceeding needs their choice about the outcome, authority you do not have, or acceptance of lost existing work. Workflow records cannot override an execution permission denial.
+Carry the current goal, authority, relevant evidence and remaining work through continuation notes and resumption. Treat tools and procedures as ways to reach that goal within the user's constraints and applicable execution permissions. Investigate failed operations and choose recoverable next steps when the existing authority determines the result. Involve the user when proceeding needs their choice about the outcome, authority you do not have, or acceptance of lost existing work. Workflow records cannot override an execution permission denial.
 
 Ask only when a missing user decision prevents useful authorized progress. Name the blocked action, consequence, feasible options and recommendation. Continue work that does not need the answer. Deep and joint investigations retain these decisions under findings.md.
 
@@ -66,7 +66,7 @@ Ask only when a missing user decision prevents useful authorized progress. Name 
 
 Inspect existing changes before editing and keep your change recoverable without losing the user's work. Keep temporary instrumentation attributable, retain useful observations, and remove only your instrumentation. A useful test can remain as part of the change. A diagnostic log intended to ship is a product change, not temporary instrumentation.
 
-Choose checks that can distinguish the claim from an alternative that would make it wrong. Record or interpret an action as completed only after its result returns and you have read it. A tool batch that retrieves a result cannot also contain your prewritten interpretation of that unseen result; `await` orders execution, not your knowledge. Planned and observed are different. Retain the relevant original output when a consequential claim needs later inspection.
+Choose checks that can distinguish the claim from an alternative that would make it wrong. Record or interpret an action as completed only after its result returns and you have read it. Do not write the interpretation of a result in the same step that fetches it. Planned and observed are different. Retain the relevant original output when a consequential claim needs later inspection.
 
 ## Maintaining this skill
 
