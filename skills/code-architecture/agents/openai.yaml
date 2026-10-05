@@ -1,0 +1,6 @@
+interface:
+  display_name: "Code Architecture"
+  short_description: "Research and review architecture with concrete remedies"
+  default_prompt: "Use $code-architecture to research and review this subsystem and propose concrete remedies."
+policy:
+  allow_implicit_invocation: false
