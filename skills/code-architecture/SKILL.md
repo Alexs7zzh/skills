@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 Run when the user explicitly invokes this skill. Establish the subsystem, revision or branch, selected principles, requested stages and output location from the request and repository. Use [principles.md](principles.md) to select applicable questions. Research explains the facts; review judges them and develops remedies. A research-only request stops after the account. When review is requested, continue with [review.md](review.md). Implement only when the user asks for code changes, following the project's coding workflow.
 
+An example incident supplies a trial case, not a narrower subsystem boundary. For subsystem logging work, include the outcome producers and retained recorders that supply the required diagnostics, rather than selecting only the relay or currently visible log. Honor an explicit narrower request and name the consequential excluded paths.
+
 Record the inspected revision and relevant local changes. A named branch is a target, not permission to switch a shared checkout. Honor project access and mutation rules. Preserve existing work and use the requested revision without creating another checkout unless authorized.
 
 ## Research

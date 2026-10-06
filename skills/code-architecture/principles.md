@@ -136,6 +136,8 @@ Bound claims over all consumers/sibling paths of consequential facts and record 
 
 Explain how the subsystem's required outcomes can be diagnosed at the required destination. Read its logging, monitoring and privacy contracts. Cover important decision inputs, states, transitions and outcomes, including facts needed to distinguish remaining causes. Bound this to the inspected subsystem; do not inventory every field or assume every internal state should be logged.
 
+Start with a logging coverage map from the subsystem's real flows: required setup/configuration, admission and validation decisions, execution/completion, recovery, and retained summaries where present. Name each outcome producer, diagnostic carrier/recorder and sink, with inspected or excluded coverage. Include paths that emit no log or fail before the usual owner exists; a log-site search cannot find them. Follow required neighboring producers without turning an explicitly focused request into a whole-repository audit.
+
 Collect a diagnostic state table. For each important fact or related group, show:
 
 - Origin and meaning: external data or provider/environment observation, owned internal decision/invariant, or a derived diagnostic view. Name the authority, observation time and confidence. External data can be malformed at an owned boundary; an external failure can also expose a separate owned handling defect.
@@ -145,6 +147,10 @@ Collect a diagnostic state table. For each important fact or related group, show
 
 Put failure classification beside its governing policy, separately from the fact's origin and any provider label. Explain responsibility, expected outcome, monitoring obligation and actual response. Preserve unmapped cases and conflicting policy authority as limits rather than inferring severity from words such as Error or Fatal.
 
+Trace distinct decision predicates through reason/result construction, wrappers, serialization and the eventual diagnostic. Show which distinctions survive a many-to-one code or label, which consumers need them and any precedence when multiple predicates hold. A correct retry class can still discard the admission owner's causal detail. Required-setup failures include missing input, invalid shape and downstream construction failure; show the diagnostic owner for each without duplicating an already-owned failure or logging configuration secrets.
+
 For relays/classifiers, provide a compact policy-to-output table across material input categories/signatures and admitted provider levels. Show branch precedence, overrides, fallback and sink thresholds, plus nearby normal chatter and unrelated genuine-error controls. Identify which original fields survive translation; a mapped severity does not recover the native severity.
 
 For failure episodes and summaries, show emission owner, cardinality, suppression/aggregation key and reset after recovery. Distinguish duplicate rows, distinct failures, interim evidence and terminal outcomes. Account for evidence surviving retries, replacement, cancellation and teardown when those paths are in scope. Keep native cause, observed outcome and inference distinct; silence at a filtered sink does not prove success. Logging is evidence, not recovery. Trace any non-diagnostic effects of logging operations when present.
+
+For each retained episode sample, record its selection/enrichment rule and represented interval separately from the episode start. Walk a period that starts without that evidence and gains it later, changes fault kind, or changes the sampled subject. Show whether the first complete required sample can be adopted then, whether later partial data overwrites it, and how the summary identifies its actual observation time. Bounded history and correct fault counts do not prove that available companion evidence survives aggregation.

@@ -19,7 +19,7 @@ Each reviewer returns:
 
 Stop within the selected question's scope. Preserve accepted tradeoffs and unknown provider guarantees. Do not invent a finding to fill a rule or treat an unmeasured policy constant as a proven incorrect value.
 
-For principle 33, judge the supplied diagnostic state and policy-to-output tables against the logging and outcome contracts. Check required evidence at its destination, classification precedence across admitted provider levels, event identity/coherence and recurrence after recovery. Separate an external incident from an owned classification, retention or handling defect. Missing native cause or original severity limits incident attribution; it does not erase a source-established policy violation. Recommend additional logging only for a consequential question the existing evidence cannot answer.
+For principle 33, judge the coverage map, diagnostic state and policy-to-output tables against the logging and outcome contracts. Check required evidence at its destination, classification precedence across admitted provider levels, preserved causal distinctions, later episode enrichment, event identity/coherence and recurrence after recovery. An excluded producer is a coverage limit, not a clean result. Separate an external incident from an owned classification, retention or handling defect. Missing native cause or original severity limits incident attribution; it does not erase a source-established policy violation. Recommend additional logging only for a consequential question the existing evidence cannot answer.
 
 ## Synthesize once
 
