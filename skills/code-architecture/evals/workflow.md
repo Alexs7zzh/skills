@@ -1,6 +1,6 @@
 # Bounded architecture workflow checks
 
-Use fresh agent contexts. Keep prompts, supplied facts/source, exact skill version and observed outputs in the maintenance run. Give agents the workload and requested outcome, not the expected answers below. Stop a trial when a meaningful workflow failure appears, preserve it, then repair before retrying. These cases test the workflow; they do not authorize edits or runtime launches in an unrelated project.
+Use fresh agent contexts and the runtime/evaluator separation in SKILL.md. Keep prompts, supplied facts/source, exact skill version and observed outputs in the maintenance run. Give agents the workload and requested outcome, not the expected answers below. Stop a trial when a meaningful workflow failure appears, preserve it, then repair before retrying. These cases test the workflow; they do not authorize edits or runtime launches in an unrelated project.
 
 ## Research completeness and the research only boundary
 
@@ -33,3 +33,21 @@ Give a separate account where an absolute expiry survives delivery, the consumed
 - An unknown provider guarantee remains a named limit; it does not authorize changing the provider or scheduling a runtime experiment.
 
 Record the original case, changed sibling, near negative and known-good result separately. Static prompt classification does not prove execution of the combined review or research workflow.
+
+## Logging account and policy precedence
+
+Prompt: research an SDK diagnostic relay with a logging focus, then independently review the factual account. Select principle 33. Do not give researchers or reviewers the incident diagnosis.
+
+Fixture: an external transport emits category, message and native level, including Warning/Error/Fatal. Project policy requires a particular connection-failure signature at Warning to distinguish transport failure from a silent SDK operation. Ordinary chatter is local at Log; unrelated genuine errors remain Error. The relay excludes the signature from chatter demotion but sends it through generic native Error/Fatal mapping. Remote telemetry collects Warning and above. A capture-evidence holder retains another signature and its observation time for a later summary; immediate relay rows discard original native severity. Historical rows contain mapped Warnings only, with unresolved provider cause and native levels.
+
+Expected research: a factual logging section traces external observations, internal control/retained evidence and derived views, immediate versus held data, observation ages/resets, companion fields, classification branch order and remote visibility. The policy-to-output table exposes the conditional mismatch across admitted native levels. The account does not diagnose the incident or prescribe a remedy. Expected independent review: identify the owned severity-policy defect, select signature-specific classification before native fallback, and propose exactly-one-Warning checks across native levels with chatter and unrelated-error controls. Do not claim the historical Warnings were misclassified or that diagnostics restore connectivity.
+
+## Logging sibling, near negative and known good
+
+Use a non-transport upload fixture. Policy makes a known remote quota rejection Warning regardless of native severity. A queued diagnostic carries only severity; after retry, emission reads the current request, phase and latest provider observation. An episode suppression flag is never cleared on successful recovery. The sink uploads Warning/Error; private identity is separate from safe provider text.
+
+Expected: the report supplies enough evidence for blind reviewers to catch severity precedence, mixed replacement state and suppressed recurrence as distinct mechanisms. Review selects scoped remedies and checks a delayed drain after a new request, plus failure → recovery → failure. Changing only log verbosity cannot repair lost identity. Do not ask to export private identity.
+
+Pair it with a correct implementation that snapshots the original failed request/phase/observation, handles the quota signature before native fallback and clears suppression on recovery. Supply the standalone fixture's governing policy and provider guarantee that heartbeat and quota signatures are mutually exclusive. Unrelated native errors and owned invariant violations stay Error; heartbeat chatter stays local. Expect no invented logging defect on that path, no blanket demotion, no requirement to repair the provider or log every field. A research-only run stops after its factual account; missing provider cause stays a limit. Preserve these results separately from the failing sibling's findings.
+
+Vary the recovery boundary: a service-wide diagnostic suppression flag clears on a successful native write, but that observation is inside a current-request generation fence. A replaced request's still-live provider operation can finish successfully. Expected research follows the reset through the actual callback gate and records which successes reach it; naming the reset helper is insufficient. Review should identify suppressed recurrence after that recovery and preserve the separate fence on obsolete request continuation. A correctly separated global observation and fenced continuation is the no-concern control.

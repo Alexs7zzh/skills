@@ -19,6 +19,8 @@ Each reviewer returns:
 
 Stop within the selected question's scope. Preserve accepted tradeoffs and unknown provider guarantees. Do not invent a finding to fill a rule or treat an unmeasured policy constant as a proven incorrect value.
 
+For principle 33, judge the supplied diagnostic state and policy-to-output tables against the logging and outcome contracts. Check required evidence at its destination, classification precedence across admitted provider levels, event identity/coherence and recurrence after recovery. Separate an external incident from an owned classification, retention or handling defect. Missing native cause or original severity limits incident attribution; it does not erase a source-established policy violation. Recommend additional logging only for a consequential question the existing evidence cannot answer.
+
 ## Synthesize once
 
 Merge findings by causal mechanism and affected contract, not by rule number or similar titles. Preserve distinct facets and their source, including a cross-boundary concern that only the whole reviewer saw. Keep correctness, concrete maintenance costs and unresolved evidence gaps distinct. Resolve material disagreements with the existing facts or a bounded lookup; peer agreement alone does not prove the claim.

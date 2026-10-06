@@ -131,3 +131,20 @@ Show the current primitive/library and its actual contract; for custom coordinat
 ## 32. Change impact, sibling coverage and truthful documentation
 
 Bound claims over all consumers/sibling paths of consequential facts and record inspected versus excluded variants. Tie code/docs/evidence to their revisions, preserve historical claims as historical and expose contradictions. Explain why a covered path supports—or does not support—a wider claim.
+
+## 33. Logging and diagnostic state
+
+Explain how the subsystem's required outcomes can be diagnosed at the required destination. Read its logging, monitoring and privacy contracts. Cover important decision inputs, states, transitions and outcomes, including facts needed to distinguish remaining causes. Bound this to the inspected subsystem; do not inventory every field or assume every internal state should be logged.
+
+Collect a diagnostic state table. For each important fact or related group, show:
+
+- Origin and meaning: external data or provider/environment observation, owned internal decision/invariant, or a derived diagnostic view. Name the authority, observation time and confidence. External data can be malformed at an owned boundary; an external failure can also expose a separate owned handling defect.
+- Availability and lifetime: immediate-only input, retained state/snapshot, derived on emission, or unavailable. Name the holder, purpose, update/reset/overwrite/teardown boundaries and represented time. Trace the actual writer/reset path through callback admission, generation fences and wrappers; a reset function does not prove every qualifying completion reaches it. State whether delayed logging keeps the original observation and identity or reads current replacement state.
+- Emission and companions: which event carries it, when and with which other state, reason/result, action/stage and target or operation identity. Show whether the fields describe one coherent failure/transition. For split events, identify the actual correlation and ordering evidence, including attempt/session reuse; do not assume timestamps or nearby lines establish causality.
+- Visibility and loss: selected severity/category, build/runtime gates and local/remote destination. Trace filtering, sampling, truncation, aggregation or queue loss where they affect the required evidence. Mark important facts that are held but never emitted, immediately discarded, or only visible at an insufficient destination. Redaction and unavailable evidence remain explicit; do not copy secrets or demand private raw data in remote logs.
+
+Put failure classification beside its governing policy, separately from the fact's origin and any provider label. Explain responsibility, expected outcome, monitoring obligation and actual response. Preserve unmapped cases and conflicting policy authority as limits rather than inferring severity from words such as Error or Fatal.
+
+For relays/classifiers, provide a compact policy-to-output table across material input categories/signatures and admitted provider levels. Show branch precedence, overrides, fallback and sink thresholds, plus nearby normal chatter and unrelated genuine-error controls. Identify which original fields survive translation; a mapped severity does not recover the native severity.
+
+For failure episodes and summaries, show emission owner, cardinality, suppression/aggregation key and reset after recovery. Distinguish duplicate rows, distinct failures, interim evidence and terminal outcomes. Account for evidence surviving retries, replacement, cancellation and teardown when those paths are in scope. Keep native cause, observed outcome and inference distinct; silence at a filtered sink does not prove success. Logging is evidence, not recovery. Trace any non-diagnostic effects of logging operations when present.
