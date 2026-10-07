@@ -1,0 +1,4 @@
+interface:
+  display_name: "Feature Mapping"
+  short_description: "Map what else a concept change should update"
+  default_prompt: "Use $feature-mapping to map every consumer of the concept this feature changes and what else should update."
