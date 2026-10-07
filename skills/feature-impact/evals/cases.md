@@ -39,6 +39,18 @@ Prompt: "Use $feature-impact. The settings editor now mounts only fields near th
 
 Expected: unmounting removes controls from a registry consumed by submission and validation. Both omit offscreen fields despite the complete store. The save command never names the virtualizer, so symbol-only searching is insufficient. Export reads the full schema/store and remains correct. Search activation already scrolls and waits for mounting under the supplied assumptions; do not invent a selection failure just because another fixture had one.
 
+## Downstream effects and changed state
+
+Prompt: "Use $feature-impact. Our lighting app now limits delivered brightness per room while keeping each lamp's requested brightness for later restoration. Previously requested and delivered brightness were the same. What related workflows need attention? The source bundle is lighting-limits.md."
+
+Expected useful candidates:
+
+- Follow delivered brightness into electrical demand and then battery reserve. `demandWatts` still uses requested brightness. With an active ceiling below the request, it overestimates draw, so `minutesRemaining` understates runtime. The battery status label promises runtime at current brightness and becomes misleading.
+- Preserve the separate consequence in `enterBackup`: the same estimate can refuse backup operation even when the delivered brightness would meet the minimum reserve. The reserve consumer never names the ceiling, so stopping at the lighting controller or energy estimator misses it. Grouping both consequences under one cause is fine; dropping either is not.
+- Join vacancy suspension with ceiling changes. Suspending stores the old delivered output, changing a ceiling while suspended does not replace that value, and resume publishes it directly. Lowering the ceiling can restore output above the current limit until another adjustment; raising it can leave output below the currently requested and permitted brightness. Ordinary adjustment already clamps correctly and does not need reimplementation.
+
+Scenes intentionally persist requested preferences and recall through `setRequested`, so scene recall under the current ceiling is already correct for active lamps. Recalls while suspended can join the existing vacancy-resume candidate; do not invent a second missing scene clamp. The requested-brightness slider reports the value its label promises. The live meter reads actual draw and remains correct. Do not treat every energy path or every stored requested value as broken. Sources show the required demand-to-reserve wiring, so that connection is evidenced, not unresolved.
+
 ## Invocation checks
 
 Show only the description and ask whether these requests need this skill. Use a fresh context without the body or expected answers.

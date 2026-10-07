@@ -15,22 +15,24 @@ Keep a short working table: changed concept; the question it answers; before and
 
 Name the representations and owners needed to search, and the facts still unknown. Start the sweep when each changed assumption has a question and a before/after statement. Resolve unknowns as consumers require them; do not wait to understand the whole subsystem.
 
-## 2. Search from both the implementation and its uses
+## 2. Expand the effects and search their consumers
 
-Build a working coverage table with these columns: changed assumption; search terms and directories; candidate consumers; checked or unresolved. Use both directions:
+Keep a working coverage table: changed assumption or derived effect; evidence for that connection; consumer and question; search/read locations; action outcome; other changed effects; disposition or next check. Add a row when a relevant consumer appears in a search or read, before deciding whether it is affected. Use both directions:
 
 - **Implementation outward.** Search fields, getters, setters, aliases, copies and caches. Follow derived decisions such as ordering, priority, filtering, eligibility and scheduling. Look for proxies where a different value stands in for the concept, such as object presence standing in for existence.
-- **User action inward.** Identify the features that relied on each old assumption. Find their entry points and follow the action to its outcome. Include actions on listed or selected items, background work, settings, recovery, and inspection where relevant. Name effects the old representation supplies, such as collision, registrations or event subscriptions, and find who relies on those effects. These consumers may never name the changed type or field.
+- **User action inward.** Identify the features that relied on each old assumption. Find their entry points and follow the action to its outcome. Include actions on listed or selected items, background work, settings, recovery, and inspection where relevant.
+
+Expand in rounds. First name effects the old representation supplies, such as collision, registrations, resource ownership or event delivery. Search for consumers of those effects, including consumers that never name the original type. When a consumer's output or guarantee changes, enter that derived effect in the table and search its consumers in the next round. Record the connection that justifies each expansion; do not expand unrelated neighbors merely because they share a file. Reuse an existing row for the same question and condition rather than looping through it again.
 
 For each changed assumption, also check its wire/storage consumers and its tooling, tests, counters and documentation. Include debug commands and scenario helpers that count, poll or assert the old representation, even when the production feature no longer uses them. Follow process boundaries into the repositories named by project guidance when relevant. Extend search terms from the callers and representations you discover; one initial keyword list does not establish coverage.
 
-If the sweep needs parallel readers, delegate independent assumptions or user workflows with clear ownership. Delegates return candidates, evidence, searches and unresolved call paths. The lead owns joining paths across assignments and the final classification. Without subagents, use the same coverage table sequentially.
+If the sweep needs parallel readers, delegate effects or user workflows with clear ownership, using the shared changed assumptions. Delegates return their consumer rows, new derived effects and unresolved links, including unaffected reasons. The lead owns connections between assignments and sends newly discovered questions back for targeted reads. Without subagents, use the same table sequentially.
 
 In Codex, use `gpt-6.1-sol` for repository research when model selection is available. An Astra lead delegates those sweeps to Sol. A Sol lead can finish the map itself; use at most one optional Astra subagent after research to join evidence, challenge classifications or suggest missing interactions. Give that reviewer the changed assumptions, candidate list and coverage gaps. Return targeted follow-up reads to Sol rather than repeating the sweep with Astra. On other providers, use available models without requiring cross-provider orchestration.
 
-If search output is truncated, narrow it or inspect the remaining results before marking the area covered. Before closing an area, account for every distinct consumer of the changed assumption found in its matches or reads. Give each its question and either follow it to an outcome or retain it as unresolved with the missing check. Group consumers only when they ask the same question under the same conditions; checking a file, helper or guarded branch does not cover its other consumers.
+If search output is truncated, narrow it or inspect the remaining results before marking the area covered. A reference to an asset, script or handler is an unfinished link until its relevant behavior is read or recorded as unavailable. Group consumers only when they ask the same question under the same conditions; checking a file or helper does not cover its other consumers.
 
-End the sweep when each assumption has been checked from both directions and each discovered consumer has a disposition or named coverage limit. Keep this candidate list through synthesis; distinct consequences cannot disappear just to shorten the answer.
+End expansion when each assumption has been checked from both directions, no newly found affected output or guarantee remains to be followed, and every discovered consumer has a disposition or named coverage limit. If a boundary cannot be inspected, record the specific missing connection rather than treating the area as complete. Follow the next section while filling the table; depth is not a substitute for checking interacting states.
 
 ## 3. Follow each candidate to its consequence
 
@@ -38,16 +40,19 @@ For each candidate, record:
 
 - The affected feature or action, its entry point and the consumer of the changed assumption, with locations.
 - The triggering condition, including applicable modes, and the observable result.
+- Other changed effects even when the action works: resource work or retention, later retry/re-entry, timing, and what a measurement now represents. Record a concrete effect or why none changes for this consumer; a safe guard alone does not answer these questions.
 - Its disposition: **needs a fix**, **worth considering**, **unaffected**, or **unresolved**. For an unresolved candidate, name the missing fact and the check that would settle it.
 - A next step and any material cost or tradeoff. Separate what the code proves from what you infer about intended behavior. If a required link from the trigger to the consequence is unverified, classify the candidate as unresolved.
 
-Do not call a whole feature unaffected because one helper reads the right data. Follow the next action and its failure path. A null check can prevent a crash while silently swallowing a click. A query can return the full list while selection still requires an object that is absent. Where callers are in UI assets, scripts, generated bindings or another service, inspect that boundary through the project's supported tools. If it is unavailable, keep the specific action unresolved rather than declaring it safe.
+Do not call a whole feature unaffected because one helper reads the right data. Follow the next action and its failure path. A null check can prevent a crash while silently swallowing a click. A query can return the full list while selection still requires an object that is absent. Inspect UI assets, scripts, generated bindings and service boundaries through the project's supported tools.
 
 For each changed lifetime or availability assumption, list the newly possible transitions and a consumer disposition for each: absent when an action starts, disappearing during pending work, returning before that work completes, and returning after completion or failure. Read both the operation and the code that recreates or refreshes its state. A record-based command can succeed while its optimistic presentation reappears, a callback never finishes, or a polling helper never advances.
 
-Compare other relevant lifecycle stages, including update, persistence, replication and teardown. Check which consumers require fresh values. Put lifecycle gaps with their affected feature rather than repeating them in a second findings list.
+Join states that can overlap in the same workflow. For suspension, ownership transfer or a temporary override, inspect entry, work while that state holds, and exit/restoration. Check whether state can change during the interval and which owner restores each affected value. A correct entry path does not establish a correct return path.
 
-Trace mode differences before saying an effect is local-only, remote-only or universal. Distinguish a newly exposed effect in one mode from the same effect already present elsewhere. Known intent is a disposition, not proof that every downstream use is unaffected. For example, an intentional setting may change the workload of a performance comparison.
+An unaffected disposition must name the exact condition its protection handles. Check neighboring reachable states separately: a stationary guard does not cover movement, and an arrival safeguard does not establish that an earlier destination query had complete inputs. Compare relevant update, persistence, replication and teardown paths, including consumers that require fresh values. Put each consequence with its affected feature.
+
+Trace mode differences before saying an effect is local-only, remote-only or universal. Distinguish a newly exposed effect in one mode from the same effect already present elsewhere. Keep intentional or pre-existing interactions when the change exposes them in another mode or changes their frequency, cost or interpretation. Report action correctness separately from those effects; for example, a setting can work correctly while changing a performance comparison's workload.
 
 Keep concrete improvements and plausible interactions even when a future feature may address them. Mark known coverage or accepted intent briefly if supplied or encountered; do not search the tracker just to deduplicate recommendations. Exclude the changed feature's own progress and remaining implementation steps, but retain consequences for its consumers.
 
@@ -60,8 +65,8 @@ Required sections:
 1. **Needs a fix.** Verified incorrect behavior in related features, most consequential first. Say explicitly if none was established.
 2. **Worth considering.** Smaller items, improvements and concrete interactions that may be intentional. Include unresolved candidates here with the missing check. Keep distinct candidates individually visible. Group tooling and stale docs here unless their consequence warrants the first section.
 3. **Decisions.** Choices exposed by the interactions, with the alternatives and what would decide between them. Omit when none. Do not turn this into a mandatory redesign of the original feature.
-4. **Scope and coverage.** A short before/after summary, important unaffected paths with reasons, search terms and areas, and uninspected boundaries. Include the feature's own work set aside in one line. Keep detailed working tables here or in an appendix only when they help check the map.
+4. **Scope and coverage.** A short before/after summary and a compact table of derived effects, their consumer outcomes and uninspected links. For important unaffected paths, name the condition checked and why neither the action nor its other effects need attention. Include search terms and areas, and the feature's own work set aside in one line. Keep the detailed consumer rows in an appendix if needed.
 
-Before sending, reconcile the candidate list with the answer. Every useful candidate must appear or have a concrete unaffected/duplicate/feature-owned reason for exclusion. If also saving a report, preserve every distinct actionable or unresolved candidate in the chat answer, even as a short grouped bullet. A short summary must not hide the smaller findings.
+Before sending, reconcile every consumer row with the answer, including consequences described incidentally in another item's evidence. Each must appear or have a concrete unaffected/duplicate/feature-owned reason for exclusion. Do not merge different user outcomes just because they use the same destruction hook, setting or counter. If also saving a report, preserve every distinct actionable or unresolved candidate in the chat answer, even as a short grouped bullet.
 
 Return the map in chat unless the user requests a saved report or the ongoing workflow already has a report destination. Do not invent a tracked documentation file. Stop at recommendations; implementation and issue edits are separate requests.
