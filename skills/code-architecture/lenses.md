@@ -2,7 +2,7 @@
 
 A lens is an invariant, the code form that enforces it, the bug class that form removes, and the couple row extraction adds when the form is absent. Design uses the code forms. Compare tags each divergence with its lens slug and finds its evidence in the model sections the lens names. A lens that cannot name a code form is a readability lens, kept apart and pruned by record in `evals/lens-ledger.md`.
 
-Every stage honors a lens's "Not a finding" line. Removing a lens from this file removes its couple rows, its encodings and its tags; that is how a lens is tested.
+Every stage honors a lens's "Not a finding" line.
 
 ## Selection
 
@@ -12,22 +12,21 @@ All design lenses apply to every run. Add diagnostics when the request names log
 
 A design's own structures can permit the bug classes the lenses remove. Check each encoding for these shapes before accepting it:
 
-- A decision value consumed after its fact can change: an admission, eligibility or authorization result used by later work (a sweep, a retry, a later deploy). authority.
-- A lease where scoped ownership would do: a time-bounded claim on work that a transaction, the owner's version check or provider idempotency already makes exclusive. lifetime. A lease kept only to throttle concurrent work or cost, and documented as such, is not this shape; check that no correctness claim rests on it.
-- External work kept inside an owner that then needs a fence: an inbox, queue or dispatcher that makes the provider call itself instead of handing it to the owner that already fences it. lifetime, policy-owner.
-- A mechanism copied from another owner without that owner's obligation. lifetime.
-- A bound computed from a mechanism whose meaning is a premise: a worst case from timeout and retry settings, a window from an undocumented lag. external-contract, constants.
+- A decision value consumed after its fact can change: an admission, eligibility or authorization result used by later work (a retry, a deferred or batched job, a later tick) without re-checking the facts it was decided from. authority.
+- A lease where scoped ownership would do: a time-bounded claim on work that a transaction, a version check, a provider's own deduplication or a single owning thread already makes exclusive. lifetime. A lease kept only to throttle concurrent work or cost, and documented as such, is not this shape; check that no correctness claim rests on it.
+- External work kept inside an owner that then needs a fence: a queue, dispatcher or worker task that makes the provider call itself instead of handing it to the owner that already fences it. identity, policy-owner.
+- A mechanism copied from another owner without that owner's obligation: it adds states and recovery work that protect nothing. present-obligation.
+- A bound computed from a mechanism whose meaning is a premise: a worst case from timeout and retry settings before the provider code shows what the timeout measures, a window from an undocumented lag. external-contract, constants.
+- A provider recovery the provider does not document for this case: a retry, resubmission or new request key after an outcome the provider reports as unknown, justified by documentation of a different case. Cite the guidance for this case or list the recovery as a premise. external-contract.
 - A rule generalized across kinds the provider treats differently: a recovery safe for one operation kind applied to all. external-contract.
-- A level claimed that the form does not reach: a read-then-write lookup offered as a gate, a convention or comment offered as a type. state-gate, assurance of the claimed level.
-
-"The code avoids this bug" is a fact about the code, not a pass for the encoding. Judge the encoding as written.
+- A level claimed that the form does not reach: a check offered as a gate, a convention or comment offered as a type. state-gate.
 
 ## Design lenses
 
 ### state-gate: actions are a function of state
 
 - Invariant: an action runs only in the states that permit it, and one owner decides.
-- In code: one state owner through which every action passes; transitions in one method; callers ask the owner to act and never test a flag and then act. A single-flight or uniqueness invariant across concurrent requests is a unique key or a locked row in the store; a read-then-write lookup is a check, not a gate, and does not reach gate level.
+- In code: one state owner through which every action passes; transitions in one method; callers ask the owner to act and never test a flag and then act. A single-flight or uniqueness invariant across concurrent callers (threads, processes, requests) is an atomic check-and-act at the owner: a unique key or locked row in a store, a compare-and-swap, a lock held across both check and act, or one owning thread. A read followed by a separate write is a check, not a gate.
 - Bug class removed: the action applied in the wrong state. Purchase started twice, join sent while leaving, send after close.
 - Couple row: an action reachable in a forbidden or undefined cell of the gate matrix, with the absent enforcer.
 - Model sections: action gates, states and transitions.
@@ -54,11 +53,11 @@ A design's own structures can permit the bug classes the lenses remove. Check ea
 ### lifetime: lifetime is decided, not hedged
 
 - Invariant: every acquired resource has one owner and one release on every exit path.
-- In code: scoped ownership that releases on exit (RAII, using, defer, a disposable owner), so early returns and error paths release without a separate call. When the lifetime is not knowable, a region bounds it: an arena, a per-frame pool, a scope. Shared ownership only with a written reason.
+- In code: scoped ownership that releases on exit (RAII, using, defer, a disposable owner), so early returns and error paths release without a separate call. When the lifetime is not knowable, a region bounds it: an arena, a per-frame pool, a scope. Shared ownership only with a written reason. In a garbage-collected runtime the decided form is one strong reference from the owner and weak references elsewhere, and a non-memory resource (a device, session, registration, timer) still has an explicit release at the owner's end; collection is not release.
 - Bug class removed: a leak on an error path; double release; use after release; shared ownership nobody decided.
 - Couple row: a resource with no owner, more than one releaser, an undecided ownership form, or an exit path with no release.
 - Model sections: lifetimes.
-- Not a finding: shared ownership with a named reason; a release the owner's exit already guarantees.
+- Not a finding: shared ownership with a named reason; a release the owner's exit already guarantees; a collected object whose only strong reference is its owner's.
 
 ### interrupt: every interrupting event has a defined effect on in-flight work
 
@@ -80,13 +79,12 @@ A design's own structures can permit the bug classes the lenses remove. Check ea
 
 ### external-contract: invocation is separate from completion
 
-- Invariant: for every external operation the thread, blocking behavior, completion count and cancellation semantics are known or written as premises, and provider types do not cross the adapter.
+- Invariant: for every external operation the thread, blocking behavior, completion count and cancellation semantics are known or written as premises, and an adapted provider's types do not cross the adapter.
 - In code: one adapter translates provider results into owned types; registration returns a handle and completion arrives once as a separate typed result; the domain holds no reference to the provider's types.
 - Bug class removed: blocking the game thread on a call assumed asynchronous; double completion; a provider upgrade that ripples through the domain.
-- Couple row: an external operation whose completion count, thread or cancellation behavior is unknown and unstated; a provider type consumed outside the adapter.
+- Couple row: an external operation whose completion count, thread or cancellation behavior is unknown and unstated; an adapted provider's type consumed outside the adapter.
 - Model sections: external contracts.
-- Not a finding: a provider behavior the version-matched contract documents and the adapter honors.
-- Design limit: a remedy that retries, resubmits or rotates a key at the provider needs the provider's documented guidance for that case. A documented behavior (a cached 500 is replayed) does not license a remedy the same documentation warns against (a fresh key after an inconclusive search). A bound computed from timeout and retry settings is a premise until the timeout's meaning, total or inactivity, is read from the transport.
+- Not a finding: a provider behavior the version-matched contract documents and the adapter honors; a type or call from the engine, framework or standard library the whole project is written against, whose contracts are recorded as rows but which needs no adapter.
 
 ### required-capability: a required capability cannot be defaulted away
 
@@ -118,7 +116,7 @@ A design's own structures can permit the bug classes the lenses remove. Check ea
 ### trust-entry: validate once at the owned entry
 
 - Invariant: untrusted input becomes a trusted type at one boundary; downstream code takes the type.
-- In code: a constructor that cannot produce an invalid instance; one entry that turns raw input into that type; private setters.
+- In code: a constructor that cannot produce an invalid instance; one entry that turns raw input into that type; private setters. On a server, every client-sent message or remote-call parameter is untrusted input.
 - Bug class removed: an alternate entry that skips validation; the same check repeated with drift.
 - Couple row: an entry path that reaches trusting code without passing the validation owner; a check repeated at a second non-boundary.
 - Model sections: external contracts, identities and correlation.
@@ -144,12 +142,12 @@ A design's own structures can permit the bug classes the lenses remove. Check ea
 
 ### replicated: cross-process facts have an authoritative writer
 
-- Invariant: a replicated fact has one authoritative writer, a versioned transmitted representation, and one reconciliation site.
-- In code: a distinct predicted type that the authoritative update replaces; a version or sequence on every payload; reconciliation in one place.
+- Invariant: a replicated fact has one authoritative writer, a defined transmitted representation, and one reconciliation site.
+- In code: a distinct predicted type that the authoritative update replaces; order carried explicitly (version or sequence) wherever a consumer depends on order the transport does not guarantee; reconciliation in one place.
 - Bug class removed: split authority; atomicity assumed from a struct; order assumed from a serializer.
-- Couple row: a replicated fact with two writers, or a payload with no version whose consumer assumes order.
+- Couple row: a replicated fact with two writers, or a consumer that depends on an order the transport does not guarantee (between two properties, a property and a remote call, two unreliable messages).
 - Model sections: external contracts, identities and correlation.
-- Not a finding: transient events the contract says are fire and forget.
+- Not a finding: transient events the contract says are fire and forget; replicated state whose consumers need only the latest value.
 
 ### constants: a literal is fixed by a contract, or it is a parameter
 

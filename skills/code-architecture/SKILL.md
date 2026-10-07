@@ -6,11 +6,13 @@ disable-model-invocation: true
 
 # Code architecture
 
-Establish the subsystem, revision or branch, requested stages and output location from the request and repository. The stages are extract, design, compare and synthesize. Run the stages the user requests. An extract-only request stops after the model. Design and compare run when the user asks for review. Implement only when the user asks for code changes, following the project's coding workflow.
+Establish the subsystem, revision or branch, requested stages and output location from the request and repository. The stages are extract, design, compare and synthesize, with one design revision when compare finds design defects. Run the stages the user requests. An extract-only request stops after the model. Design and compare run when the user asks for review. Implement only when the user asks for code changes, following the project's coding workflow.
 
-A named branch is a target, not permission to switch a shared checkout. Preserve existing work and use the requested revision without creating another checkout unless authorized.
+A named branch is a target, not permission to switch a shared workspace. Preserve existing work and read the requested revision through version control without creating another workspace or checking out files unless authorized.
 
 Honor the user's model and effort choice for each role: extractor, delegates, designer, comparers and synthesizer. Disclose an unavailable requested execution rather than silently substituting.
+
+No stage launches builds, applications, scripts, external mutations or measurements; an unknown runtime behavior is an evidence gap or a premise. Pass this limit in every brief.
 
 ## Extract
 
@@ -18,7 +20,7 @@ Read [extract.md](extract.md). Use a separate agent so its attention goes to the
 
 The extractor may delegate bounded source areas when parallel reading helps. Each delegate reads extract.md and writes its area's rows in every section it touches; the extractor merges them and owns the cross-area rows and the couple section. Partition by source boundary, not by model section. If delegation is unavailable, keep the areas with the extractor and disclose the limit.
 
-Extraction is read-only on the target project. Write outputs outside tracked project source unless the user names a project destination. Use existing evidence: the source, installed packages and version-matched provider documentation are all available evidence. Do not launch builds, applications, external mutations or measurements to fill rows. Surface a prerequisite that is genuinely unavailable and continue independent work.
+Extraction is read-only on the target project. Write outputs outside tracked project source unless the user names a project destination. Use existing evidence; extract.md names the sources. Surface a prerequisite that is genuinely unavailable and continue independent work.
 
 ## Design
 

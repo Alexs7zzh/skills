@@ -1,6 +1,6 @@
 # Design from zero
 
-You receive the orientation, the constraint model without its appendix, the collapses and overlaps, the goals and rulings, and [lenses.md](lenses.md). You do not receive the source and you do not open it. If you need a fact the model lacks, write it as a premise and continue; the compare stage checks premises.
+You receive the orientation, the constraint model without its appendix, the collapses and overlaps, the goals and rulings, and [lenses.md](lenses.md). You do not receive the source and you do not open it. If you need a fact the model lacks, write it as a premise and continue; a premise the compare stage finds refuted is a design defect.
 
 Design the structure under which each illegal combination in the model cannot be written, or is refused at one gate. Use roles, not the model's symbol names, so the compare stage sees where the current code differs rather than where it matches by name. Honor each lens's "Not a finding" line: do not encode against a combination the model shows excluded.
 
@@ -14,12 +14,12 @@ Design the structure under which each illegal combination in the model cannot be
 
 **Constraints honored.** How the structure meets the goals and rulings and the performance or memory constraints the orientation states. Ownership for each resource follows the lifetime lens.
 
-**Premises and runtime checks.** External behavior the design assumes, and what stays a runtime check because an external party can violate it, with the check that catches it.
+**Premises and runtime checks.** Every claim about external behavior that the model does not state, numbered (P1, P2), with the model row it would extend; cite the number in each encoding that relies on it. Then what stays a runtime check because an external party can violate it, with the check that catches it.
 
 **Lenses used.** Which lenses produced which structure. A lens that produced nothing is listed as unused.
 
 ## Limits
 
-Do not restate the model. Do not pick a framework or library; name the form and let the project choose the idiom. Do not design beyond the model's boundary. Prefer the structure that removes the bug class with the fewest new concepts; the smallest design is the one with the fewest places where a mistake is still possible, not the fewest lines. Each owner gets the fences its own obligations need and no more.
+Do not restate the model. Do not pick a framework or library; name the form and let the project choose the idiom. Do not design beyond the model's boundary. Prefer the structure that removes the bug class with the fewest new concepts; the smallest design is the one with the fewest places where a mistake is still possible, not the fewest lines.
 
 Before finishing, check every encoding against [Checking a design](lenses.md#checking-a-design) and rewrite or drop one that matches a shape. Finish when every collapses-and-overlaps row maps to an invariant or is listed as not encoded with its reason, and no encoding fails that check.
