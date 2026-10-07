@@ -28,6 +28,7 @@ The repository publishes these skills:
 - `avatar-check` checks a VRM avatar against what MEs loads and, when asked, writes an optimized copy.
 - `coding` handles code changes, reviews, and diagnosis.
 - `code-architecture` is explicitly invoked to research a subsystem, review its architecture with independent perspectives, and develop concrete remedies.
+- `feature-impact` finds the other features and workflows affected by a change, including bugs, smaller improvements and open decisions.
 - `show-me` explains with diagrams, code-shape sketches, and focused HTML artifacts.
 - `skill-authoring` creates, reviews, tests, and maintains agent skills.
 
