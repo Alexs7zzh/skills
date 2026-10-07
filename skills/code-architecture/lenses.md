@@ -18,6 +18,7 @@ A design's own structures can permit the bug classes the lenses remove. Check ea
 - A mechanism copied from another owner without that owner's obligation. lifetime.
 - A bound computed from a mechanism whose meaning is a premise: a worst case from timeout and retry settings, a window from an undocumented lag. external-contract, constants.
 - A rule generalized across kinds the provider treats differently: a recovery safe for one operation kind applied to all. external-contract.
+- A level claimed that the form does not reach: a read-then-write lookup offered as a gate, a convention or comment offered as a type. state-gate, assurance of the claimed level.
 
 "The code avoids this bug" is a fact about the code, not a pass for the encoding. Judge the encoding as written.
 
