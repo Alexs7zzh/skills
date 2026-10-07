@@ -13,7 +13,7 @@ All design lenses apply to every run. Add diagnostics when the request names log
 A design's own structures can permit the bug classes the lenses remove. Check each encoding for these shapes before accepting it:
 
 - A decision value consumed after its fact can change: an admission, eligibility or authorization result used by later work (a sweep, a retry, a later deploy). authority.
-- A lease where scoped ownership would do: a time-bounded claim on work that a transaction, the owner's version check or provider idempotency already makes exclusive. lifetime.
+- A lease where scoped ownership would do: a time-bounded claim on work that a transaction, the owner's version check or provider idempotency already makes exclusive. lifetime. A lease kept only to throttle concurrent work or cost, and documented as such, is not this shape; check that no correctness claim rests on it.
 - External work kept inside an owner that then needs a fence: an inbox, queue or dispatcher that makes the provider call itself instead of handing it to the owner that already fences it. lifetime, policy-owner.
 - A mechanism copied from another owner without that owner's obligation. lifetime.
 - A bound computed from a mechanism whose meaning is a premise: a worst case from timeout and retry settings, a window from an undocumented lag. external-contract, constants.
