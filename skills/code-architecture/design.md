@@ -20,6 +20,6 @@ Design the structure under which each illegal combination in the model cannot be
 
 ## Limits
 
-Do not restate the model. Do not pick a framework or library; name the form and let the project choose the idiom. Do not design beyond the model's boundary. Prefer the structure that removes the bug class with the fewest new concepts; the smallest design is the one with the fewest places where a mistake is still possible, not the fewest lines.
+Do not restate the model. Do not pick a framework or library; name the form and let the project choose the idiom. Do not design beyond the model's boundary. Prefer the structure that removes the bug class with the fewest new concepts; the smallest design is the one with the fewest places where a mistake is still possible, not the fewest lines. Each owner gets the fences its own obligations need and no more.
 
-Finish when every collapses-and-overlaps row maps to an invariant or is listed as not encoded with its reason.
+Before finishing, check every encoding against [Checking a design](lenses.md#checking-a-design) and rewrite or drop one that matches a shape. Finish when every collapses-and-overlaps row maps to an invariant or is listed as not encoded with its reason, and no encoding fails that check.

@@ -18,7 +18,7 @@ Read [extract.md](extract.md). Use a separate agent so its attention goes to the
 
 The extractor may delegate bounded source areas when parallel reading helps. Each delegate reads extract.md and writes its area's rows in every section it touches; the extractor merges them and owns the cross-area rows and the couple section. Partition by source boundary, not by model section. If delegation is unavailable, keep the areas with the extractor and disclose the limit.
 
-Extraction is read-only on the target project. Write outputs outside tracked project source unless the user names a project destination. Use existing evidence and provider contracts; do not launch builds, applications, external mutations or measurements to fill rows. Surface an unavailable prerequisite and continue independent work.
+Extraction is read-only on the target project. Write outputs outside tracked project source unless the user names a project destination. Use existing evidence: the source, installed packages and version-matched provider documentation are all available evidence. Do not launch builds, applications, external mutations or measurements to fill rows. Surface a prerequisite that is genuinely unavailable and continue independent work.
 
 ## Design
 

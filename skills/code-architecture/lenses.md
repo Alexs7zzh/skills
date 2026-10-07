@@ -8,12 +8,25 @@ Every stage honors a lens's "Not a finding" line. Removing a lens from this file
 
 All design lenses apply to every run. Add diagnostics when the request names logging, telemetry, severity or monitoring, or the goals state a monitoring obligation. Add readability lenses only when the user asks for them. Extraction records the selection in the orientation; later stages read it there.
 
+## Checking a design
+
+A design's own structures can permit the bug classes the lenses remove. Check each encoding for these shapes before accepting it:
+
+- A decision value consumed after its fact can change: an admission, eligibility or authorization result used by later work (a sweep, a retry, a later deploy). authority.
+- A lease where scoped ownership would do: a time-bounded claim on work that a transaction, the owner's version check or provider idempotency already makes exclusive. lifetime.
+- External work kept inside an owner that then needs a fence: an inbox, queue or dispatcher that makes the provider call itself instead of handing it to the owner that already fences it. lifetime, policy-owner.
+- A mechanism copied from another owner without that owner's obligation. lifetime.
+- A bound computed from a mechanism whose meaning is a premise: a worst case from timeout and retry settings, a window from an undocumented lag. external-contract, constants.
+- A rule generalized across kinds the provider treats differently: a recovery safe for one operation kind applied to all. external-contract.
+
+"The code avoids this bug" is a fact about the code, not a pass for the encoding. Judge the encoding as written.
+
 ## Design lenses
 
 ### state-gate: actions are a function of state
 
 - Invariant: an action runs only in the states that permit it, and one owner decides.
-- In code: one state owner through which every action passes; transitions in one method; callers ask the owner to act and never test a flag and then act.
+- In code: one state owner through which every action passes; transitions in one method; callers ask the owner to act and never test a flag and then act. A single-flight or uniqueness invariant across concurrent requests is a unique key or a locked row in the store; a read-then-write lookup is a check, not a gate, and does not reach gate level.
 - Bug class removed: the action applied in the wrong state. Purchase started twice, join sent while leaving, send after close.
 - Couple row: an action reachable in a forbidden or undefined cell of the gate matrix, with the absent enforcer.
 - Model sections: action gates, states and transitions.
@@ -26,14 +39,14 @@ All design lenses apply to every run. Add diagnostics when the request names log
 - Bug class removed: two flags both set; a state that exists only because two variables disagree.
 - Couple row: states meant to be exclusive that are stored in separate roots and can disagree.
 - Model sections: states and transitions.
-- Not a finding: independent facts that legitimately combine.
+- Not a finding: independent facts that legitimately combine. Payment, access and recovery of one purchase are three facts, not one state.
 
 ### authority: one writer per fact, and copies declare their lag
 
 - Invariant: each fact has one writer; every copy names its purpose and permitted lag.
-- In code: the field is private to its owner with no external setter; others get a read-only view or a pure getter; a retained copy is a distinct type that names its purpose.
-- Bug class removed: two writers racing on one fact; a copy acted on as current beyond its permitted lag.
-- Couple row: a fact with more than one writer, or a copy whose consumer treats it as current with no stated lag.
+- In code: the field is private to its owner with no external setter; others get a read-only view or a pure getter; a retained copy is a distinct type that names its purpose. A fact that several sources can each supply (access from several purchases, a permission from several grants) is stored as the set of contributions and derived per read, never as one flag.
+- Bug class removed: two writers racing on one fact; a copy acted on as current beyond its permitted lag; revoking one contributor revokes what the others still supply.
+- Couple row: a fact with more than one writer, or a copy whose consumer treats it as current with no stated lag, or a flag that several sources set and any one of them clears.
 - Model sections: states and transitions.
 - Not a finding: a copy with a stated purpose and a lag the consumer honors.
 
@@ -72,6 +85,7 @@ All design lenses apply to every run. Add diagnostics when the request names log
 - Couple row: an external operation whose completion count, thread or cancellation behavior is unknown and unstated; a provider type consumed outside the adapter.
 - Model sections: external contracts.
 - Not a finding: a provider behavior the version-matched contract documents and the adapter honors.
+- Design limit: a remedy that retries, resubmits or rotates a key at the provider needs the provider's documented guidance for that case. A documented behavior (a cached 500 is replayed) does not license a remedy the same documentation warns against (a fresh key after an inconclusive search). A bound computed from timeout and retry settings is a premise until the timeout's meaning, total or inactivity, is read from the transport.
 
 ### required-capability: a required capability cannot be defaulted away
 
@@ -125,7 +139,7 @@ All design lenses apply to every run. Add diagnostics when the request names log
 - Bug class removed: two sites deciding differently; a caller that forgets the required order.
 - Couple row: a rule decided at more than one site, or an ordering only callers enforce.
 - Model sections: action gates, failure taxonomy.
-- Not a finding: an executor that branches on its own mechanism state.
+- Not a finding: an executor that branches on its own mechanism state; a safety switch deliberately re-read at every effect site, so a pause bites on work already admitted.
 
 ### replicated: cross-process facts have an authoritative writer
 
