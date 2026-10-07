@@ -1,0 +1,7 @@
+observed_at,severity,category,message
+2026-09-14T02:11:08Z,Warning,Transport.Connection,Connection attempt failed (timeout after 10s)
+2026-09-14T02:11:38Z,Warning,Transport.Connection,Connection attempt failed (timeout after 10s)
+2026-09-16T19:40:02Z,Warning,Transport.Connection,Connection attempt failed (dns resolution)
+2026-09-21T07:03:55Z,Warning,Transport.Connection,Connection attempt failed (timeout after 10s)
+2026-09-29T11:27:13Z,Warning,Session.Summary,Protocol downgraded to v2 (observed 1843s before session end)
+2026-10-02T23:58:41Z,Warning,Transport.Connection,Connection attempt failed (tls handshake)
