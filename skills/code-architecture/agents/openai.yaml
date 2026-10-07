@@ -1,6 +1,6 @@
 interface:
   display_name: "Code Architecture"
-  short_description: "Research and review architecture with concrete remedies"
-  default_prompt: "Use $code-architecture to research and review this subsystem and propose concrete remedies."
+  short_description: "Model constraints, design from them, compare to the code"
+  default_prompt: "Use $code-architecture to model this subsystem's constraints, design its ideal structure and compare it to the code."
 policy:
   allow_implicit_invocation: false
