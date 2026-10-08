@@ -9,11 +9,11 @@ Find the other features and workflows affected by a change. Map the consequences
 
 ## 1. Name the changed assumptions
 
-Read the user's description, applicable project guidance and the code that owns the change. Use supplied decisions as constraints. Read linked context when it settles a specific uncertainty; do not make a tracker search or traversal of related issues a prerequisite.
+Read the user's description, applicable project guidance and the code that owns the change. Treat the selected feature and supplied decisions as constraints. Map their consequences without reopening the feature's purpose, whether to build it, or its choice of design. Read linked context when it settles a specific uncertainty; do not make a tracker search or traversal of related issues a prerequisite.
 
-Keep a short working table: changed concept; the question it answers; before and after; affected modes or users. Include changes in ownership, availability and timing even when no field changed. For example, "exists in storage" and "available in memory" may have become different questions. Record which uses still need the old meaning.
+Before dispatching consumer research, write a short working table: changed concept; before and after by mode or user; guarantees gained or lost; consumer questions and search phrases. Include ownership, availability and timing even when no field changed. Phrase each change from both sides: what becomes available or possible, and what is no longer available or guaranteed. For example, complete records can coexist with incomplete loaded objects; ask both who can now use the records and who still needs an absent object. Use alternate domain terms for those questions. Mark inferred guarantees and exceptions for verification rather than treating a rephrasing as proof.
 
-Name the representations and owners needed to search, and the facts still unknown. Start the sweep when each changed assumption has a question and a before/after statement. Resolve unknowns as consumers require them; do not wait to understand the whole subsystem.
+Name the representations and owners needed to search, and the facts still unknown. Start the sweep when each changed assumption has a before/after statement and consumer questions for its gained or lost guarantees. Resolve unknowns as consumers require them; do not wait to understand the whole subsystem.
 
 ## 2. Expand the effects and search their consumers
 
@@ -26,7 +26,7 @@ Expand in rounds. First name effects the old representation supplies, such as co
 
 For each changed assumption, also check its wire/storage consumers and its tooling, tests, counters and documentation. Include debug commands and scenario helpers that count, poll or assert the old representation, even when the production feature no longer uses them. Follow process boundaries into the repositories named by project guidance when relevant. Extend search terms from the callers and representations you discover; one initial keyword list does not establish coverage.
 
-If the sweep needs parallel readers, delegate effects or user workflows with clear ownership, using the shared changed assumptions. Delegates return their consumer rows, new derived effects and unresolved links, including unaffected reasons. The lead owns connections between assignments and sends newly discovered questions back for targeted reads. Without subagents, use the same table sequentially.
+For a broad sweep with independent concept clusters, use parallel readers when available. Group questions that share an assumption and its consumers; alternate phrasings stay in the same cluster. Record an owner for every cluster before dispatch, including work the lead keeps. Give each reader the shared assumption table, its questions and relevant mode differences. Delegates return consumer rows, new derived effects and unresolved links, including unaffected reasons. The lead joins results across clusters and assigns newly discovered questions for the next round. Without subagents, use the same ownership and coverage table sequentially.
 
 In Codex, use `gpt-6.1-sol` for repository research when model selection is available. An Astra lead delegates those sweeps to Sol. A Sol lead can finish the map itself; use at most one optional Astra subagent after research to join evidence, challenge classifications or suggest missing interactions. Give that reviewer the changed assumptions, candidate list and coverage gaps. Return targeted follow-up reads to Sol rather than repeating the sweep with Astra. On other providers, use available models without requiring cross-provider orchestration.
 
@@ -64,8 +64,8 @@ Required sections:
 
 1. **Needs a fix.** Verified incorrect behavior in related features, most consequential first. Say explicitly if none was established.
 2. **Worth considering.** Smaller items, improvements and concrete interactions that may be intentional. Include unresolved candidates here with the missing check. Keep distinct candidates individually visible. Group tooling and stale docs here unless their consequence warrants the first section.
-3. **Decisions.** Choices exposed by the interactions, with the alternatives and what would decide between them. Omit when none. Do not turn this into a mandatory redesign of the original feature.
-4. **Scope and coverage.** A short before/after summary and a compact table of derived effects, their consumer outcomes and uninspected links. For important unaffected paths, name the condition checked and why neither the action nor its other effects need attention. Include search terms and areas, and the feature's own work set aside in one line. Keep the detailed consumer rows in an appendix if needed.
+3. **Consumer decisions.** Choices about adapting affected workflows to the selected feature, with the alternatives and what would decide between them. Omit when none.
+4. **Scope and coverage.** A short before/after summary and a compact table of assumption clusters, research owners, derived effects, consumer outcomes and uninspected links. For important unaffected paths, name the condition checked and why neither the action nor its other effects need attention. Include search terms and areas, and the feature's own work set aside in one line. Keep the detailed consumer rows in an appendix if needed.
 
 Before sending, reconcile every consumer row with the answer, including consequences described incidentally in another item's evidence. Each must appear or have a concrete unaffected/duplicate/feature-owned reason for exclusion. Do not merge different user outcomes just because they use the same destruction hook, setting or counter. If also saving a report, preserve every distinct actionable or unresolved candidate in the chat answer, even as a short grouped bullet.
 

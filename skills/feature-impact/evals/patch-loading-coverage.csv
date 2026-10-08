@@ -1,31 +1,31 @@
-Merged item,Theme,Original Codex,Original Claude,Astra A,Astra B,Sol 1,Latest Sol,Scoring note,Rounds Sol A,Rounds Sol B,Effects Sol C
-1,MIND search activation,-,F,F,F,F,F,,F,F,F
-2,Pending delete reappears,-,F,-,-,-,F,,F,F,F
-3,Inspection and metadata lifetime,F,P,F,F,F,F,Claude flags an actor-backed callback gap but also calls actor-in-hand inspection unaffected.,F,F,F
-4,Browser HUD return destination,-,-,-,-,F,-,,F,F,F
-5,Custom graphics restoration,-,-,-,F,-,-,,F,-,F
-6,Frozen capture content,-,-,-,F,-,-,,F,-,F
-7,Multi-selection loses entries,-,-,F,F,F,-,,-,F,F
-8,Remote drag preview admission,-,-,-,-,F,-,,-,F,-
-9,Sound audible reach,F,F,F,F,F,F,,F,F,F
-10,Audio and animated-image restart,F,-,P,P,P,P,All replays discuss audio restart; only original Codex also reports animated-image timing.,P,P,P
-11,Open browser memory retention,P,P,F,F,F,F,Original reports recognize browser pins but do not expose their memory consequence as a candidate.,P,P,F
-12,Background work after eviction,F,-,-,-,F,F,Original Codex discusses outstanding imports and cancellation/release after eviction in its memory row and decisions.,-,F,-
-13,Repeat import after collection,-,-,F,-,F,F,,F,-,-
-14,Failed payload retry,P,-,-,-,P,F,Original Codex and Sol 1 mention retained failure outcomes without exposing recovered content or explicit retry as a decision.,P,-,-
-15,Distance versus resource budget,F,P,-,-,-,-,Score the resource-budget question. Do not require the user's later small-world/count hybrid design. Claude asks whether MIND cost justifies residency.,-,-,-
-16,Cold bounds and far pivots,F,F,-,-,-,-,,-,-,-
-17,Default spawn collision fit,-,F,-,-,-,-,,P,F,F
-18,Fall recovery support identity,F,P,-,-,-,-,Claude mentions falling before floor arrival and the existing recovery issue without the support-identity distinction.,P,P,P
-19,Moving remote avatars,F,F,-,-,-,-,,-,-,F
-20,User photos and thumbnails readiness,-,-,F,-,F,-,,-,-,P
-21,Product preset versus raw scalability,-,F,F,F,F,P,Latest Sol connects product presets to workload but omits raw sg.ViewDistanceQuality bypass.,P,F,P
-22,Record count versus resident workload,F,F,F,F,F,F,,F,F,F
-23,Capture readiness beyond importer idle,P,P,F,F,P,F,Originals and Sol 1 raise capture-specific readiness or prediction but omit the importer-idle gap's full mechanism.,P,-,F
-24,Production performance telemetry,F,F,F,F,F,P,Latest Sol cites stored count versus workload for comparisons without the separate production telemetry/sampling recommendation.,F,F,P
-25,Cumulative counters and failures,-,-,-,-,-,F,,-,-,P
-26,Retired perf suites PSO hooks CVars,P,F,P,-,P,P,"Partial means suites and/or PSO hooks are reported, but the full merged group including retired CVars is not. Original Claude reports all.",P,P,-
-27,Synthetic actor predicates,-,F,-,-,-,F,,F,F,F
-28,One-shot actor hiding,-,F,-,-,-,F,,-,-,-
-29,Bounds debugging,-,-,-,-,-,F,,-,-,-
-30,Stale documentation and hints,P,P,P,P,P,P,Every run catches some documentation; none reports the whole combined set.,P,P,P
+Merged item,Theme,Original Codex,Original Claude,Astra A,Astra B,Sol 1,Latest Sol,Scoring note,Rounds Sol A,Rounds Sol B,Effects Sol C,Scope
+1,MIND search activation,-,F,F,F,F,F,,F,F,F,impact
+2,Pending delete reappears,-,F,-,-,-,F,,F,F,F,impact
+3,Inspection and metadata lifetime,F,P,F,F,F,F,Claude flags an actor-backed callback gap but also calls actor-in-hand inspection unaffected.,F,F,F,impact
+4,Browser HUD return destination,-,-,-,-,F,-,,F,F,F,impact
+5,Custom graphics restoration,-,-,-,F,-,-,,F,-,F,impact
+6,Frozen capture content,-,-,-,F,-,-,,F,-,F,impact
+7,Multi-selection loses entries,-,-,F,F,F,-,,-,F,F,impact
+8,Remote drag preview admission,-,-,-,-,F,-,,-,F,-,impact
+9,Sound audible reach,F,F,F,F,F,F,,F,F,F,impact
+10,Audio and animated-image restart,F,-,P,P,P,P,All replays discuss audio restart; only original Codex also reports animated-image timing.,P,P,P,impact
+11,Open browser memory retention,P,P,F,F,F,F,Original reports recognize browser pins but do not expose their memory consequence as a candidate.,P,P,F,impact
+12,Background work after eviction,F,-,-,-,F,F,Original Codex discusses outstanding imports and cancellation/release after eviction in its memory row and decisions.,-,F,-,impact
+13,Repeat import after collection,-,-,F,-,F,F,,F,-,-,impact
+14,Failed payload retry,P,-,-,-,P,F,Original Codex and Sol 1 mention retained failure outcomes without exposing recovered content or explicit retry as a decision.,P,-,-,impact
+15,Distance versus resource budget,F,P,-,-,-,-,Excluded from active coverage after the user removed feature-purpose and alternative-design exploration. Historical scores retained; do not count in the active denominator.,-,-,-,historical only: excluded feature design
+16,Cold bounds and far pivots,F,F,-,-,-,-,,-,-,-,impact
+17,Default spawn collision fit,-,F,-,-,-,-,,P,F,F,impact
+18,Fall recovery support identity,F,P,-,-,-,-,Claude mentions falling before floor arrival and the existing recovery issue without the support-identity distinction.,P,P,P,impact
+19,Moving remote avatars,F,F,-,-,-,-,,-,-,F,impact
+20,User photos and thumbnails readiness,-,-,F,-,F,-,,-,-,P,impact
+21,Product preset versus raw scalability,-,F,F,F,F,P,Latest Sol connects product presets to workload but omits raw sg.ViewDistanceQuality bypass.,P,F,P,impact
+22,Record count versus resident workload,F,F,F,F,F,F,,F,F,F,impact
+23,Capture readiness beyond importer idle,P,P,F,F,P,F,Originals and Sol 1 raise capture-specific readiness or prediction but omit the importer-idle gap's full mechanism.,P,-,F,impact
+24,Production performance telemetry,F,F,F,F,F,P,Latest Sol cites stored count versus workload for comparisons without the separate production telemetry/sampling recommendation.,F,F,P,impact
+25,Cumulative counters and failures,-,-,-,-,-,F,,-,-,P,impact
+26,Retired perf suites PSO hooks CVars,P,F,P,-,P,P,"Partial means suites and/or PSO hooks are reported, but the full merged group including retired CVars is not. Original Claude reports all.",P,P,-,impact
+27,Synthetic actor predicates,-,F,-,-,-,F,,F,F,F,impact
+28,One-shot actor hiding,-,F,-,-,-,F,,-,-,-,impact
+29,Bounds debugging,-,-,-,-,-,F,,-,-,-,impact
+30,Stale documentation and hints,P,P,P,P,P,P,Every run catches some documentation; none reports the whole combined set.,P,P,P,impact

@@ -10,7 +10,7 @@ A human who has worked in the codebase for years remembers related features. An 
 
 ## Values
 
-- **A concept is a question, not a symbol.** Root position answers "where is the patch"; bounds answer "what space does the patch occupy". The sweep classifies by the question a consumer asks, so a proxy use (actor location standing in for occupancy) is found even when the symbol differs.
+- **A concept is a question, not a symbol.** Root position answers "where is the patch"; bounds answer "what space does the patch occupy". Frame both the guarantees a change provides and those it removes, including differences between modes. These questions guide search and research ownership before the sweep starts, so a proxy use is found even when its symbol differs.
 - **Consequences become search inputs.** Changed availability can change collision, registrations or ownership, whose consumers never name the original feature. Expand those effects into further consumer questions until the remaining boundaries are explicit. Depth alone is not coverage: some findings require joining two states, and some short connections are already present in the reads.
 - **Missing an interaction costs more than dismissing a useful candidate.** Keep concrete improvements, intentional tradeoffs and unresolved candidates visible alongside confirmed bugs. Separate their certainty and consequence. Do not limit the map to novel defects or a fixed number of findings.
 - **A feature is more than its first data read.** Search can query the right records while opening a result still needs a loaded object. Follow the action to its outcome before calling it unaffected. Safe failure for the program can still mean a broken action for the user.
@@ -21,7 +21,7 @@ A human who has worked in the codebase for years remembers related features. An 
 - **Siblings, not progress.** The owner knows what the ticket has built and what remains; a map that reports branches, drafts and unfinished steps spends its reader's attention on what they already hold. The map lists the other features the concept touches and the questions the new concept raises. A reminder of a new question is welcome; an audit of the feature's own progress is not.
 - **The map recommends; it does not edit.** Lead with the affected user behavior and a practical next step, with evidence the owner can inspect. Concept tables and coverage support the findings rather than burying them.
 - **The user's description is the boundary.** Use supplied decisions and relevant project guidance. Issue trackers and prior reports are optional context, not prerequisites or a reason to suppress an interaction. An intentional behavior can still affect another workflow.
-- **Impact mapping and feature design have different jobs.** This skill follows the consequences of a proposed change. A discussion about the underlying goal and alternative designs can start independently and deserves its own workflow. A concrete design question found during the map is welcome; a mandatory redesign exercise is not.
+- **The selected feature is the starting point.** This skill maps its consequences and the adaptations its consumers need. Evaluating the feature's underlying goal, whether to build it, or alternative designs for it belongs to a separate workflow. Consumer adaptation choices stay in the map.
 
 ## Maintenance
 

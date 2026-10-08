@@ -8,6 +8,10 @@ Use a checkout with a feature that separates durable records from client-local l
 
 Check that the agent follows record-based queries through result activation, examines interaction lifetimes, searches beyond the implementation module, and retains smaller tooling and measurement implications in its answer. A missing UI or asset boundary must remain an explicit candidate. Check whether an intentional setting's downstream measurement effect survives classification. Do not score an accepted tradeoff as a confirmed bug. Record code revision or the live-workspace limitation when comparing runs.
 
+For a focused framing check, give the same before/after description and ask for the initial research handoff, with no consumer code available. Expect an explicit assumption table before delegation: complete records versus incomplete loaded objects, client ownership, newly partial local/file-system worlds, and the resulting availability/lifetime questions. Both provided and lost guarantees need consumer questions. Unknown admission exceptions and readiness remain unknown. Every research cluster has an owner; synonymous formulations do not require separate readers. This checks the handoff, not discovery recall in a real repository.
+
+The selected feature is a constraint. Resource retention and work continuing after eviction remain valid impacts. Replacing distance admission with a resource-budget or count policy is feature design and is outside this skill. Theme 15 in the historical coverage matrix is excluded from active scoring; the active denominator is 29. Preserve historical scores separately.
+
 ## Unseen sibling
 
 Prompt: "Use $feature-impact. Export generation now runs as a queued job for both personal and team workspaces; it used to return a completed file synchronously. What else needs attention? The source bundle is async-export.md."
@@ -25,7 +29,7 @@ Expected useful candidates:
 - Documentation still promises synchronous completion.
 - The unavailable dynamic retry handler is unresolved, with a targeted follow-up.
 
-The export dialog already waits correctly. Do not propose reimplementing the worker or describe all export workflows as broken. Do not limit the effect to team workspaces, require issue searches, or silently drop smaller findings. This case checks timing and completion, not the motivating project's object residency.
+The export dialog already waits correctly. Do not propose reimplementing the worker or describe all export workflows as broken. Do not limit the effect to team workspaces, require issue searches, or silently drop smaller findings. Keep queued generation and the chosen retention policy as constraints, while retaining consumer choices such as waiting for completion or regenerating an expired download. This case checks timing and completion, not the motivating project's object residency.
 
 ## Known-good concept replacement
 
