@@ -1,4 +1,4 @@
 interface:
   display_name: "Feature Impact"
   short_description: "Find related features and workflows a change affects"
-  default_prompt: "Use $feature-impact to find the related features, changed assumptions and workflows this change affects, including smaller items worth considering."
+  default_prompt: "Use $feature-impact to map the related features and workflows affected by this change."
