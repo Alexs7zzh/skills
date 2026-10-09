@@ -5,7 +5,7 @@ description: "Use when creating, editing, reviewing, testing, debugging, or main
 
 # Skill authoring
 
-A skill is a folder: `<name>/SKILL.md` plus `agents/openai.yaml`. Its description decides when it fires. Its body directs the work. Scripts enforce deterministic constraints. Resources hold conditional detail.
+A skill is a folder: `<name>/SKILL.md` plus `agents/openai.yaml`. Its description decides when it fires. Its body directs the work. Scripts enforce deterministic constraints. Resources hold conditional detail. `GOAL.md` beside them says why the skill exists and what it values; the rule that tests a value lives only in `SKILL.md`.
 
 ## Scope and atomicity
 
@@ -65,9 +65,10 @@ policy:
 Write for execution. The agent runs the document; it does not study it.
 
 - **One mode per section.** Use a section for steps toward a goal or facts for lookup. Keep a short fact beside a step only when the step needs it. Put long or conditional detail in a supporting file and link it where its condition becomes known. A link without its trigger is dead documentation.
-- **Steps end on checkable criteria.** "One command, already run once, that goes red on this bug" is checkable. "Understanding reached" invites quitting early.
+- **Steps end on checkable criteria, at both ends.** "One command, already run once, that goes red on this bug" is checkable. "Understanding reached" invites quitting early. An open sweep ("ask why until", "every consumer") overshoots as readily as a vague bound stops early, so say what lies outside the step too.
 - **Object sweeps beat activity instructions.** "Inventory every constant with physical meaning" executes. "Think carefully about constants" does not.
-- **Required output slots beat process advice.** A section the result must contain gets produced every run. A bullet asking for the same behavior fires about half the time. If a behavior matters, make the output prove it happened.
+- **Required output slots beat process advice.** A section the result must contain gets produced every run. A bullet asking for the same behavior fires about half the time. If a behavior matters, make the output prove it happened. Give each slot the condition under which it applies, or an explicit "none, because" answer; a slot that does not fit the input still gets filled, so the agent invents content for it.
+- **Output for a person is ordered and bounded.** Slots alone set what appears, so the agent fills each at full length in the order it worked. Put the answer first and bound the length by the size of the input.
 - **Cues name the mechanism, not the category.** "A release store orders prior accesses only, so the writer needs a fence between invalidate and data stores" fires. "Check the memory ordering" does not.
 - **Run the no-op test on every sentence.** Does it change behavior versus what the model does by default? Personas ("you are a senior engineer"), exhortations ("be thorough"), and facts the environment already answers all fail. Delete the sentence, not words from it.
 - **One home per meaning.** Duplicated meaning drifts and doubles maintenance. A deliberately repeated term is fine; a repeated rule is not.
@@ -126,8 +127,12 @@ Not every miss earns an instruction. If no stable failure class survives sibling
 - Check that the folder name, frontmatter, invocation controls, manifest, links, and default prompt agree.
 - Trace each conditional link from the sentence that causes the agent to read it. Remove orphaned resources and unconditional context that most runs skip.
 - Classify each body line as a step with a criterion, a cue with a mechanism, a required output slot, or a fact the agent cannot look up. Delete lines that fail all four.
-- Search for duplicated and conflicting rules. Decide which single location owns each meaning.
+- Search for duplicated and conflicting rules, across `SKILL.md`, its resources and `GOAL.md`. Decide which single location owns each meaning.
+- Reread every example and sweep list against a realistic input from a different domain the skill serves. Replace each noun that input lacks; an example teaches the agent its own domain, and the agent carries those nouns into unrelated inputs.
+- Trace each step's input to the step that produces it, and check the branch for when that step finds nothing: no match, no measurement, no issue. A step written for the success path alone makes the agent fabricate its input.
 - For a new skill or general review, test clear positives, paraphrased positives, near negatives, and ambiguous uses of the word "skill".
+- For a new skill, run the workflow on the smallest and the largest realistic input in a fresh context, on each model the workspace evaluates with. Check output length, slot fit and scope against the input, not against the development case.
+- Have a fresh agent review the skill against this checklist with no knowledge of the design discussion. Its misreadings are the next reader's.
 - For maintenance, test the original case, an unseen sibling, a near negative, and a known-good workflow. The sibling proves the fix generalized. The negative catches overreach.
 - Run behavioral checks in a fresh context. An agent that saw the intended design can hide a missing trigger or instruction.
 - Run the nearest realistic workflow for the behavior that changed.
@@ -146,7 +151,7 @@ The agent mirrors the style it reads. Early-context writing sets how it works an
 - Cut puffery and AI vocabulary: crucial, delve, robust, comprehensive, seamless, leverage, landscape, testament, showcase, underscore. Plain words instead.
 - Use the natural number of items, not three because three sounds complete.
 - Write the real symbol, file, flag, or command name. Not a synonym, not a description of it.
-- Specific over sterile. Not "misconfiguration can cause issues" but "a wrong rate here ships silence".
+- Specific over sterile, and specific to the mechanism rather than to the case the skill was developed on. Not "misconfiguration can cause issues" but "a wrong rate here ships silence".
 
 ## Before shipping
 
