@@ -29,6 +29,7 @@ The repository publishes these skills:
 - `coding` handles code changes, reviews, and diagnosis.
 - `code-architecture` is explicitly invoked to research a subsystem, review its architecture with independent perspectives, and develop concrete remedies.
 - `feature-impact` finds the other features and workflows affected by a change, including bugs, smaller improvements and open decisions.
+- `feature-shaping` is explicitly invoked to dig a feature idea down to the outcome it serves, test the idea against it, and propose a better shape when one exists.
 - `show-me` explains with diagrams, code-shape sketches, and focused HTML artifacts.
 - `skill-authoring` creates, reviews, tests, and maintains agent skills.
 

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Feature Shaping"
+  short_description: "Find the outcome a feature idea serves and reshape the idea around it"
+  default_prompt: "Use $feature-shaping to find the outcome this feature idea serves, test the idea against it, and propose a better shape if one exists."
+policy:
+  allow_implicit_invocation: false
