@@ -1,6 +1,6 @@
 # Logging and diagnostic state
 
-Read when the diagnostics lens is selected. Extraction supplies the evidence below as the model's Diagnostics section and its couple rows. Design encodes the diagnostics lens's code forms. Compare judges the section against the logging and outcome contracts. A list of log sites or severity names does not supply this evidence.
+Read when the diagnostics lens is selected. Extraction supplies the evidence below as the model's Diagnostics section and its K rows. Design encodes the diagnostics lens's code forms. Compare judges the section against the logging and outcome contracts. A list of log sites or severity names does not supply this evidence.
 
 ## Extraction evidence
 
@@ -21,7 +21,7 @@ For a relay or classifier, provide a policy-to-output table across material inpu
 
 For failure episodes and summaries, record the emission owner, cardinality, suppression or aggregation key, and the reset after recovery. Distinguish duplicate rows, distinct failures, interim evidence and terminal outcomes. For each retained sample, record its selection rule and the interval it represents, apart from the episode start; a summary's sample keeps its own observation time and is replaced only by a more complete sample. Silence at a filtered sink does not prove success.
 
-**Couple rows:** an important fact held but never emitted or visible only below the required destination; a cause distinction lost before the consumer that needs it; a delayed emission that reads replacement state; a suppression never reset after recovery; a retained sample that cannot adopt later complete evidence.
+**K rows:** an important fact held but never emitted or visible only below the required destination; a cause distinction lost before the consumer that needs it; a delayed emission that reads replacement state; a suppression never reset after recovery; a retained sample that cannot adopt later complete evidence.
 
 ## Compare
 
