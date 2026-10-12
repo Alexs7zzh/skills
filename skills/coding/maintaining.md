@@ -28,6 +28,7 @@ For changes to failure ownership or outcome verification, use the bounded cases 
 For changes to performance evidence interpretation, use the bounded cases in [evals/performance-diagnosis.md](evals/performance-diagnosis.md).
 For changes to authoritative state or capability dependencies, use the bounded cases in [evals/capability-dependencies.md](evals/capability-dependencies.md).
 For changes to responsibility boundaries, cohesion or dependency direction, use the bounded cases in [evals/architecture-boundaries.md](evals/architecture-boundaries.md).
+For changes to test-design guidance about changed expected results or action entry points, use [evals/test-expectations.md](evals/test-expectations.md).
 For changes to review selection, investigator/verifier handoffs or completion, use [evals/review.md](evals/review.md). Test both missing selections and selected-but-unanswered questions. Inspect the verifier's first-pass output before it receives the assessment; a later claim of independence does not establish that order.
 For changes to the judge, the proposal's slots or the hand-off, use the bounded cases in [evals/proposal.md](evals/proposal.md). Maintain the judge from the user's recorded decisions on batch lists; classify each disagreement as a reasoning error, a ruling the judge lacked, new evidence or a changed priority before changing its questions.
 

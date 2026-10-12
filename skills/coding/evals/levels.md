@@ -21,6 +21,8 @@ Read when maintaining level selection or its routed procedures. Use fresh contex
 | Do not do a deep review; just change this value | Normal |
 | Use a helper to inventory callers while you fix this | Normal, with requested bounded help |
 | Deeply investigate; use a helper to enumerate callers | Deep, with requested bounded help |
+| Here are the findings from my reviewer; apply fixes | Normal; no explicit review procedure, verifier or review records |
+| I think the state handling is messy, here are my findings. Please review properly | Normal, with the explicit review procedure |
 
 ## Workload checks
 

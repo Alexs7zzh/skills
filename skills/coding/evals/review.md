@@ -68,6 +68,13 @@ The initial comparison uses the same pre-question-change guidance for every styl
 retain the guidance version and hashes with results. It does not validate later
 checker changes or replace the complete R1–R5 workflow checks below.
 
+Retained first-pass observations are a separate experiment. Run the same frozen
+cases with and without the sentence in review.md that asks the verifier to return
+defects noticed while selecting, and score separately: defects the author's
+assessment missed that the observations caught, false observations, and the
+verifier's added token and elapsed cost. Attribute any change to that sentence
+alone; do not combine it with structure-note or test-expectation changes.
+
 ## Focused wording and handoff checks
 
 Use these cases when changing the selection table or the blind packet instructions.
