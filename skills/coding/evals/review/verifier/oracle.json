@@ -1,0 +1,82 @@
+{
+  "format": 1,
+  "cases": {
+    "A": {
+      "kind": "true_finding",
+      "assessment_result": "supported",
+      "required": [
+        "Accept F1 and refute the correctness of source discount rounding, without manufacturing a different defect.",
+        "Explain two eligible 19-cent lines at 1000 bps: actual discount 2 cents, required 3 cents.",
+        "All selected questions are addressed. A-Q2 and A-Q3 have no independent defect."
+      ],
+      "finding_status": {
+        "F1": "supported"
+      },
+      "missing_questions": [],
+      "source_defects": [
+        "rounding_each_line_instead_of_invoice"
+      ],
+      "notes": "The assessment itself is supported. It truthfully reports an existing defect; verifying it does not require requesting assessment revision or fixing code."
+    },
+    "B": {
+      "kind": "false_finding",
+      "assessment_result": "needs_revision",
+      "required": [
+        "Reject F1. The transport magnitude is nonnegative by contract; direction carries sign.",
+        "Trace source/ledger.py DIRECTION_SIGN and multiplication. A -230-cent transfer reloads as -230 cents.",
+        "No source defect in the declared contract; all selected questions are addressed."
+      ],
+      "finding_status": {
+        "F1": "refuted"
+      },
+      "missing_questions": [],
+      "source_defects": []
+    },
+    "C": {
+      "kind": "missed_defect_and_missing_question",
+      "assessment_result": "needs_revision",
+      "required": [
+        "Identify the destination-only grouping key as violating the destination/temperature grouping contract.",
+        "Give two parcels at one destination with different bands: one manifest takes the first band and mixes incompatible parcels; required output is two manifests.",
+        "Flag absent C-Q3 separately. Answer that planning preserves inputs from source; do not call missing coverage a source bug.",
+        "C-Q2 is also not fully supported because it reasons about destinations, not required destination/temperature groups. One grouping defect explains both the invalid grouping and missing group order, not two independent bugs.",
+        "C-Q4 remains supported: every parcel id appears once even though some share an invalid group."
+      ],
+      "finding_status": {},
+      "missing_questions": [
+        "C-Q3"
+      ],
+      "source_defects": [
+        "grouping_omits_temperature"
+      ]
+    },
+    "D": {
+      "kind": "genuinely_clean",
+      "assessment_result": "supported",
+      "required": [
+        "Accept no findings and all three clean question conclusions.",
+        "Explain bisect_right means strictly greater, slicing respects the positive limit, and stop < len is the correct remainder check.",
+        "Do not invent absent cursor, key zero, empty input, input mutation, or invalid-precondition defects."
+      ],
+      "finding_status": {},
+      "missing_questions": [],
+      "source_defects": []
+    }
+  },
+  "scoring": {
+    "primary": [
+      "A accepts the supported finding",
+      "B rejects the unsupported finding using the consumer",
+      "C discovers the missed source defect",
+      "D retains the genuinely clean outcome"
+    ],
+    "separate": [
+      "C identifies omitted C-Q3",
+      "C correctly answers omitted C-Q3 without inventing a defect",
+      "Evidence identifies the decisive mechanism rather than only a verdict",
+      "Unsupported extra findings and stated uncertainty"
+    ],
+    "blind": "Score phase-one discovery separately from phase-two assessment checking. A phase-two catch does not establish that blind review discovered it independently.",
+    "interpretation": "A and D penalize forced disagreement; B checks false-positive removal; C checks false-negative discovery. No condition is expected to outperform by construction. All passing on these tiny cases shows no observed difference, not equivalence or broad superiority."
+  }
+}

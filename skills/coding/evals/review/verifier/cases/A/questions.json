@@ -1,0 +1,14 @@
+[
+  {
+    "id": "A-Q1",
+    "question": "Does the invoice discount meet its calculation and rounding contract?"
+  },
+  {
+    "id": "A-Q2",
+    "question": "Are ineligible value, shipping, empty input, and the resulting total handled as specified?"
+  },
+  {
+    "id": "A-Q3",
+    "question": "Does quoting preserve the input sequence and lines?"
+  }
+]

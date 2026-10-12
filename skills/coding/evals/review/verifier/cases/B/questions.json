@@ -1,0 +1,14 @@
+[
+  {
+    "id": "B-Q1",
+    "question": "Does exporting and loading preserve each signed amount and id?"
+  },
+  {
+    "id": "B-Q2",
+    "question": "Are source order, zero transfers, and empty input preserved?"
+  },
+  {
+    "id": "B-Q3",
+    "question": "Does exporting preserve the input sequence and transfers?"
+  }
+]

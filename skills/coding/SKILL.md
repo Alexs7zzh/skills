@@ -12,6 +12,7 @@ For a specified mechanical or presentation edit, the target and relevant knowled
 | Work in scope | Read |
 |---|---|
 | Code implementation, review or diagnosis | [good-code.md](./good-code.md): Values and the relevant lenses; [good-change.md](./good-change.md): design and boundary judgment |
+| Explicit request to review code, a diff, branch, changeset, PR or uncommitted changes | [review.md](./review.md): selection, investigation and fresh verification |
 | C++ | [cpp.md](./cpp.md) |
 | Unreal Engine | [unreal.md](./unreal.md), plus cpp.md when the code is C++ |
 
@@ -27,7 +28,7 @@ Use the user's explicit directive, not your estimate of difficulty. Match these 
 | `deep` or `deeply`, directing how to do this task | Deep investigation | [investigation.md](./investigation.md) |
 | `deep` or `deeply` together with `with two models` or `with multiple models`, directing this task | Joint investigation | [investigation.md](./investigation.md), then [joint.md](./joint.md) |
 
-The joint selector takes precedence. Examples: "review this deeply" selects deep; "deep review with multiple models" selects joint. "Thorough", "exhaustive", "diagnose", "bug", risk, and size are not selectors. Neither are `deep` in code, a filename, quoted material, or a request to change deep-copy behavior. A negated selector does not enable its level. Do not infer a higher level or launch a team to compensate for uncertainty.
+The joint selector takes precedence. Examples: "review this deeply" selects deep; "deep review with multiple models" selects joint. "Thorough", "exhaustive", "diagnose", "bug", risk, and size are not selectors. Neither are `deep` in code, a filename, quoted material, or a request to change deep-copy behavior. A negated selector does not enable its level. Do not infer a higher level. Launch agents required by a selected procedure or requested by the user, not to compensate for unspecified uncertainty.
 
 Keep the chosen level through follow-ups to the same task unless the user changes it; a new standalone task defaults to normal. A dispatched assignment inherits the parent's selected level and authority, not a fresh mode decision. An explicit request for bounded subagent help permits that help without selecting joint investigation. Normal and solo deep work never initialize or use the ledger. Joint work follows its shared ownership contract even for a small assignment; changing level must not abandon active workers or held inputs.
 
@@ -41,11 +42,11 @@ When the user says `judged` or `with a judge`, or the workflow you are running n
 
 Read the target and applicable project instructions. Apply the guidance selected under Read for the work.
 
-Make the requested change, review, or diagnosis directly. Inspect enough surrounding code to understand its actual effect. For a review, report supported findings within the requested scope; for diagnosis, distinguish the cause from a hypothesis. An unresolved question calls for useful inspection or a focused check, not automatic promotion to deep.
+Make the requested change, review, or diagnosis directly. Inspect surrounding code that determines its effect. Explicit reviews follow review.md; for diagnosis, distinguish the cause from a hypothesis. An unresolved question calls for useful inspection or a focused check, not automatic promotion to deep.
 
 Check what is needed to establish the requested result. A one-line value change ordinarily needs the declaration and diff inspected, not a runtime setup or before-and-after screenshots. Run or render it when a real question about the result needs that observation. For a logic change, choose a relevant test or code argument; do not claim runtime behavior from an unexecuted check.
 
-Normal work requires no ledger, investigation dossier, capture runner, saved-candidate package, or separate reviewer. Keep a short continuation note only when unfinished work needs to survive a context switch. Report the result and the checks actually made, with material limits; do not manufacture an issue or a test merely to close a workflow, and do not list the procedures you skipped.
+Normal work requires no ledger, investigation dossier, capture runner or saved-candidate package. Explicit reviews use review.md's compact records and fresh verifier; ordinary implementation self-checks and diagnoses do not. Keep a short continuation note only when unfinished work needs to survive a context switch. Report the result and the checks actually made, with material limits; do not manufacture an issue or a test merely to close a workflow, and do not list the procedures you skipped.
 
 ## Authority and judgment
 

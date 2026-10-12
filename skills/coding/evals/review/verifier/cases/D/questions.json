@@ -1,0 +1,14 @@
+[
+  {
+    "id": "D-Q1",
+    "question": "Does cursor selection meet the contract for every allowed cursor?"
+  },
+  {
+    "id": "D-Q2",
+    "question": "Are the limit, ordering, has_more, and empty-page behavior correct?"
+  },
+  {
+    "id": "D-Q3",
+    "question": "Does paging preserve the input sequence and entries?"
+  }
+]

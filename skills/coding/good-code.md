@@ -1,6 +1,6 @@
 # Good code
 
-Properties of the resulting code, used at every level in writing, review and diagnosis. Read Values and the lenses whose mechanisms the work touches. Apply them within the requested scope; they do not select a level, require a team, or turn a direct edit into an exhaustive sweep. Enumerate is a coverage aid for a requested investigation or review, not a mandatory report for each change.
+Properties of the resulting code, used at every level in writing, review and diagnosis. Read Values and use the selection table to find applicable lenses. Apply them to the requested behavior and the paths that determine it. These properties do not select a level or require agents; review.md owns the explicit review procedure.
 
 ## Values
 
@@ -39,7 +39,7 @@ For every protocol passed as clean, name the interleaving windows walked and why
 - Failure paths that return without transitioning, leaving in-progress forever.
 - Retry residue from the previous attempt.
 - Requested state confused with observed state. For a long-lived capability, intent can remain enabled while availability changes. Turning it off cancels recovery; a late completion must not turn it back on.
-- Every waiting state has something that can resolve it. Every retry loop has a limit whose count survives the resets the loop itself causes, such as reconnects or re-created objects.
+- Every waiting state has something that can resolve it. When the recovery contract requires an attempt limit, its count survives the resets the loop itself causes, such as reconnects or re-created objects.
 
 **Performance.** Judge every loop at production scale. Judge the shipping default path even when the request is about new code. Cost the steady-state path of hot loops yourself, by operation count or compiled replica. A benchmark is evidence only for the path it exercised, and early-outs make the common case the unmeasured one. Scale dev-machine numbers to the weakest supported hardware. Multiply inner O(N) sweeps inside per-callback loops against the budget.
 
@@ -58,25 +58,27 @@ A watchdog or sampled stack proves where a thread was at capture, not how long i
 
 Every fallible operation leaves a defined state and outcome. An exception, error return, or log is a delivery mechanism, not a recovery policy. For each error branch, ask who learns, which state remains, and what happens next. Distinguish active recovery from waiting on a prerequisite or user action. A normal-looking result is wrong when it conceals an unmet contract, not when a deliberate fallback fulfills it. Retain enough diagnostic context to investigate without reconstructing scattered logs or exposing every internal error as caller policy.
 
-For each recovery loop, name the observation, changed prerequisite, or safe retry that can make progress. Choose a deliberate retry scope so independent layers do not multiply attempts or side effects. Persistent recovery must still respect cancellation and resource limits per Enumerate; it does not promise eventual success when prerequisites remain unavailable. A violated internal invariant needs investigation, not an indefinite retry loop that hides it.
+For each recovery loop, name the observation, changed prerequisite, or safe retry that can make progress. Choose a deliberate retry scope so independent layers do not multiply attempts or side effects. Persistent recovery does not promise eventual success when prerequisites remain unavailable. A violated internal invariant needs investigation, not an indefinite retry loop that hides it.
 
 **Structural quality.** Investigate self-declared gates, repeated knowledge, and defenses that do not achieve their stated purpose using the deletion test. Establish whether they own a distinct enforcement boundary, reduce a relevant risk, or simplify a maintenance task before judging them. An ad-hoc conditional in an unrelated flow suggests misplaced policy; name the boundary it belongs to. Growth calls for decomposition when distinct responsibilities or invariants become hard to reason about. Look for a reframe that removes branches or layers while preserving obligations. A quality finding names a concrete future cost, not a taste.
 
 **Test design.** Expected results need a source independent of the implementation decision under test. A test that computes the answer the same way can repeat the defect. Name the symmetries the generator imposes, such as zero-mean signals, identical channels, on-grid values, or design-unit parameters; inspect omitted dimensions that matter to the claim. For stateful systems, test changes of responsibility, inputs, scope and cancellation during ongoing work, not only starting in each supported mode. Test that a queued or waiting state can actually be resolved by its actor under the same facts, not only that its field is set. A threshold assertion without its baseline comparison asserts one side of a trade. Tests tied to internal shape can break on a behavior-preserving refactor. Choose checks for the claim; deep investigations use evidence.md's retained evidence procedure. Do not add tests that merely restate the implementation.
 
-## Enumerate
+## Selection table
 
-When sweeping a requested review or investigation, use these objects to check coverage within that scope. In deep work, retain significant claims and gaps with their sites and evidence; normal work need not produce an inventory. Partition the objects between sweeps rather than repeating the list:
+Evaluate every row against the requested behavior and its affected paths, including unchanged code they depend on. Select all matching rows. A row names work to do, not a defect to find or a separate agent to launch. For explicit reviews, record applicability under review.md. Outside an explicit review, use this table to guide the requested work without producing an applicability inventory or turning a direct edit into an exhaustive sweep.
 
-- every constant with physical meaning: its source in a contract, negotiation, derivation, or measurement; inspect real inputs or logs when the claim depends on delivered values
-- every assumption about externally delivered data
-- every atomic, lock-free or transition protocol
-- every callback's delivery context and reachable teardown
-- every hot loop on a realtime path: worst case against budget, and which path the recorded benchmarks measured
-- every fallible operation's failure outcome: who learns and through which channel, and its debuggability
-- every retry, recovery loop, or queue that can leave a user stuck: its progress or termination policy, cancellation, and the visible state when it cannot proceed. Persistent recovery needs an explicit purpose and bounded resource use; a finite attempt count is not the only valid policy
-- every doc and coverage claim. Grep the whole feature doc for prose still asserting behavior the change deleted.
-- every consumed-library setting that differs from its provider default or stated usage: establish which project obligation it serves and whether the provider supports that use; a missing written justification starts investigation
-- every symmetry the test generators impose
-- every place where a consumed API's result gates correctness: read one level into the provider and confirm it can distinguish the outcomes the consumer branches on
-- every check, flag, mode, config key, dependency, and single-caller abstraction the change adds: apply the deletion test in Values, retaining its obligation or the evidence supporting removal
+| ID | Select when | Answer using the relevant Values and lenses above |
+|---|---|---|
+| outcome | Always | What did the user ask to assess, for which target and baseline? Account for every requested input and comparison. Which current goal, ruling or contract determines correct behavior? Read the actual consumer before claiming a user-visible consequence. Check affected documentation claims, including claims outside the implementation section. |
+| state | The affected path stores state, derives a view, or owns a resource | Name the facts, writers, consumers, lifetimes and cardinality. Walk initialization, reset, replacement and teardown. Can old work affect a new owner or target? Can another writer overwrite the fact? Use good-change.md's structure note when its trigger holds. |
+| async | Callbacks, queues, timers, threads or asynchronous completion participate | Name delivery contexts and walk synchronous completion, reordering, duplication, cancellation, target replacement and teardown where the delivery contract permits them. For a clean protocol, identify the interleavings checked and what fences stale work. |
+| boundary | Inputs, provider results, validation or library settings determine correctness | Trace relevant producers and consumers, including one level into a consumed provider. Can its result distinguish the outcomes the consumer branches on? Who enforces the trusted contract? Establish units, physical constants and tolerances from their contract or measurement. Inspect real inputs or logs when a claim depends on delivered values. For each library setting that differs from its provider's default or stated usage, establish the project obligation and whether the provider supports that use. |
+| failure | A fallible operation, wait, retry, recovery or fallback participates | For each reachable reason, identify retained state, progress or termination, cancellation, duplicate effects, usable recovery and user feedback. Persistent recovery needs a purpose and bounded resources; finite retries are not the only valid policy. Inspect recurrence after recovery and diagnostics needed to distinguish the outcomes. |
+| compatibility | Persisted data, shared formats, public contracts or their interpretation change | Check the relevant producers and consumers and supported old data or versions. For migrations, establish evidence from the historical format; a fixture built by today's writer or a moving latest-version expression can establish a different claim. |
+| cost | Repeated work, allocation, blocking or a cost claim affects the requested result | Identify the production scale and relevant budget. For realtime hot loops, cost the worst case against that budget. Check the default path, early-outs and actual benchmark path. Apply the Performance lens; estimates and measurements support different claims. |
+| design | The user requests alternatives, or the change adds or changes state, APIs, checks, flags, modes, config keys, abstractions or dependencies | Apply the deletion test. Compare applicable alternatives against actual obligations and costs: remove unneeded work, derive a duplicated fact, reuse the same contract, move policy to its owner, or retain a mechanism serving a distinct obligation. A different design alone is not a defect. |
+| evidence | Always | What source argument, existing test or executed check supports each conclusion? For tests, inspect independent expected results, omitted dimensions and changing state during work. Does the evidence cover the actual target and claim? Missing tests do not by themselves prove a product defect. |
+| integration | Multiple changes, owners or worker assignments share a contract or behavior | Follow the complete affected interaction across those boundaries. Name who answers the shared question. Separate clean local results do not establish that producers, owners and consumers agree. |
+
+Add concrete objects and questions under these IDs as inspection reveals them. An explicit user requirement not otherwise represented belongs under outcome. A dependency belongs only when it can change a requested outcome or a premise of the assessment; shared filenames or subsystem names alone do not qualify. Reclassify affected rows when new facts appear. Stop tracing a branch when its contract establishes that it cannot affect the question, and retain that basis.

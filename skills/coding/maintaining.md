@@ -8,6 +8,7 @@ Each document owns one kind of decision:
 - SKILL.md owns routing, authority, scope of action, and common terms.
 - good-code.md owns properties of code and conditional mechanism cues.
 - good-change.md owns design and change principles at every level, without selecting investigation or independent review.
+- review.md owns explicit review stages, record meanings and response selection; good-code.md owns the selection table. scripts/check_review.py owns record validation and its command interface.
 - investigation.md owns the explicitly selected deep method for reviews, diagnoses and changes; evidence.md owns its capture and working note; findings.md owns retained claims, decisions and continuity.
 - joint.md owns equal-investigator judgment, agreement, replacements, completion and runtime controls; ledger.md owns its recording, dispatch and checkout mechanics. No normal or solo deep route uses the database.
 - proposal.md owns the proposal's slots, the technical judge and the batch pause; handoff.md owns the owner-facing hand-off, its writer and its writing judge.
@@ -27,11 +28,12 @@ For changes to failure ownership or outcome verification, use the bounded cases 
 For changes to performance evidence interpretation, use the bounded cases in [evals/performance-diagnosis.md](evals/performance-diagnosis.md).
 For changes to authoritative state or capability dependencies, use the bounded cases in [evals/capability-dependencies.md](evals/capability-dependencies.md).
 For changes to responsibility boundaries, cohesion or dependency direction, use the bounded cases in [evals/architecture-boundaries.md](evals/architecture-boundaries.md).
+For changes to review selection, investigator/verifier handoffs or completion, use [evals/review.md](evals/review.md). Test both missing selections and selected-but-unanswered questions. Inspect the verifier's first-pass output before it receives the assessment; a later claim of independence does not establish that order.
 For changes to the judge, the proposal's slots or the hand-off, use the bounded cases in [evals/proposal.md](evals/proposal.md). Maintain the judge from the user's recorded decisions on batch lists; classify each disagreement as a reasoning error, a ruling the judge lacked, new evidence or a changed priority before changing its questions.
 
 Run the workspace skill validator and the nearest realistic workflow. Test the original failure class, an unseen sibling, a near negative, and a known-good path in fresh contexts. Review changed instructions for conflicting routes, repeated rules, unnecessary waiting, and information lost on resumption. Report which checks actually ran and which did not.
 
-For level changes, test the actual workflow as well as classification: a normal presentation edit and runtime fix, a deep investigation without a ledger or required reviewer, and joint coordination. Include selector words in filenames or quoted material, negation, follow-ups and an unrelated next task. A nominally normal response that still runs deep bookkeeping fails the route. Stable scenarios live in evals/levels.md; keep their expected outcomes aligned with GOAL.md.
+For level changes, test the actual workflow as well as classification: a normal presentation edit and runtime fix, a deep diagnosis without a ledger or required reviewer, and joint coordination. Explicit reviews retain their verification procedure at every level. Include selector words in filenames or quoted material, negation, follow-ups and an unrelated next task. A nominally normal response that still runs deep bookkeeping fails the route. Stable scenarios live in evals/levels.md; keep their expected outcomes aligned with GOAL.md.
 
 For evidence behavior, inspect the chronological tool results and intermediate note writes, not just the final report. An execution claim requires the corresponding result to have returned before that claim. A later matching receipt cannot repair a premature assertion. The capture helper preserves process facts; this independent trial check judges whether the agent used them honestly.
 

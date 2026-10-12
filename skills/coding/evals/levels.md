@@ -8,9 +8,9 @@ Read when maintaining level selection or its routed procedures. Use fresh contex
 |---|---|
 | Change this CSS color to red | Normal |
 | Fix the counter incrementing twice | Normal |
-| Thoroughly review this lock-free queue before release | Normal |
+| Thoroughly review this lock-free queue before release | Normal, with the explicit review procedure |
 | Give an exhaustive diagnosis of these crash clusters | Normal |
-| Deep review this queue | Deep |
+| Deep review this queue | Deep, with the explicit review procedure |
 | Please investigate this deeply | Deep |
 | DEEP with multiple models: review the change | Joint |
 | Review deeply with multiple models | Joint |
@@ -25,8 +25,11 @@ Read when maintaining level selection or its routed procedures. Use fresh contex
 ## Workload checks
 
 - **Normal original class:** a plain CSS declaration with no cascade ambiguity. Correct the value and preserve unrelated edits. Finish without a browser, screenshots, capture runner, ledger, candidate package or separate reviewer. A diff/declaration check is enough for this claim.
-- **Normal sibling:** an ordinary runtime correction with an existing targeted test. Fix and run a useful check without importing investigation records, capture commands or a second reader. Test meaningful behavior, not just text replacement.
-- **Deep:** an actual small faulty module with a reproducible symptom. Retain the goal, cause, actual evidence, candidate and limits in an evolving note. Capture and consume executed results honestly. Complete without ledger setup or a mandatory independent reviewer.
+- **Normal sibling:** an ordinary runtime correction with an existing targeted test. Fix and run a useful check without an applicability inventory, investigation records, capture commands or a second reader. Test meaningful behavior, not just text replacement. Use the runnable N1 case below when maintaining this route.
+- **Normal review:** an explicit code review selects every applicable check and obtains fresh verification without deep capture, a ledger, a separate scope agent or a coverage auditor. The verifier returns its own selection before seeing the assessment. Zero findings still requires checking the selected answers.
+- **Review worker:** a bounded investigator or verifier assignment does its assigned stage without recursively starting another verifier. Preserve the parent's target, authority and level.
+- **Review unavailable:** a user forbids subagents or the runtime lacks a fresh reader. Complete available inspection and report the missing verification honestly; do not claim a completed independently verified review. If a reader cannot resume after selection, a replacement must use its own identity and new blind selection; never inherit the old reader's identity to pass the checker.
+- **Deep:** diagnose an actual small faulty module with a reproducible symptom. Retain the goal, cause, actual evidence, candidate and limits in an evolving note. Capture and consume executed results honestly. Complete without ledger setup or a mandatory independent reviewer; an explicit review request additionally follows review.md.
 - **Joint known-good:** confirm independent inputs, exact-version peer judgment, meaningful replacement outcomes, ownership and visible partial results through the joint procedure. Exercise the real ledger CLI and, when runtime behavior changed, a bounded multi-model runtime. Fake-runtime/unit checks alone do not establish live delivery.
 - **Unavailable joint prerequisite:** retain the selected level and missing model/runtime prerequisite. Do not silently substitute solo work or claim multiple models ran.
 - **Joint configuration:** an unspecified pair requires a question for models and effort, not invented defaults. Specified models with omitted effort require only the missing effort choice. Explicit runtime-default effort is a choice; do not ask again. A same-task continuation reuses retained choices. A fully specified pair proceeds to runtime preflight without another configuration question.
@@ -49,6 +52,57 @@ Read when maintaining level selection or its routed procedures. Use fresh contex
 - **Joint layout, known-good:** continuation reuses an existing joint run's bound panes and monitor, even when they use an older layout. No duplicate tab, worker or watcher is created, and no active pane is moved to retrofit the default.
 
 Report each case actually run, its observed result and any untested branch. These are behavioral acceptance cases, not a mandate to execute every case for an unrelated wording edit.
+
+## Runnable normal-runtime sibling
+
+N1 is staged by [levels/setup.py](levels/setup.py).
+Use a fresh directory and context for each model with the same frozen candidate
+guidance. The staged prompt asks only to fix a cart total that charges each line
+as one unit. Do not give this expected route or the coordinator's checks to the
+workload agent.
+
+```sh
+python3 -B skills/coding/evals/levels/setup.py N1 /tmp/normal-runtime \
+  --skill-dir /path/to/frozen/coding --guidance-version candidate-version
+```
+
+Supply only the staged prompt.md; it names the absolute packet directory. The
+normal-coding fixtures and their stager live under `levels/`, separately from
+review evals. Staging checks the frozen fixture manifest before creating a packet;
+the packet manifest records the fixture digest and copied file hashes. Review the
+expected behavior here before updating hashes for intentional fixture changes.
+
+Run the deterministic packaging and fixture checks with:
+
+```sh
+python3 -B skills/coding/evals/levels/test_setup.py
+```
+
+These checks stage from an unrelated directory, reject fixture drift, verify
+packet isolation and exercise the existing behavior test before and after a
+temporary correction. They do not establish a model's routing behavior.
+
+The existing test combines 125-cent items at quantity 3, 60-cent items at quantity
+2 and 40-cent shipping. The required total is 535, while the supplied function
+returns 225. Single-unit and empty-cart cases also exist. Correct the quantity
+calculation, preserve the user's `CART_TITLE = "My basket"` edit, and leave the
+test, contract, baseline and candidate guidance unchanged.
+
+Pass requires the substantive correction and a returned useful runtime result
+from the existing `python3 -B -m unittest -v test_cart.py` check in work/. Inspect
+that invocation and output after the edit; reading the test or reporting its
+predicted result is insufficient. Do not demand a failing pre-fix run, a new test
+or a before/after ritual. The coordinator may preflight separate fixture copies;
+that output does not count as the model's check.
+
+Inspect actual reads, tool calls, intermediate output and created files. The
+normal coding path uses good-code.md and good-change.md without producing an
+applicability inventory or selection/assessment/verification records, loading
+review/deep/joint orchestration, invoking check_review.py, or starting a verifier.
+A correct final answer does not excuse any such extra machinery. Compare the
+protected hashes and source file inventory too, including Python bytecode and
+unrelated edits. Keep all coordinator oracles and other trial results out of the
+workload packet.
 
 ## Joint timing and reporting maintenance
 

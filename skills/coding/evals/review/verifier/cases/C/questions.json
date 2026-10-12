@@ -1,0 +1,18 @@
+[
+  {
+    "id": "C-Q1",
+    "question": "Do output manifests satisfy the routing and handling contract?"
+  },
+  {
+    "id": "C-Q2",
+    "question": "Are manifest and parcel order correct, including empty input?"
+  },
+  {
+    "id": "C-Q3",
+    "question": "Does planning preserve the input sequence and parcel objects?"
+  },
+  {
+    "id": "C-Q4",
+    "question": "Is each input parcel represented exactly once?"
+  }
+]
