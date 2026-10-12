@@ -64,12 +64,14 @@ policy:
 
 Write for execution. The agent runs the document; it does not study it.
 
+For changes to branching decisions, stage boundaries, actor responsibilities, or records reused after revision, read [workflow-design.md](./workflow-design.md). Skip this resource for wording-only edits. Use its design questions where they resolve uncertainty in the workflow.
+
 - **One mode per section.** Use a section for steps toward a goal or facts for lookup. Keep a short fact beside a step only when the step needs it. Put long or conditional detail in a supporting file and link it where its condition becomes known. A link without its trigger is dead documentation.
 - **Steps end on checkable criteria, at both ends.** "One command, already run once, that goes red on this bug" is checkable. "Understanding reached" invites quitting early. An open sweep ("ask why until", "every consumer") overshoots as readily as a vague bound stops early, so say what lies outside the step too.
 - **Object sweeps beat activity instructions.** "Inventory every constant with physical meaning" executes. "Think carefully about constants" does not.
-- **Required output slots beat process advice.** A section the result must contain gets produced every run. A bullet asking for the same behavior fires about half the time. If a behavior matters, make the output prove it happened. Give each slot the condition under which it applies, or an explicit "none, because" answer; a slot that does not fit the input still gets filled, so the agent invents content for it.
+- **Required output slots expose omissions.** When later work needs an answer, give it a required output slot so a missing answer is inspectable. Give each slot the condition under which it applies, or an explicit "none, because" answer, so inputs that do not need it can close without invented content.
 - **An output slot must be refutable.** A slot the agent can fill by restating the goal in the voice of a result fires nothing: "the owner refuses the write", "the texture budget is met". Give the slot fields a later reader can check against a source: which member holds the refusal and what it calls; the largest texture, its size and the limit. A slot that names roles passes every later check; the same slot with those fields gets its claims refuted where they are wrong.
-- **Two readings of one sentence mean a judgment call.** Write a rule's strictest and loosest reasonable reading. When both are reasonable, one model takes each. Replace the sentence with a slot, a sweep over named things, or a closed set of tokens with one criterion per token. "Judge the encoding" lets one model pass everything and another flag every wrong word; a two-token result, defect or correction, each with its criterion, makes both agree.
+- **Two readings of one sentence mean a judgment call.** Write a rule's strictest and loosest reasonable reading. When both are reasonable, models can follow different readings. Replace the sentence with a slot, a sweep over named things, or a closed set of tokens with one criterion per token. "Judge the encoding" leaves the criterion open; a two-token result, defect or correction, each with its criterion, gives models the same decision rule.
 - **A rule on "any" names its part.** A gate that fires on any member of a mixed set fires on the wrong member. "Any refuted step demotes the finding" demotes a confirmed finding over one of its proposed tests. Split the set and say which part decides.
 - **Define the exception in the sentence it excepts.** "Launch nothing" in one paragraph and "run the checker" in another lets an agent treat its own helper script as allowed too. Write "launch nothing but this skill's check scripts".
 - **A question that would block becomes a premise.** When a stage meets a choice its input does not settle, it proceeds on the recommended option as a numbered premise and lists the choice in its output, except a choice the user owns: a scope widening, a destructive action, an approval the project requires. Those stop. A mid-run question waits on a person who may be away, and the answer is usually the recommendation.
@@ -83,7 +85,7 @@ Write for execution. The agent runs the document; it does not study it.
 ## Scripts and resources
 
 - Put deterministic constraints in code when code can enforce them. Use schemas, parsers, validators, templates, or tests before asking prose to remember the constraint.
-- An artifact one agent writes and another reads gets ids on its rows, fixed headings, closed token sets and a checker script. Prose that describes the shape is read differently by each model; a script reads it one way. Ids let a later stage cite a row and the checker prove the citation resolves.
+- When a later stage must inspect or enforce a shared record's identities, states, or completeness, give that record ids, defined fields, closed tokens where needed, and a checker for those constraints. Ids let a later stage cite a row and the checker prove the citation resolves. Passing prose, an image, or another deliverable between agents does not by itself require a structured record or checker.
 - Keep prose at the handoff. Say when to run a script, what input it takes, and what result closes the step. Let the script own its flags and exact mechanics.
 - Keep scripts portable. Resolve paths from the skill directory, accept explicit inputs, fail with actionable messages, and avoid machine-specific state.
 - Test scripts with the normal code workflow as well as the skill workflow. A passing unit test does not prove that an agent knows when to run the script.
@@ -91,10 +93,10 @@ Write for execution. The agent runs the document; it does not study it.
 
 ## Maintaining and debugging a skill
 
-Start from observed behavior, not a remembered solution.
+For a reported failure, start from observed behavior, not a remembered solution. For a requested improvement with no reported failure, state the intended change and use the applicable authoring rules and maintenance checks.
 
-1. Preserve the failing prompt, relevant output, expected behavior, and whether the skill loaded. Keep the smallest case that reproduces the miss.
-2. Locate the failing layer before editing.
+1. Preserve the failing prompt, relevant output, expected behavior, and whether the skill loaded. Mark facts not supplied or inspected unknown; do not infer them from the existence of a trace or other artifact. Keep the smallest case that reproduces the miss when one is available.
+2. Locate the failing layer from that evidence. If the evidence cannot distinguish the layers, keep the cause unknown and separate it from the layer you propose to change.
 
 | Failure | Change here |
 |---|---|
@@ -116,9 +118,9 @@ Every maintenance response contains:
 ```markdown
 ## Maintenance result
 
-- Failing case: prompt, relevant output, expected behavior, and whether the skill loaded; or "none, because <the change is a rename, a move or a style pass>"
-- Failure class: general mechanism and sibling cases inspected; or "none, because"
-- Owning layer and change: the row of the table above, and what changed there
+- Failing case: prompt, relevant output, expected behavior, and whether the skill loaded, marking missing evidence unknown; or "none reported; requested change: <change>"
+- Failure class: supported mechanism and sibling cases inspected; "unknown, because <missing evidence>"; or "not applicable; no failure reported"
+- Owning layer and change: the failure-table row supported by evidence, or "cause unknown" or "not applicable; no failure reported". Separately state what was changed or proposed, without treating that choice as a diagnosis.
 - Rule disposition: strengthened, moved, deleted, added, or unchanged
 - Checks: original case, unseen sibling, near negative, and known-good workflow, with the result of each, or "not run, because"
 ```
@@ -126,6 +128,10 @@ Every maintenance response contains:
 A review run, with no failing case, contains instead a **Review result**: a table with one row per checklist item, with the finding and its file and line, or "none, because".
 
 If the skill has an eval suite, add stable regression cases and expected outcomes there. Otherwise keep them in the current maintenance result. Do not create incident history in the skill body.
+
+For changes to the workflow-design guidance, use [evals/workflow-design.md](./evals/workflow-design.md).
+
+When changing skill-authoring's maintenance-report format, shared-record rule, or review-ownership rule, use [evals/authoring-boundaries.md](./evals/authoring-boundaries.md).
 
 Not every miss earns an instruction. If no stable failure class survives sibling testing, leave the skill unchanged.
 
@@ -137,14 +143,14 @@ Not every miss earns an instruction. If no stable failure class survives sibling
 - Classify each body line as a step with a criterion, a cue with a mechanism, a required output slot, or a fact the agent cannot look up. An example belongs to the line it illustrates. Delete lines that fail all four.
 - Search for duplicated and conflicting rules, across `SKILL.md`, its resources and `GOAL.md`. Decide which single location owns each meaning.
 - Find each rule that asks for a judgment (judge, decide, assess, material, significant, appropriate) and write its two readings. Replace the ones where both readings are reasonable.
-- Check that every set of verdicts, dispositions or classes is closed, that each member has a criterion, and that no two members overlap on a realistic input.
+- Distinguish exclusive verdicts from cumulative selections. For a bounded verdict set, give each token a criterion and make the criteria mutually exclusive. For cumulative rules, state that every matching rule applies; overlapping conditions are expected. Define how missing facts affect the decision.
 - Find each rule that fires on "any" or "every" over a mixed set, and name the part that decides.
 - Reread every example and sweep list against a realistic input from a different domain the skill serves. Replace each noun that input lacks; an example teaches the agent its own domain, and the agent carries those nouns into unrelated inputs.
 - Trace each step's input to the step that produces it, and check the branch for when that step finds nothing: no match, no measurement, no issue. A step written for the success path alone makes the agent fabricate its input.
 - For a new skill or general review, test clear positives, paraphrased positives, near negatives, and ambiguous uses of the word "skill".
 - For a new skill, run the workflow on the smallest and the largest realistic input in a fresh context, on each model the workspace evaluates with. Check output length, slot fit and scope against the input, not against the development case.
-- Have a fresh agent review the skill against this checklist with no knowledge of the design discussion. Its misreadings are the next reader's.
-- For maintenance, test the original case, an unseen sibling, a near negative, and a known-good workflow, each in a fresh context. The sibling proves the fix generalized. The negative catches overreach. Test under each model the workspace evaluates with; a model that already behaves as the rule asks cannot show that the rule fires.
+- The agent responsible for completing the authoring or review task arranges a fresh review against this checklist, without the design discussion. A delegated reviewer returns its own findings to that agent; it does not commission another review to satisfy this item. Its misreadings are the next reader's.
+- For maintenance, cover the original case, an unseen sibling, a near negative, and a known-good workflow at the affected stage. Use fresh contexts on each evaluated model when instructions or agent decisions change. Use deterministic tests for helper-only constraints. The sibling checks generalization; the negative checks overreach. A model that already behaves as the rule asks cannot show that the rule changed its behavior.
 - Run the nearest realistic workflow for the behavior that changed.
 
 ## Style
