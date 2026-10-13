@@ -65,13 +65,25 @@ The main agent reads the returned results and applies these rules. A verified fi
 | A finding and its impact are supported | Include it with its scenario, consequence and evidence; keep improvements distinct from defects. |
 | A selected question has a supported `clear` answer | Close that question without inventing an issue or test. |
 | A claim is refuted | Remove or correct it and revise the affected assessment. |
-| Selection, evidence or an answer needs work and its deciding operation is available | Assign that operation, consume its result and send the revised and prior assessment with the prior verification to the verifier. The verifier runs the checker's prior-record template command and reassesses the reseeded rows. |
+| Selection, evidence or an answer needs work and its deciding operation is available | Assign that operation, consume its result and continue verification under the revision rules below. |
 | A required operation is unavailable | State its exact prerequisite and the conclusion it limits. Report partial coverage, not a completed review of that obligation. |
-| A finding or evidence basis changes, including a claim added while drafting the report | Use the same revision procedure and get verdicts tied to the revised assessment. The verifier checks that carried evidence still applies; unchanged text alone does not prove that. |
-| The request, inputs, target or baseline changes | Obtain an independent selection for the new context before sending its assessment. Start a new verification template; prior evidence needs a new applicability judgment. |
+| A finding, evidence basis or source revision changes, including a claim added while drafting the report | Continue the existing review under the revision rules below; bind its verdicts to the current assessment and source. |
+| The user changes the requested scope or comparison baseline | Obtain an independent selection for that context before sending its assessment. Reuse prior evidence only where its dependencies still hold. |
 | All selected answers and proposed findings are supported for the current target | Report completion and the actual verification limits. No minimum finding count or repeated clean pass is required. |
 
 Do not resolve a source dispute by voting or shopping for another verifier. Supply the deciding evidence to the existing verifier; retain an unresolved disagreement when evidence cannot settle it. Before publishing, compare each finding, comparison and execution claim in the report with the verified assessment. Preserve which cases ran against which inputs: a target-only result must not become a baseline-and-target result. Remove unsupported claims or apply the changed-basis response above. Keep routine records out of that report; give material coverage gaps, findings and checks actually made.
+
+### Continue after a revision
+
+Keep the existing verifier when it remains available. A correction continues the review; it does not require another reviewer or another clean pass.
+
+Identify the changed source, contracts, rulings and evidence against the last verified revision. Trace them to the questions, findings and applicability decisions they can invalidate, including unchanged callers and consumers. Update those answers and their evidence in the assessment, preserving question IDs. An unchanged answer can still need new evidence when its dependency changed.
+
+When source or contract inputs change, send the verifier the current request, inputs, target and baseline, the prior source identity, and the revision's diff and contracts before sending the revised assessment or the author's affected-question list. It updates its independent selection from the changed paths and their dependencies, retaining unaffected applicability decisions. Obtain that record and its observations before exchanging the revised assessment. A new scope or baseline uses the full selection procedure instead.
+
+When review context, assembler/verifier identities and independent-selection bytes are unchanged, use the checker's prior-record template command. Otherwise use a fresh template bound to the current selection. In either case, the verifier checks which prior source arguments and returned results still apply. Retain unaffected verdicts with that basis; reassess changed dependencies and newly selected questions. A changed template or digest alone supplies no evidence. The checker cannot detect dependencies omitted from the records.
+
+Close the revision when the affected questions are supported and the completion check accounts for all current obligations. Reopen other questions only for a changed dependency, new evidence or a user ruling. A different possible design does not reopen a settled answer. Retained results keep their original inputs and limits; do not describe them as newly executed checks.
 
 ## Records and checks
 

@@ -43,7 +43,7 @@ When the user says `judged` or `with a judge`, or the workflow you are running n
 
 Read the target and applicable project instructions. Apply the guidance selected under Read for the work.
 
-Make the requested change, review, or diagnosis directly. Inspect surrounding code that determines its effect. Explicit reviews follow review.md; for diagnosis, distinguish the cause from a hypothesis. An unresolved question calls for useful inspection or a focused check, not automatic promotion to deep.
+For implementation, inspect the surrounding code and settle the applicable structural choices under good-change.md before editing. Implement the chosen boundary, then check the diff and requested behavior against its invariants. Explicit reviews follow review.md; for diagnosis, distinguish the cause from a hypothesis. An unresolved question calls for useful inspection or a focused check, not automatic promotion to deep.
 
 Check what is needed to establish the requested result. A one-line value change ordinarily needs the declaration and diff inspected, not a runtime setup or before-and-after screenshots. Run or render it when a real question about the result needs that observation. For a logic change, choose a relevant test or code argument; do not claim runtime behavior from an unexecuted check.
 

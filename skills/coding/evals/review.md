@@ -145,6 +145,22 @@ To check the boundary with ordinary coding, use the separately staged
 [normal-runtime sibling in levels.md](levels.md#runnable-normal-runtime-sibling).
 No full R1–R5 rerun is needed to score these scoped changes.
 
+### Source revision and dependency checks
+
+Use fresh contexts with the candidate guidance for these continuation cases. Supply
+the situation and prior source/verification identities, withholding this oracle.
+Retain the verifier's revised selection before sending the revised assessment.
+These focused checks establish instruction interpretation; R6–R8 exercise actual
+record updates and completion. Neither establishes faster wall-clock performance.
+
+| Case | Situation | Expected response |
+|---|---|---|
+| Original: completion correction | A reviewed save path now returns false when closing fails. The caller is unchanged and publishes only after a true result. A separately reviewed caption is unchanged. The target digest changes; the request and baseline do not. | Continue with the existing verifier. Independently select from the correction and caller before receiving revised answers. Recheck close failure and the caller's publication decision; retain the caption's applicable evidence. Bind a fresh template to the current source and selection without editing old hashes or claiming old execution as new. |
+| Sibling: unchanged dependent answer | A producer changes a queued delay from seconds to milliseconds. The unchanged scheduler still interprets seconds. Its previously verified answer and source bytes are unchanged. A separate formatting path has no dependency on the delay. | Reopen the producer/scheduler interaction and its applicability even though the consumer and answer text are unchanged. Inspect the unit contract and identify the resulting delay error. Retain unrelated formatting evidence; do not use diff-only coverage or a refreshed digest as support. |
+| Selection revision: fixed context fields | A newly supplied contract changes a selection basis while request, input labels, target and baseline strings stay fixed. The verifier's revised selection bytes differ from its prior selection. | Use a fresh template bound to the revised selection. The prior-record command requires identical independent-selection bytes as well as unchanged context and identities. Retain applicable source arguments, but do not rewrite the prior verification's selection hash to make reuse pass. |
+| Near negative: record formatting | Only JSON indentation changes in the assessment; parsed records, source, contracts, rulings and evidence are unchanged. | Use the prior-record template and retain every verdict exactly, bound to the current assessment bytes. No new selection, source investigation, reviewer or execution claim. R8 exercises this case. |
+| Known-good: broader user request | The user changes a single save-path review into a review of every publisher, including cancellation, and changes the comparison baseline. | Run full independent selection for the new scope and baseline, then account for every new obligation. Reuse prior evidence only after checking its applicability; a bounded correction review cannot stand in for the expanded request. |
+
 ## Shared scoring
 
 R1–R4 must preserve the requested input and baseline, apply all matching selection
