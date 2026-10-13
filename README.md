@@ -27,6 +27,7 @@ The repository publishes these skills:
 - `agent-messaging` writes prompts, briefs, dispatches, and handoffs that another agent can act on.
 - `avatar-check` checks a VRM avatar against what MEs loads and, when asked, writes an optimized copy.
 - `coding` handles code changes, reviews, and diagnosis.
+- `backend-primitives` is explicitly invoked to sweep a TypeScript backend's boundary code with fixed questions per site, and to report defects, shared primitives worth building, and Effect concepts to adopt.
 - `code-architecture` is explicitly invoked to research a subsystem, review its architecture with independent perspectives, and develop concrete remedies.
 - `feature-impact` finds the other features and workflows affected by a change, including bugs, smaller improvements and open decisions.
 - `feature-shaping` is explicitly invoked to dig a feature idea down to the outcome it serves, test the idea against it, and propose a better shape when one exists.

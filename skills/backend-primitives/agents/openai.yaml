@@ -1,0 +1,6 @@
+interface:
+  display_name: "Backend Primitives"
+  short_description: "Sweep backend boundary code for defects, shared primitives and Effect adoption"
+  default_prompt: "Use $backend-primitives to sweep this repository's boundary code for defects, shared primitives worth building, and Effect concepts to adopt."
+policy:
+  allow_implicit_invocation: false

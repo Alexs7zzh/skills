@@ -1,0 +1,24 @@
+Resources:
+    OrdersFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            Handler: src/handler.handler
+            Timeout: 10
+            Events:
+                CreateOrder:
+                    Type: Api
+                    Properties:
+                        Path: /orders
+                        Method: post
+    RestockFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            Handler: src/restock.handler
+            Timeout: 60
+            EventInvokeConfig:
+                MaximumRetryAttempts: 2
+            Events:
+                Hourly:
+                    Type: Schedule
+                    Properties:
+                        Schedule: rate(1 hour)

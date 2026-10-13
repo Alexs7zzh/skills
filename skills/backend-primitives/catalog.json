@@ -1,0 +1,2380 @@
+{
+  "written_against": "effect 4.0.3",
+  "extensions": [
+    ".ts",
+    ".tsx",
+    ".mts",
+    ".cts"
+  ],
+  "exclude_dirs": [
+    "node_modules",
+    "dist",
+    "build",
+    "out",
+    "coverage",
+    ".git",
+    ".turbo",
+    ".next",
+    ".aws-sam",
+    ".serverless"
+  ],
+  "test_path": "(\\.test\\.|\\.spec\\.|/__tests__/|/tests?/)",
+  "tsgo_rules": [
+    "processEnv",
+    "globalDate",
+    "globalConsole",
+    "globalFetch",
+    "globalTimers",
+    "globalRandom",
+    "nodeBuiltinImport",
+    "preferSchemaOverJson",
+    "extendsNativeError",
+    "newPromise",
+    "cryptoRandomUUID"
+  ],
+  "kinds": {
+    "external-call": {
+      "title": "A call that leaves the process: HTTP, SDK, database, queue, cache server",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "\\bfetch\\(",
+        "\\b\\w*([Cc]lient|[Ss]ervice|sdk|SDK)\\.send\\(",
+        "\\b(db|pool|client|conn|connection|sql|knex|database|tx|trx)\\.(query|execute)\\(",
+        "\\baxios(\\.\\w+)?\\(",
+        "\\bgot(\\.\\w+)?\\(",
+        "\\b\\w*([Cc]lient|http|api)\\.request\\(",
+        "new\\s+\\w+Command\\(",
+        "Effect\\.tryPromise\\(",
+        "\\b\\w*([Cc]lient|lambda|Lambda)\\.invoke\\("
+      ],
+      "read": "The enclosing function, every caller up to an entry point, and the construction of the client it uses. For a client or SDK default such as a retry count, read the installed library source and cite it.",
+      "questions": [
+        {
+          "id": "XC1",
+          "text": "Does a successful call change state outside the process?",
+          "yes": "It creates, updates, deletes, sends, publishes, enqueues, starts, charges or invokes. Name the effect.",
+          "no": "It only reads: get, list, describe, a query without side effects."
+        },
+        {
+          "id": "XC2",
+          "text": "Does the request carry a caller-chosen key that the provider uses to deduplicate repeats?",
+          "yes": "An idempotency key, client token, deterministic resource or execution name, or a conditional-write precondition. Name the field.",
+          "no": "No such field, or a field the provider does not deduplicate on.",
+          "only_if": {
+            "XC1": "yes"
+          }
+        },
+        {
+          "id": "XC3",
+          "text": "Is that key derived from persisted or deterministic input, so a repeat from a new process sends the same key?",
+          "yes": "Derived from stored state, the request's own identity, or a deterministic name.",
+          "no": "Generated per attempt or per process: a random UUID, a timestamp, a counter.",
+          "only_if": {
+            "XC2": "yes"
+          }
+        },
+        {
+          "id": "XC4",
+          "text": "Is the call bounded by a deadline?",
+          "yes": "An abort signal, a client timeout option, or an enclosing timeout that interrupts it. Cite the bound and its value.",
+          "no": "Nothing bounds it short of the platform killing the process."
+        },
+        {
+          "id": "XC5",
+          "text": "Is a failed call repeated automatically anywhere?",
+          "yes": "A loop, recursion, a client or SDK default, a wrapper, a schedule, or the platform re-delivering the event. Cite each retry owner, including library defaults.",
+          "no": "Every owner was checked and none repeats it."
+        },
+        {
+          "id": "XC6",
+          "text": "Is it repeated by more than one of those owners?",
+          "yes": "Two or more owners. Name them.",
+          "no": "Exactly one owner.",
+          "only_if": {
+            "XC5": "yes"
+          }
+        },
+        {
+          "id": "XC7",
+          "text": "Is the repetition hand-written: a loop or recursion with a sleep or timer?",
+          "yes": "Cite the loop.",
+          "no": "A library, schedule or platform repeats it.",
+          "only_if": {
+            "XC5": "yes"
+          }
+        },
+        {
+          "id": "XC8",
+          "text": "Is the deadline outside the repetition, so it bounds every attempt and the waits between them?",
+          "yes": "One timeout encloses the retry.",
+          "no": "Only each attempt is bounded, or nothing bounds the whole.",
+          "only_if": {
+            "XC5": "yes"
+          }
+        },
+        {
+          "id": "XC9",
+          "text": "Before deciding the next action, does the code distinguish failures by kind?",
+          "yes": "Throttled, temporary, rejected and unknown-outcome failures take different paths. Cite the classifier.",
+          "no": "All failures take one path."
+        },
+        {
+          "id": "XC10",
+          "text": "After a failure that leaves the outcome unknown, does the code check whether the change happened before repeating it?",
+          "yes": "A timeout, dropped connection or 5xx on a change leads to a lookup. Cite the lookup.",
+          "no": "It repeats or gives up without looking.",
+          "only_if": {
+            "XC1": "yes"
+          }
+        },
+        {
+          "id": "XC11",
+          "text": "Does a failure reach the caller as a value that names the operation and keeps the original cause?",
+          "yes": "A typed error or tagged value with the operation and cause.",
+          "no": "A generic error, a string, a provider error with no operation name, or nothing."
+        },
+        {
+          "id": "XC12",
+          "text": "Is the call recorded in a span or a structured log with its operation name and outcome?",
+          "yes": "Cite the span or log.",
+          "no": "No record, or a free-text message only."
+        },
+        {
+          "id": "XC13",
+          "text": "Is the response validated against a schema before its fields are used?",
+          "yes": "Cite the decoder.",
+          "no": "Fields are read from an unvalidated or cast value. Answer n/a only when the response is unused."
+        },
+        {
+          "id": "XC14",
+          "text": "Is the call made inside an open database transaction?",
+          "yes": "Cite the transaction.",
+          "no": "No transaction encloses it."
+        },
+        {
+          "id": "XC15",
+          "text": "Does the retry read a wait hint from the failed response, such as a Retry-After header or a provider's retry field?",
+          "yes": "Cite where the hint is read and used as the delay.",
+          "no": "The retry delay never reads the response.",
+          "only_if": {
+            "XC5": "yes"
+          }
+        },
+        {
+          "id": "XC16",
+          "text": "Is the call made through a project wrapper that already supplies the deadline, the typed failure and the record?",
+          "yes": "Cite the wrapper.",
+          "no": "The call is made directly, or through a wrapper missing one of the three."
+        }
+      ]
+    },
+    "import": {
+      "title": "An import of a client for an external system: network, storage, database, queue, process or file system",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "from\\s+['\"](node:)?(fs|fs/promises|child_process|net|http|https|http2|dgram|dns|tls|worker_threads)['\"]",
+        "from\\s+['\"](@aws-sdk/[\\w-]+|aws4fetch|@planetscale/[\\w-]+|pg|postgres|mysql2(/promise)?|ioredis|redis|@prisma/client|drizzle-orm[\\w/-]*|mongodb|axios|got|undici|node-fetch|ky|@slack/[\\w-]+|stripe|@google-cloud/[\\w-]+|firebase-admin|nodemailer|@sendgrid/[\\w-]+|twilio|kafkajs|amqplib|@upstash/[\\w-]+)['\"]",
+        "\\brequire\\(\\s*['\"](node:)?(fs|child_process|net|http|https)['\"]"
+      ],
+      "read": "The import, the file's exports, and the other files that import the same module.",
+      "questions": [
+        {
+          "id": "IM2",
+          "text": "Does another file import from the same module specifier?",
+          "yes": "Cite the other file's import line.",
+          "no": "No other file imports the specifier.",
+          "derive": "same-import",
+          "search": true
+        },
+        {
+          "id": "IM3",
+          "text": "Does a lint rule already restrict which files may import this module?",
+          "yes": "Cite the rule.",
+          "no": "No rule restricts it."
+        }
+      ]
+    },
+    "entry-point": {
+      "title": "Where work starts: a request handler, function handler, route, job, consumer or command",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "export\\s+(const|let|async\\s+function|function)\\s+handler\\b",
+        "export\\s+default\\s+\\{",
+        "\\bBun\\.serve\\(",
+        "\\b(app|router|route|server)\\.(get|post|put|patch|delete|all|use|route)\\(",
+        "addEventListener\\(\\s*['\"]fetch",
+        "\\bcreateServer\\(",
+        "\\bcreateHandler\\(",
+        "\\bhandle\\(\\s*app\\b",
+        "export\\s+(async\\s+)?function\\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\b",
+        "export\\s+const\\s+(GET|POST|PUT|PATCH|DELETE)\\s*="
+      ],
+      "read": "The entry function, its middleware or wrapper, the platform configuration that triggers it (deployment templates, schedules, queue settings), and the work it starts.",
+      "questions": [
+        {
+          "id": "EP1",
+          "text": "Are clients, layers, connections or other dependencies constructed inside the per-request or per-event function?",
+          "yes": "Cite the construction inside the function.",
+          "no": "They are built once per process, or there are none."
+        },
+        {
+          "id": "EP2",
+          "text": "Does the entry compute a deadline from the platform's remaining time or the request timeout and pass it to the work it starts?",
+          "yes": "Cite where it is computed and where it is passed.",
+          "no": "No deadline, or a fixed constant unrelated to the platform limit."
+        },
+        {
+          "id": "EP3",
+          "text": "Is every typed failure the work can produce mapped to a response or outcome by name?",
+          "yes": "Each failure kind has its own mapping; a generic fallback catches only defects.",
+          "no": "Some typed failures fall into a generic error response or a rethrow."
+        },
+        {
+          "id": "EP4",
+          "text": "Are request-scoped identifiers attached to every log and span emitted during the request?",
+          "yes": "A request, route, user or job id is set once and carried. Cite it.",
+          "no": "Logs carry none, or each site passes its own."
+        },
+        {
+          "id": "EP5",
+          "text": "Is the input validated against a schema before use?",
+          "yes": "Cite the validator.",
+          "no": "Fields are read from the raw event or a cast."
+        },
+        {
+          "id": "EP6",
+          "text": "Can the platform deliver the same event more than once?",
+          "yes": "Asynchronous invocation retries, an at-least-once queue, overlapping schedule ticks, or client retries. Cite the configuration in the repository.",
+          "no": "Delivery is at most once, and the configuration in the repository shows it."
+        },
+        {
+          "id": "EP7",
+          "text": "Does the entry check a dedupe record keyed by the event's identity before applying its effects?",
+          "yes": "Cite the record and the check.",
+          "no": "No dedupe record.",
+          "only_if": {
+            "EP6": "yes"
+          }
+        },
+        {
+          "id": "EP8",
+          "text": "Does the entry run Effect code?",
+          "yes": "Cite the run call.",
+          "no": "Plain promise or callback code."
+        },
+        {
+          "id": "EP9",
+          "text": "Is the Effect run through a runtime built once per process?",
+          "yes": "A module-level runtime, or one memoized layer build.",
+          "no": "Layers are provided inside each run.",
+          "only_if": {
+            "EP8": "yes"
+          }
+        }
+      ]
+    },
+    "config-read": {
+      "title": "A read of process configuration: environment variables and equivalents",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "process\\.env",
+        "\\bBun\\.env\\b",
+        "import\\.meta\\.env",
+        "\\bDeno\\.env\\b"
+      ],
+      "read": "The read, the helper that wraps it, every other read of the same key, and where the value is used.",
+      "questions": [
+        {
+          "id": "CF1",
+          "text": "Is the value a secret: a password, token, key or credential?",
+          "yes": "Name the kind.",
+          "no": "Not a secret."
+        },
+        {
+          "id": "CF3",
+          "text": "Is a missing or malformed value reported with the key's name before the value is used?",
+          "yes": "Cite the check.",
+          "no": "A missing value becomes undefined, an empty string, NaN or a late failure without the key name."
+        },
+        {
+          "id": "CF4",
+          "text": "Is the value parsed by hand: number, boolean, JSON, list or enum?",
+          "yes": "Cite the parse.",
+          "no": "Used as a raw string."
+        },
+        {
+          "id": "CF5",
+          "text": "Is the same key read in another place?",
+          "yes": "Cite one other read.",
+          "no": "This is the only read.",
+          "derive": "same-env-key",
+          "search": true
+        },
+        {
+          "id": "CF6",
+          "text": "Can the value reach a log, error message, response or stored record?",
+          "yes": "Cite the path.",
+          "no": "It is used only in requests to the service it authenticates or configures."
+        },
+        {
+          "id": "CF7",
+          "text": "Do tests set this key by mutating the global environment?",
+          "yes": "Cite one test.",
+          "no": "Tests supply it another way or not at all."
+        }
+      ]
+    },
+    "error-definition": {
+      "title": "A definition of an error type",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "class\\s+\\w+\\s+extends\\s+(\\w+\\.)?\\w*Error\\b",
+        "Data\\.TaggedError\\(",
+        "Schema\\.TaggedError",
+        "\\bcreateError\\("
+      ],
+      "read": "The definition, every construction site, and every place that matches on it.",
+      "questions": [
+        {
+          "id": "ED1",
+          "text": "Does the error carry a literal tag or discriminant that callers match on?",
+          "yes": "Cite the tag.",
+          "no": "Callers can tell it apart only by class or message."
+        },
+        {
+          "id": "ED2",
+          "text": "Does it keep the original cause?",
+          "yes": "A cause field or Error cause option.",
+          "no": "The cause is dropped or stringified."
+        },
+        {
+          "id": "ED3",
+          "text": "Is it written to storage, sent to another process or client, or embedded in a persisted record?",
+          "yes": "Cite the write.",
+          "no": "It stays in memory."
+        },
+        {
+          "id": "ED4",
+          "text": "Does any caller distinguish it by message text?",
+          "yes": "Cite the match.",
+          "no": "No caller matches on message text.",
+          "search": true
+        },
+        {
+          "id": "ED5",
+          "text": "Does another error type have the same fields?",
+          "yes": "Cite it.",
+          "no": "No other error type has the same fields.",
+          "search": true
+        }
+      ]
+    },
+    "error-handling": {
+      "title": "A place that catches or recovers from a failure",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "\\bcatch\\s*[({]",
+        "\\.catch\\(",
+        "Effect\\.(catch\\w*|orElse\\w*|ignore\\w*)\\b",
+        "Promise\\.allSettled\\("
+      ],
+      "read": "The handler, the work it encloses, and what the caller receives after it runs.",
+      "questions": [
+        {
+          "id": "EH1",
+          "text": "Does the handler end the failure without propagating it or returning a failure value?",
+          "yes": "It logs, returns a default, returns success or does nothing.",
+          "no": "It rethrows, fails, or returns a value that records the failure."
+        },
+        {
+          "id": "EH2",
+          "text": "Is the swallow marked as intended?",
+          "yes": "A named optional step, a comment that names the consequence, or an outcome value the caller reads.",
+          "no": "Nothing marks it.",
+          "only_if": {
+            "EH1": "yes"
+          }
+        },
+        {
+          "id": "EH3",
+          "text": "Does the handler catch interruption, abort or timeout failures along with ordinary failures?",
+          "yes": "It catches them in the same branch: Effect catchCause or ignoreCause without an interrupt check, or a catch-all around an abortable await.",
+          "no": "They pass through, or none can reach this handler."
+        },
+        {
+          "id": "EH4",
+          "text": "Does it replace the failure with a new one that drops the original cause?",
+          "yes": "Cite the replacement.",
+          "no": "The cause survives."
+        },
+        {
+          "id": "EH5",
+          "text": "Does the handler run before a retry of the same work, so the retry never sees the failure?",
+          "yes": "Cite the order.",
+          "no": "No retry follows, or the handler runs after it."
+        }
+      ]
+    },
+    "decode-boundary": {
+      "title": "Data entering typed code from outside: parse, cast, response body, stored record",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "JSON\\.parse\\(",
+        "\\.json\\(\\)",
+        "\\bas\\s+unknown\\s+as\\b",
+        "\\bas\\s+any\\b"
+      ],
+      "read": "The source of the data, the decode or cast, and the first fields used.",
+      "questions": [
+        {
+          "id": "DB1",
+          "text": "Does the data come from outside the process?",
+          "yes": "Network, storage, environment, user input, another service, or a file.",
+          "no": "It was produced in-process."
+        },
+        {
+          "id": "DB2",
+          "text": "Is it validated against a schema before any field is used?",
+          "yes": "Cite the schema.",
+          "no": "Fields are read first, or a hand-written guard checks only part of the shape."
+        },
+        {
+          "id": "DB3",
+          "text": "Is a type assertion applied to it?",
+          "yes": "Cite the cast.",
+          "no": "No cast."
+        },
+        {
+          "id": "DB4",
+          "text": "Does another place decode or cast external data to a type with the same field names?",
+          "yes": "Cite the other place.",
+          "no": "A search for the field names finds no other decode or cast of that shape.",
+          "search": true,
+          "derive": "same-shape"
+        },
+        {
+          "id": "DB5",
+          "text": "Does this codebase also write the same shape?",
+          "yes": "Cite the writer.",
+          "no": "Only read here."
+        },
+        {
+          "id": "DB6",
+          "text": "Does a decode failure produce a failure distinct from a transport or storage failure?",
+          "yes": "Its own type or tag.",
+          "no": "It shares the transport failure's type, or throws a generic error.",
+          "only_if": {
+            "DB2": "yes"
+          }
+        }
+      ]
+    },
+    "state-write": {
+      "title": "A write to a store that outlives the request: database, object storage, key-value, file",
+      "scan": "source",
+      "merge_window": 4,
+      "patterns": [
+        "\\b[Pp]utObject(Command)?\\(",
+        "['\"`]\\s*UPDATE\\s+\\w",
+        "\\bUPDATE\\s+`?\\w+`?\\s+SET\\b",
+        "\\bINSERT\\s+(IGNORE\\s+)?INTO\\b",
+        "\\bDELETE\\s+FROM\\b",
+        "\\.(upsert|insert|put)\\(",
+        "\\b(writeFile|appendFile)(Sync)?\\(",
+        "\\bputJson\\w*\\(",
+        "\\b(db|tx|trx|database)\\.(insert|update|delete)\\(",
+        "\\.\\w+\\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\\(\\s*\\{"
+      ],
+      "read": "The write, the read it depends on, every other writer of the same record, and any concurrency limit in the deployment configuration.",
+      "questions": [
+        {
+          "id": "SW1",
+          "text": "Does another code path write the same table, key or file?",
+          "yes": "Cite the other write.",
+          "no": "A search for writes to the same table, key or file finds only this one.",
+          "search": true
+        },
+        {
+          "id": "SW2",
+          "text": "Is the write read-modify-write?",
+          "yes": "The written value is computed from a value read earlier.",
+          "no": "A blind write or an append."
+        },
+        {
+          "id": "SW3",
+          "text": "Is the write conditional on what was read?",
+          "yes": "A version, etag, if-absent, or WHERE on the read value. Cite it.",
+          "no": "Unconditional.",
+          "only_if": {
+            "SW2": "yes"
+          }
+        },
+        {
+          "id": "SW4",
+          "text": "If the write committed but the response was lost, can a retry recognize its own earlier write?",
+          "yes": "A writer id or version in the record lets it.",
+          "no": "A retry sees a conflict or a changed record and cannot tell why.",
+          "only_if": {
+            "SW3": "yes"
+          }
+        },
+        {
+          "id": "SW5",
+          "text": "Is the write paired with an external effect that must happen once per write?",
+          "yes": "A message, call or event. Cite it.",
+          "no": "No paired effect."
+        },
+        {
+          "id": "SW6",
+          "text": "Is the paired effect recorded in the same transaction or record for later delivery?",
+          "yes": "An outbox row or pending-effect field. Cite it.",
+          "no": "Performed separately; a crash between the two loses or repeats it.",
+          "only_if": {
+            "SW5": "yes"
+          }
+        }
+      ]
+    },
+    "pagination-loop": {
+      "title": "A loop that walks pages from an API or store",
+      "scan": "source",
+      "merge_window": 30,
+      "patterns": [
+        "\\b[Nn]extToken\\b",
+        "\\b[Cc]ontinuationToken\\b",
+        "\\b[Nn]ext[Cc]ursor\\b",
+        "\\bnext_cursor\\b",
+        "\\bLastEvaluatedKey\\b",
+        "\\b[Hh]as[Mm]ore\\b",
+        "\\bhas_more\\b",
+        "\\bIsTruncated\\b"
+      ],
+      "read": "The loop and each page request.",
+      "questions": [
+        {
+          "id": "PG1",
+          "text": "Is the number of pages or items bounded?",
+          "yes": "A page cap, an item cap, or a provider limit. Cite it.",
+          "no": "Unbounded."
+        },
+        {
+          "id": "PG2",
+          "text": "Is each page request, or the whole loop, bounded by a deadline?",
+          "yes": "Cite it.",
+          "no": "No deadline."
+        },
+        {
+          "id": "PG3",
+          "text": "Is the same loop shape written in another place?",
+          "yes": "Cite one.",
+          "no": "Only here.",
+          "search": true
+        },
+        {
+          "id": "PG4",
+          "text": "Does the loop exit early or carry state between pages beyond the token?",
+          "yes": "Cite the early exit or state.",
+          "no": "It collects every page."
+        }
+      ]
+    },
+    "fan-out": {
+      "title": "Concurrent work over a collection",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "Promise\\.(all|allSettled|any|race)\\(",
+        "Effect\\.(all|forEach)\\("
+      ],
+      "read": "The collection's source, the per-item work, and what the caller receives.",
+      "questions": [
+        {
+          "id": "FO1",
+          "text": "Is the number of concurrent operations bounded?",
+          "yes": "Cite the limit.",
+          "no": "All items start at once."
+        },
+        {
+          "id": "FO2",
+          "text": "Is the item count set by external data?",
+          "yes": "Request input, stored rows, a listing.",
+          "no": "A fixed small set in code."
+        },
+        {
+          "id": "FO3",
+          "text": "Does each item's work run without reading another item's result?",
+          "yes": "No item reads another's result or relies on its success.",
+          "no": "Cite the dependency between items."
+        },
+        {
+          "id": "FO4",
+          "text": "Does one failure reject or abandon the rest?",
+          "yes": "Promise.all, Effect.all or forEach default mode.",
+          "no": "Every item runs to an outcome."
+        },
+        {
+          "id": "FO5",
+          "text": "Is each item's outcome reported to the caller or a log?",
+          "yes": "Cite the per-item outcome.",
+          "no": "Partial failures vanish."
+        },
+        {
+          "id": "FO6",
+          "text": "Does the provider offer a batch call for these items that is not used?",
+          "yes": "Cite the batch API.",
+          "no": "No batch API, or it is used."
+        },
+        {
+          "id": "FO7",
+          "text": "Is Promise.race used with a timer to bound the work?",
+          "yes": "Cite it.",
+          "no": "Not a timer race."
+        }
+      ]
+    },
+    "time-read": {
+      "title": "A read of the clock or a timer",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "\\bDate\\.now\\(\\)",
+        "\\bnew\\s+Date\\(\\)",
+        "\\bsetTimeout\\(",
+        "\\bsetInterval\\(",
+        "\\bperformance\\.now\\(\\)"
+      ],
+      "read": "The read and the decision it feeds.",
+      "questions": [
+        {
+          "id": "TM1",
+          "text": "Does the time feed a decision: a deadline, expiry, backoff, elapsed check or schedule?",
+          "yes": "Name the decision.",
+          "no": "It only stamps a record or a log."
+        },
+        {
+          "id": "TM2",
+          "text": "Is that decision exercised by a test?",
+          "yes": "Cite the test.",
+          "no": "No test reaches it.",
+          "only_if": {
+            "TM1": "yes"
+          }
+        },
+        {
+          "id": "TM3",
+          "text": "Does that test wait real time or patch the global clock?",
+          "yes": "Cite the wait or patch.",
+          "no": "It injects time.",
+          "only_if": {
+            "TM2": "yes"
+          }
+        },
+        {
+          "id": "TM4",
+          "text": "Is wall-clock time subtracted to measure an elapsed duration?",
+          "yes": "Date values subtracted for a lease, timeout or rate decision. Cite it.",
+          "no": "Monotonic time is used, or no elapsed duration is measured.",
+          "only_if": {
+            "TM1": "yes"
+          }
+        }
+      ]
+    },
+    "log-site": {
+      "title": "A log statement",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "\\bconsole\\.(log|info|warn|error|debug)\\(",
+        "\\blogger\\.(info|warn|error|debug|trace)\\(",
+        "Effect\\.log\\w*\\("
+      ],
+      "read": "The statement and the values it includes.",
+      "questions": [
+        {
+          "id": "LG1",
+          "text": "Is the record machine-parseable with a stable event name and fields?",
+          "yes": "One structured record.",
+          "no": "Free text, or an object the runtime prints in a non-parseable form."
+        },
+        {
+          "id": "LG2",
+          "text": "Does it carry the request, job or operation id?",
+          "yes": "Directly or through an annotation.",
+          "no": "None."
+        },
+        {
+          "id": "LG3",
+          "text": "Can it include a secret, token or full user payload?",
+          "yes": "Cite the value.",
+          "no": "Only identifiers and outcomes."
+        },
+        {
+          "id": "LG4",
+          "text": "Does it log a caught failure at a level below warning?",
+          "yes": "A failure from a catch block or error result logged at log, info or debug level.",
+          "no": "Logged at warning or error, or not a failure."
+        },
+        {
+          "id": "LG5",
+          "text": "Is this an Effect log call whose Effect is never run?",
+          "yes": "A bare statement in Effect code that is not yielded or returned.",
+          "no": "Yielded, returned, or not an Effect log."
+        }
+      ]
+    },
+    "resource": {
+      "title": "Something acquired that must be released: connection, handle, temporary file, timer, subscription, lock, launched instance",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "\\bcreate(Connection|Pool|Client)\\(",
+        "\\.connect\\(",
+        "\\bmkdtemp(Sync)?\\(",
+        "\\bfs\\.open\\(",
+        "\\.subscribe\\(",
+        "\\bsetInterval\\(",
+        "\\.acquire\\(",
+        "\\.lock\\(",
+        "\\bnew\\s+AbortController\\("
+      ],
+      "read": "The acquisition, every exit path of its owner, and the release.",
+      "questions": [
+        {
+          "id": "RS1",
+          "text": "Is the resource released on every exit: success, failure, timeout and cancellation?",
+          "yes": "Cite the release mechanism.",
+          "no": "Name the exit that skips it."
+        },
+        {
+          "id": "RS2",
+          "text": "Is it held across requests or for the process lifetime?",
+          "yes": "Module-level or cached.",
+          "no": "Scoped to one request or call."
+        },
+        {
+          "id": "RS3",
+          "text": "Can two concurrent callers both reach the creation before either stores the result?",
+          "yes": "No guard between the check and the store.",
+          "no": "Guarded, or created once at startup.",
+          "only_if": {
+            "RS2": "yes"
+          }
+        },
+        {
+          "id": "RS4",
+          "text": "Is an AbortController built by hand to bound or cancel work?",
+          "yes": "Cite it.",
+          "no": "Not a hand-built controller."
+        }
+      ]
+    },
+    "module-state": {
+      "title": "Mutable state at module scope: caches, maps, singletons, counters",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "^(export\\s+)?let\\s+\\w+",
+        "^(export\\s+)?const\\s+\\w+\\s*(:[^=]+)?=\\s*new\\s+(Map|Set|WeakMap)\\b",
+        "^(export\\s+)?const\\s+\\w*[cC]ache\\w*\\s*="
+      ],
+      "read": "The declaration and every reader and writer.",
+      "questions": [
+        {
+          "id": "MS1",
+          "text": "Is it a cache of values fetched or computed from elsewhere?",
+          "yes": "Name the source.",
+          "no": "Another kind of state."
+        },
+        {
+          "id": "MS2",
+          "text": "Does the cache have an expiry or size bound?",
+          "yes": "Cite it.",
+          "no": "Entries live forever.",
+          "only_if": {
+            "MS1": "yes"
+          }
+        },
+        {
+          "id": "MS3",
+          "text": "Do concurrent misses for the same key share one lookup?",
+          "yes": "An in-flight promise or lock is shared.",
+          "no": "Each miss starts its own lookup.",
+          "only_if": {
+            "MS1": "yes"
+          }
+        },
+        {
+          "id": "MS4",
+          "text": "Is a failed lookup stored as a value?",
+          "yes": "An empty or error result is cached.",
+          "no": "Failures are not stored.",
+          "only_if": {
+            "MS1": "yes"
+          }
+        },
+        {
+          "id": "MS5",
+          "text": "Can the cached source value change during the process lifetime?",
+          "yes": "A rotated secret, a changed configuration, an updated record. Cite the source.",
+          "no": "Fixed at build or startup.",
+          "only_if": {
+            "MS1": "yes"
+          }
+        },
+        {
+          "id": "MS6",
+          "text": "Is the state read, then an await happens, then the state is written from the earlier read?",
+          "yes": "Cite the read and write.",
+          "no": "No await between read and dependent write."
+        }
+      ]
+    },
+    "background-work": {
+      "title": "Work started without the caller waiting for it",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "^\\s*void\\s+[\\w.]+\\(",
+        "\\bsetImmediate\\(",
+        "\\bqueueMicrotask\\(",
+        "Effect\\.fork\\w*\\(",
+        "Effect\\.runFork\\("
+      ],
+      "read": "The started work, its owner, and what happens when the owner finishes or the process is frozen.",
+      "questions": [
+        {
+          "id": "BG1",
+          "text": "Does the work write state, deliver a message or release a resource?",
+          "yes": "Name the effect.",
+          "no": "It only records metrics, logs or warms a cache."
+        },
+        {
+          "id": "BG2",
+          "text": "Can the owner finish or the process freeze before the work completes?",
+          "yes": "A handler returns, a serverless runtime freezes, or a scope closes first.",
+          "no": "The owner waits for it or outlives it."
+        },
+        {
+          "id": "BG3",
+          "text": "Are its failures observed?",
+          "yes": "Logged or recorded with the operation name.",
+          "no": "A rejection or failure goes nowhere."
+        }
+      ]
+    },
+    "effect-boundary": {
+      "title": "Where Effect code is run or given its dependencies",
+      "scan": "source",
+      "merge_window": 0,
+      "patterns": [
+        "Effect\\.run(Promise|Sync|Fork|PromiseExit|SyncExit|Callback)\\(",
+        "\\.run(Promise|PromiseExit|Fork|Sync)\\(",
+        "Effect\\.provide\\(",
+        "ManagedRuntime\\.make\\("
+      ],
+      "read": "The run or provide call, the code around it, and the layer it uses.",
+      "questions": [
+        {
+          "id": "EB1",
+          "text": "Is this run inside code that itself runs inside an Effect?",
+          "yes": "A nested run inside a generator, service method or callback of Effect code.",
+          "no": "At an outer edge."
+        },
+        {
+          "id": "EB2",
+          "text": "Is a layer provided here on every call, rather than once through a runtime?",
+          "yes": "Cite the provide.",
+          "no": "Provided once, or no layer."
+        },
+        {
+          "id": "EB3",
+          "text": "Does the boundary treat interruption and defects differently from typed failures?",
+          "yes": "Cite the distinction.",
+          "no": "All three take one path."
+        },
+        {
+          "id": "EB4",
+          "text": "Is the run given the caller's cancellation signal or deadline?",
+          "yes": "A signal option, or a timeout derived from the caller.",
+          "no": "The run cannot be cancelled from outside."
+        },
+        {
+          "id": "EB5",
+          "text": "Is a request-scoped value captured when a layer is built and then shared by later requests?",
+          "yes": "Cite the capture.",
+          "no": "Request-scoped values are read per request."
+        }
+      ]
+    },
+    "test-double": {
+      "title": "A fake, mock or patched global in a test",
+      "scan": "tests",
+      "merge_window": 12,
+      "patterns": [
+        "\\bmock\\.(method|fn|module|timers)\\b",
+        "\\b(vi|jest)\\.(mock|fn|spyOn|useFakeTimers)\\(",
+        "globalThis\\.\\w+\\s*=",
+        "process\\.env(\\.\\w+|\\[[^\\]]+\\])\\s*=",
+        "\\bLayer\\.succeed\\(",
+        "\\bclass\\s+(Fake|Mock|Stub|InMemory|Memory)\\w*",
+        "\\b(const|function)\\s+(fake|mock|stub|memory)\\w*"
+      ],
+      "read": "The double, the code under test that receives it, and other test files' doubles of the same thing.",
+      "questions": [
+        {
+          "id": "TD1",
+          "text": "Is an equivalent double defined in another test file?",
+          "yes": "Cite one.",
+          "no": "Only here.",
+          "search": true
+        },
+        {
+          "id": "TD2",
+          "text": "Does the test patch a global or a module export?",
+          "yes": "fetch, environment, console, the clock, or an imported module.",
+          "no": "The double is passed in."
+        },
+        {
+          "id": "TD3",
+          "text": "Does the code under test receive the double through a service, parameter or layer?",
+          "yes": "Cite the seam.",
+          "no": "Only through the patched global or module."
+        },
+        {
+          "id": "TD4",
+          "text": "Can the double inject failures, including a change that applies but whose response is lost?",
+          "yes": "Cite the failure modes it supports.",
+          "no": "Success only, or failure before applying only."
+        },
+        {
+          "id": "TD5",
+          "text": "Does the test wait real time?",
+          "yes": "A sleep or real timer.",
+          "no": "No waits, or injected time."
+        }
+      ]
+    }
+  },
+  "concepts": {
+    "deadline": {
+      "title": "Deadline with interruption",
+      "type": "effect",
+      "apis": [
+        "Effect.timeout",
+        "Effect.timeoutOrElse",
+        "Effect.abortSignal"
+      ],
+      "note": "A timeout inside a retry bounds one attempt. The whole deadline is an outer timeout. A timeout does not cancel work already accepted by the provider."
+    },
+    "schedule-retry": {
+      "title": "Retry with a schedule",
+      "type": "effect",
+      "apis": [
+        "Effect.retry",
+        "Schedule.exponential",
+        "Schedule.jittered",
+        "Schedule.upTo",
+        "Schedule.recurs",
+        "Schedule.modifyDelay"
+      ],
+      "note": "Retry predicates go in Effect.retry({ schedule, while }). Schedule.jittered scales each delay by 0.8 to 1.2; full jitter needs modifyDelay. HttpClient.retryTransient retries regardless of method."
+    },
+    "tagged-error": {
+      "title": "Tagged errors in the error channel",
+      "type": "effect",
+      "apis": [
+        "Data.TaggedError",
+        "Effect.catchTag",
+        "Effect.catchTags"
+      ],
+      "note": "Callers match by tag; the compiler lists the failures a function can produce."
+    },
+    "schema-error": {
+      "title": "Serializable tagged errors",
+      "type": "effect",
+      "apis": [
+        "Schema.TaggedError",
+        "Schema.Defect"
+      ],
+      "note": "For errors written to storage or sent across a process."
+    },
+    "schema-decode": {
+      "title": "Schema decode at the boundary",
+      "type": "effect",
+      "apis": [
+        "Schema.decodeUnknownEffect",
+        "Schema.fromJsonString",
+        "Schema.Struct"
+      ],
+      "note": "Decode once where data enters; do not decode again inside."
+    },
+    "schema-class": {
+      "title": "Schema classes and brands for stored shapes",
+      "type": "effect",
+      "apis": [
+        "Schema.Class",
+        "Schema.brand",
+        "Schema.TaggedStruct"
+      ],
+      "note": "One schema owns both reading and writing a stored shape."
+    },
+    "config": {
+      "title": "Typed configuration",
+      "type": "effect",
+      "apis": [
+        "Config.String",
+        "Config.Int",
+        "Config.schema",
+        "Config.all",
+        "Config.withDefault"
+      ],
+      "note": "withDefault covers a missing value only; a malformed value still fails."
+    },
+    "redacted": {
+      "title": "Redacted secrets",
+      "type": "effect",
+      "apis": [
+        "Config.Redacted",
+        "Redacted.make",
+        "Redacted.value",
+        "Schema.Redacted"
+      ],
+      "note": "A Redacted value prints as <redacted>."
+    },
+    "config-provider": {
+      "title": "Configuration supplied to tests",
+      "type": "effect",
+      "apis": [
+        "ConfigProvider.fromUnknown",
+        "ConfigProvider.layer"
+      ],
+      "note": "Tests supply config without mutating the process environment."
+    },
+    "managed-runtime": {
+      "title": "One runtime per process",
+      "type": "effect",
+      "apis": [
+        "ManagedRuntime.make",
+        "Layer.effect",
+        "Context.Service"
+      ],
+      "note": "Build at module scope. Finalizers do not run when a serverless process is frozen; flush telemetry inside the invocation."
+    },
+    "exhaustive-match": {
+      "title": "Exhaustive failure mapping",
+      "type": "effect",
+      "apis": [
+        "Match.tagsExhaustive",
+        "Effect.catchTags"
+      ],
+      "note": "Adding a failure kind fails compilation until it is mapped."
+    },
+    "log-annotations": {
+      "title": "Structured logs with annotations",
+      "type": "effect",
+      "apis": [
+        "Logger.consoleJson",
+        "Logger.layer",
+        "Effect.annotateLogs",
+        "Effect.logWarning"
+      ],
+      "note": "Set request ids once; every log in the fiber carries them."
+    },
+    "spans": {
+      "title": "Named spans on operations",
+      "type": "effect",
+      "apis": [
+        "Effect.fn",
+        "Effect.withSpan",
+        "Effect.annotateCurrentSpan"
+      ],
+      "note": "Effect.fn names the span and keeps stack frames. Spans are no-ops until a tracer is provided."
+    },
+    "cause-aware-recovery": {
+      "title": "Recovery that lets interruption through",
+      "type": "effect",
+      "apis": [
+        "Effect.catchCauseIf",
+        "Cause.hasInterrupts",
+        "Effect.tapError"
+      ],
+      "note": "Catch causes only at supervision boundaries, and exclude interruption."
+    },
+    "stream-paginate": {
+      "title": "Pagination as a stream",
+      "type": "effect",
+      "apis": [
+        "Stream.paginate",
+        "Stream.runCollect",
+        "Stream.fromAsyncIterable"
+      ],
+      "note": "A plain loop is clearer when it exits early or carries state."
+    },
+    "bounded-concurrency": {
+      "title": "Bounded fan-out",
+      "type": "effect",
+      "apis": [
+        "Effect.forEach",
+        "Semaphore.make"
+      ],
+      "note": "forEach is sequential by default; set concurrency from downstream capacity. A semaphore shares one limit across call sites."
+    },
+    "partial-failure": {
+      "title": "Per-item outcomes",
+      "type": "effect",
+      "apis": [
+        "Effect.partition",
+        "Effect.result",
+        "Effect.forEach"
+      ],
+      "note": "Collect each item's outcome instead of failing the batch."
+    },
+    "request-batching": {
+      "title": "Batched lookups",
+      "type": "effect",
+      "apis": [
+        "Request.Class",
+        "RequestResolver.make",
+        "Effect.request"
+      ],
+      "note": "Earns its cost when many lookups happen in one tick."
+    },
+    "clock": {
+      "title": "Injected time",
+      "type": "effect",
+      "apis": [
+        "Clock.currentTimeMillis",
+        "Effect.sleep"
+      ],
+      "note": "Code that reads Clock can be tested with TestClock."
+    },
+    "test-clock": {
+      "title": "Virtual time in tests",
+      "type": "effect",
+      "apis": [
+        "testing/TestClock.adjust",
+        "testing/TestClock.layer"
+      ],
+      "note": "Requires the code under test to read Clock."
+    },
+    "scoped-resource": {
+      "title": "Scoped acquire and release",
+      "type": "effect",
+      "apis": [
+        "Effect.acquireRelease",
+        "Effect.acquireUseRelease",
+        "Scope.make"
+      ],
+      "note": "Release runs on success, failure and interruption."
+    },
+    "memoized-init": {
+      "title": "Single initialization",
+      "type": "effect",
+      "apis": [
+        "Effect.cached",
+        "Layer.effect"
+      ],
+      "note": "Concurrent callers share one initialization."
+    },
+    "cache": {
+      "title": "Cache with expiry and shared lookups",
+      "type": "effect",
+      "apis": [
+        "Cache.make",
+        "Effect.cachedWithTTL"
+      ],
+      "note": "Concurrent misses share one lookup; entries expire."
+    },
+    "atomic-state": {
+      "title": "Atomic state updates",
+      "type": "effect",
+      "apis": [
+        "Ref.modify",
+        "SynchronizedRef.modifyEffect",
+        "Semaphore.make"
+      ],
+      "note": "Only helps within one process."
+    },
+    "scoped-fiber": {
+      "title": "Owned background work",
+      "type": "effect",
+      "apis": [
+        "Effect.forkScoped",
+        "Effect.forkIn",
+        "Effect.forkChild"
+      ],
+      "note": "Work in a frozen serverless process does not continue; required work must finish before the handler returns or go to a queue."
+    },
+    "test-layer": {
+      "title": "Test services through layers",
+      "type": "effect",
+      "apis": [
+        "Layer.succeed",
+        "Context.Service"
+      ],
+      "note": "The code under test receives the double through its service, not a patched global."
+    },
+    "rate-limit-schedule": {
+      "title": "Retry delay from rate-limit hints",
+      "type": "effect",
+      "apis": [
+        "Schedule.modifyDelay",
+        "Duration.max"
+      ],
+      "note": "Wait at least the provider's hint."
+    },
+    "external-operation": {
+      "title": "One external-operation wrapper",
+      "type": "primitive",
+      "apis": [],
+      "note": "One wrapper gives every call a span, a deadline, a typed failure with operation and cause, and one retry owner."
+    },
+    "replay-policy": {
+      "title": "Replay policy declared per operation",
+      "type": "primitive",
+      "apis": [],
+      "note": "Each operation declares safe, token, observe or duplicate-tolerated. The executor retries only a transient failure of a replay-safe operation within the caller's budget. An observe operation returns an outcome-unknown failure the caller must handle."
+    },
+    "failure-taxonomy": {
+      "title": "One failure classification",
+      "type": "primitive",
+      "apis": [],
+      "note": "One function maps provider status and codes to throttled, unavailable, unknown outcome, conflict, not found, forbidden, invalid and misconfigured."
+    },
+    "entry-runner": {
+      "title": "One entry runner",
+      "type": "primitive",
+      "apis": [],
+      "note": "One function per entry style derives the deadline from the platform, annotates logs, runs through the process runtime, and maps failures to responses."
+    },
+    "config-module": {
+      "title": "One configuration module",
+      "type": "primitive",
+      "apis": [],
+      "note": "Named getters for every key, with secrets redacted and parsing in one place."
+    },
+    "error-family": {
+      "title": "Shared error family",
+      "type": "primitive",
+      "apis": [],
+      "note": "One error shape for errors that share fields and purpose."
+    },
+    "isolated-step": {
+      "title": "Named optional step",
+      "type": "primitive",
+      "apis": [],
+      "note": "One combinator runs best-effort work under its own deadline, records the failure, and lets interruption through."
+    },
+    "shared-schema": {
+      "title": "One schema per stored or exchanged shape",
+      "type": "primitive",
+      "apis": [],
+      "note": "Readers and writers import the same schema."
+    },
+    "cas-record": {
+      "title": "Conditional record store",
+      "type": "primitive",
+      "apis": [],
+      "note": "get returns value and version; create is if-absent; swap is if-version; each record stores its writer id so a lost-response retry recognizes its own write."
+    },
+    "outbox": {
+      "title": "Effect ledger or outbox",
+      "type": "primitive",
+      "apis": [],
+      "note": "Record the intended effect with the state change, perform it, record the result; delivery uses the record id as its dedupe key."
+    },
+    "idempotent-entry": {
+      "title": "Idempotent entry",
+      "type": "primitive",
+      "apis": [],
+      "note": "A dedupe record keyed by the event identity, with in-progress expiry from the platform deadline and the stored outcome."
+    },
+    "observe-before-repeat": {
+      "title": "Observe before repeating",
+      "type": "primitive",
+      "apis": [],
+      "note": "After an unknown outcome, the operation's lookup finds the earlier effect before any new request."
+    },
+    "shared-fake": {
+      "title": "Shared test doubles",
+      "type": "primitive",
+      "apis": [],
+      "note": "One double per service, shared by every test, with real conflict and not-found behavior."
+    },
+    "fault-injection": {
+      "title": "Fault-injecting doubles",
+      "type": "primitive",
+      "apis": [],
+      "note": "Doubles that fail before applying, apply and lose the response, time out, or return stale data."
+    },
+    "import-boundary": {
+      "title": "Import boundary rule",
+      "type": "primitive",
+      "apis": [],
+      "note": "One adapter module owns the client; a lint rule such as no-restricted-imports with per-directory overrides lets only the adapter import it, so its deadline, typed failures and replay policy cannot be bypassed."
+    }
+  },
+  "rules": [
+    {
+      "id": "XC-unsafe-replay",
+      "kind": "external-call",
+      "lane": "defect",
+      "when": {
+        "XC1": "yes",
+        "XC2": "no",
+        "XC5": "yes"
+      },
+      "concept": "replay-policy",
+      "mechanism": "A change repeated without a dedupe key can apply twice when the first attempt succeeded but its response was lost.",
+      "counter": "The provider deduplicates by request content, or a repeat is harmless for this effect (a full overwrite with the same value)."
+    },
+    {
+      "id": "XC-volatile-key",
+      "kind": "external-call",
+      "lane": "defect",
+      "when": {
+        "XC3": "no"
+      },
+      "concept": "replay-policy",
+      "mechanism": "A key generated per attempt or per process does not deduplicate a repeat from a new process or retry layer.",
+      "counter": "Every repeat happens in the same process, inside one call that reuses the key."
+    },
+    {
+      "id": "XC-multi-retry",
+      "kind": "external-call",
+      "lane": "defect",
+      "when": {
+        "XC6": "yes"
+      },
+      "concept": "external-operation",
+      "mechanism": "Retries at two layers multiply attempts and stretch past the caller's deadline.",
+      "counter": "The layers retry disjoint failure kinds and the total is bounded below the deadline."
+    },
+    {
+      "id": "XC-no-outer-deadline",
+      "kind": "external-call",
+      "lane": "defect",
+      "when": {
+        "XC8": "no"
+      },
+      "concept": "deadline",
+      "mechanism": "A per-attempt timeout inside a retry does not bound the total; attempts and waits can exceed the caller's limit.",
+      "counter": "The retry count and waits are capped so the total stays under the caller's limit, and the cap is written down."
+    },
+    {
+      "id": "XC-in-transaction",
+      "kind": "external-call",
+      "lane": "defect",
+      "when": {
+        "XC14": "yes"
+      },
+      "concept": "outbox",
+      "mechanism": "A network call inside a transaction holds locks for the call's latency, and a rollback cannot undo the remote effect.",
+      "counter": "The call is a read whose result must be consistent with the transaction and the store bounds transaction time."
+    },
+    {
+      "id": "XC-ignores-retry-after",
+      "kind": "external-call",
+      "lane": "adopt",
+      "when": {
+        "XC5": "yes",
+        "XC15": "no"
+      },
+      "concept": "rate-limit-schedule",
+      "mechanism": "A retry that never reads the provider's wait hint can retry before the provider allows, extending throttling.",
+      "counter": "The provider sends no wait hint for this operation, or the fixed delay already exceeds any hint it sends."
+    },
+    {
+      "id": "XC-unknown-outcome",
+      "kind": "external-call",
+      "lane": "primitive",
+      "when": {
+        "XC1": "yes",
+        "XC2": "no",
+        "XC10": "no"
+      },
+      "concept": "observe-before-repeat",
+      "mechanism": "After a timeout on a change without a dedupe key, nothing finds out whether it happened.",
+      "counter": "The caller is a reconciler whose next pass observes state before acting."
+    },
+    {
+      "id": "XC-no-deadline",
+      "kind": "external-call",
+      "lane": "adopt",
+      "when": {
+        "XC4": "no"
+      },
+      "concept": "deadline",
+      "mechanism": "An unbounded call holds the caller until the platform kills it, and the failure arrives without the operation's name.",
+      "counter": "An enclosing entry deadline interrupts this call and its abort signal reaches the transport."
+    },
+    {
+      "id": "XC-hand-retry",
+      "kind": "external-call",
+      "lane": "adopt",
+      "when": {
+        "XC7": "yes"
+      },
+      "concept": "schedule-retry",
+      "mechanism": "A hand-written retry loop restates backoff, limits and jitter that a schedule declares once.",
+      "counter": "The loop does more than retry: it re-reads state, changes the request, or exits on a domain condition."
+    },
+    {
+      "id": "XC-unclassified",
+      "kind": "external-call",
+      "lane": "primitive",
+      "when": {
+        "XC5": "yes",
+        "XC9": "no"
+      },
+      "concept": "failure-taxonomy",
+      "mechanism": "Retrying every failure alike repeats rejected and unknown-outcome failures that should stop or observe.",
+      "counter": "The only retry owner is a library that classifies failures itself, and the classification is cited."
+    },
+    {
+      "id": "XC-untyped-failure",
+      "kind": "external-call",
+      "lane": "adopt",
+      "when": {
+        "XC11": "no"
+      },
+      "concept": "tagged-error",
+      "mechanism": "A failure without the operation name and cause cannot be matched by callers or diagnosed from the log.",
+      "counter": "The failure is converted to a typed value one frame up, and that conversion is cited."
+    },
+    {
+      "id": "XC-unrecorded",
+      "kind": "external-call",
+      "lane": "adopt",
+      "when": {
+        "XC12": "no"
+      },
+      "concept": "spans",
+      "mechanism": "A failing call leaves no record of which operation failed or how long it took.",
+      "counter": "The call is on a hot path where a span costs more than it tells, and a coarser span covers it."
+    },
+    {
+      "id": "XC-undecoded-response",
+      "kind": "external-call",
+      "lane": "adopt",
+      "when": {
+        "XC13": "no"
+      },
+      "concept": "schema-decode",
+      "mechanism": "Fields read from an unvalidated response fail far from the call when the provider's shape changes.",
+      "counter": "A typed SDK owns the response shape and the code reads only fields it guarantees."
+    },
+    {
+      "id": "XC-no-wrapper",
+      "kind": "external-call",
+      "lane": "primitive",
+      "when": {
+        "XC16": "no"
+      },
+      "concept": "external-operation",
+      "mechanism": "Each direct call restates deadline, failure typing and recording, and the copies drift.",
+      "counter": "The call is the wrapper's own implementation."
+    },
+    {
+      "id": "IM-scattered-client",
+      "kind": "import",
+      "lane": "primitive",
+      "when": {
+        "IM2": "yes",
+        "IM3": "no"
+      },
+      "concept": "import-boundary",
+      "mechanism": "A client imported in several files has no single owner of its deadlines, failure typing and replay policy, and nothing stops a new file from importing it too.",
+      "counter": "The other importers are tests or scripts outside the shipped code."
+    },
+    {
+      "id": "EP-per-request-build",
+      "kind": "entry-point",
+      "lane": "adopt",
+      "when": {
+        "EP1": "yes"
+      },
+      "concept": "managed-runtime",
+      "mechanism": "Dependencies built per request repeat their setup cost and lose any cache or connection they hold.",
+      "counter": "The construction is a pure value with no setup cost, state or connection."
+    },
+    {
+      "id": "EP-no-deadline",
+      "kind": "entry-point",
+      "lane": "primitive",
+      "when": {
+        "EP2": "no"
+      },
+      "concept": "entry-runner",
+      "mechanism": "Work without a deadline from the platform limit is killed mid-effect instead of failing with a named outcome.",
+      "counter": "Every external call below the entry has its own deadline and their sum fits the platform limit."
+    },
+    {
+      "id": "EP-unmapped-failures",
+      "kind": "entry-point",
+      "lane": "adopt",
+      "when": {
+        "EP3": "no"
+      },
+      "concept": "exhaustive-match",
+      "mechanism": "Typed failures that fall into a generic response look like server faults to clients and hide permanent errors.",
+      "counter": "The entry is internal and its only consumer treats every failure the same."
+    },
+    {
+      "id": "EP-no-request-context",
+      "kind": "entry-point",
+      "lane": "adopt",
+      "when": {
+        "EP4": "no"
+      },
+      "concept": "log-annotations",
+      "mechanism": "Logs without the request id cannot be joined to the failing request.",
+      "counter": "The platform injects the request id into every log line already."
+    },
+    {
+      "id": "EP-unvalidated-input",
+      "kind": "entry-point",
+      "lane": "adopt",
+      "when": {
+        "EP5": "no"
+      },
+      "concept": "schema-decode",
+      "mechanism": "Fields read from raw input fail inside the work instead of as a named rejection.",
+      "counter": "A framework validator runs before the entry and its schema is cited."
+    },
+    {
+      "id": "EP-duplicate-delivery",
+      "kind": "entry-point",
+      "lane": "defect",
+      "when": {
+        "EP6": "yes",
+        "EP7": "no"
+      },
+      "concept": "idempotent-entry",
+      "mechanism": "A redelivered event repeats effects that the first delivery already applied.",
+      "counter": "Redelivery is disabled in the cited configuration, or every effect the entry applies is idempotent; cite each effect."
+    },
+    {
+      "id": "EP-run-without-runtime",
+      "kind": "entry-point",
+      "lane": "adopt",
+      "when": {
+        "EP9": "no"
+      },
+      "concept": "managed-runtime",
+      "mechanism": "Providing layers inside each run rebuilds them per request.",
+      "counter": "The layers are constant values with no setup."
+    },
+    {
+      "id": "CF-secret-leak",
+      "kind": "config-read",
+      "lane": "defect",
+      "when": {
+        "CF1": "yes",
+        "CF6": "yes"
+      },
+      "concept": "redacted",
+      "mechanism": "A secret that reaches a log, error or response is exposed to everyone who reads it.",
+      "counter": "The cited path masks the value before output."
+    },
+    {
+      "id": "CF-plain-secret",
+      "kind": "config-read",
+      "lane": "adopt",
+      "when": {
+        "CF1": "yes"
+      },
+      "concept": "redacted",
+      "mechanism": "A plain-string secret prints in full wherever it is logged or stringified.",
+      "counter": "The value is passed straight to a client constructor and never held elsewhere."
+    },
+    {
+      "id": "CF-unchecked",
+      "kind": "config-read",
+      "lane": "adopt",
+      "when": {
+        "CF3": "no"
+      },
+      "concept": "config",
+      "mechanism": "A missing value fails later, far from the key that caused it.",
+      "counter": "The key is optional and the code handles its absence explicitly."
+    },
+    {
+      "id": "CF-hand-parsed",
+      "kind": "config-read",
+      "lane": "adopt",
+      "when": {
+        "CF4": "yes"
+      },
+      "concept": "config",
+      "mechanism": "Hand parsing accepts malformed values as NaN, false or partial objects.",
+      "counter": "The value is parsed once in a shared getter that reports a malformed value with the key name."
+    },
+    {
+      "id": "CF-scattered",
+      "kind": "config-read",
+      "lane": "primitive",
+      "when": {
+        "CF5": "yes"
+      },
+      "concept": "config-module",
+      "mechanism": "Each read of the same key restates its default, parsing and missing-value rule, and the copies drift.",
+      "counter": "Both reads go through one shared getter already."
+    },
+    {
+      "id": "CF-test-env-mutation",
+      "kind": "config-read",
+      "lane": "adopt",
+      "when": {
+        "CF7": "yes"
+      },
+      "concept": "config-provider",
+      "mechanism": "Tests that mutate the process environment leak values between tests and cannot run in parallel.",
+      "counter": "The value is read at module load by code outside the project's control."
+    },
+    {
+      "id": "ED-untagged",
+      "kind": "error-definition",
+      "lane": "adopt",
+      "when": {
+        "ED1": "no"
+      },
+      "concept": "tagged-error",
+      "mechanism": "An error without a tag can be matched only by class or message, which breaks across module copies and rewording.",
+      "counter": "The error is thrown only to end the process and never matched."
+    },
+    {
+      "id": "ED-persisted",
+      "kind": "error-definition",
+      "lane": "adopt",
+      "when": {
+        "ED3": "yes"
+      },
+      "concept": "schema-error",
+      "mechanism": "A class instance written to storage or sent across a process loses its fields unless a schema encodes it.",
+      "counter": "Only its message string is written, by design."
+    },
+    {
+      "id": "ED-drops-cause",
+      "kind": "error-definition",
+      "lane": "adopt",
+      "when": {
+        "ED2": "no"
+      },
+      "concept": "tagged-error",
+      "mechanism": "An error without its cause hides the provider's code and request id from diagnosis.",
+      "counter": "It is raised for a condition with no underlying cause."
+    },
+    {
+      "id": "ED-message-match",
+      "kind": "error-definition",
+      "lane": "defect",
+      "when": {
+        "ED4": "yes"
+      },
+      "concept": "tagged-error",
+      "mechanism": "Matching on message text breaks when the text changes, and the compiler cannot see it.",
+      "counter": "The message is a provider's documented error code string."
+    },
+    {
+      "id": "ED-duplicate-shape",
+      "kind": "error-definition",
+      "lane": "primitive",
+      "when": {
+        "ED5": "yes"
+      },
+      "concept": "error-family",
+      "mechanism": "Several error types with one shape and purpose make every consumer match each of them.",
+      "counter": "Consumers deliberately treat them differently, or their purposes differ."
+    },
+    {
+      "id": "EH-silent-swallow",
+      "kind": "error-handling",
+      "lane": "defect",
+      "when": {
+        "EH1": "yes",
+        "EH2": "no"
+      },
+      "concept": "isolated-step",
+      "mechanism": "A failure ended without a mark returns success for work that did not happen.",
+      "counter": "The swallowed work is best effort and the caller's result does not claim it."
+    },
+    {
+      "id": "EH-catches-cancellation",
+      "kind": "error-handling",
+      "lane": "defect",
+      "when": {
+        "EH3": "yes"
+      },
+      "concept": "cause-aware-recovery",
+      "mechanism": "Catching cancellation with failures turns a deadline or shutdown into success, and the enclosing work keeps running.",
+      "counter": "This is the outermost supervision boundary and it reports cancellation explicitly, or the caught cancellation is meant to end this work only."
+    },
+    {
+      "id": "EH-drops-cause",
+      "kind": "error-handling",
+      "lane": "adopt",
+      "when": {
+        "EH4": "yes"
+      },
+      "concept": "tagged-error",
+      "mechanism": "Replacing a failure without its cause hides the original reason from logs and callers.",
+      "counter": "The cause contains a secret and is logged separately."
+    },
+    {
+      "id": "EH-recovery-before-retry",
+      "kind": "error-handling",
+      "lane": "defect",
+      "when": {
+        "EH5": "yes"
+      },
+      "concept": "schedule-retry",
+      "mechanism": "Recovery placed before a retry erases the failure the retry depends on, so the retry never runs.",
+      "counter": "The recovery is meant to stop retries for that failure kind and says so."
+    },
+    {
+      "id": "EH-intended-swallow",
+      "kind": "error-handling",
+      "lane": "primitive",
+      "when": {
+        "EH1": "yes",
+        "EH2": "yes"
+      },
+      "concept": "isolated-step",
+      "mechanism": "Each intended swallow restates its own deadline, log and cancellation handling.",
+      "counter": "It already uses the project's optional-step helper."
+    },
+    {
+      "id": "DB-unvalidated",
+      "kind": "decode-boundary",
+      "lane": "adopt",
+      "when": {
+        "DB1": "yes",
+        "DB2": "no"
+      },
+      "concept": "schema-decode",
+      "mechanism": "External data used without validation fails deep inside logic when its shape changes.",
+      "counter": "A typed SDK owns the shape and the code reads only fields it guarantees."
+    },
+    {
+      "id": "DB-unchecked-cast",
+      "kind": "decode-boundary",
+      "lane": "defect",
+      "when": {
+        "DB1": "yes",
+        "DB3": "yes",
+        "DB2": "no"
+      },
+      "concept": "schema-decode",
+      "mechanism": "A cast on external data tells the compiler a shape no one checked.",
+      "counter": "The data was validated upstream and the validator is cited."
+    },
+    {
+      "id": "DB-repeated-shape",
+      "kind": "decode-boundary",
+      "lane": "primitive",
+      "when": {
+        "DB4": "yes"
+      },
+      "concept": "shared-schema",
+      "mechanism": "Two decoders of one shape drift; one accepts what the other rejects.",
+      "counter": "The two sites need different subsets on purpose."
+    },
+    {
+      "id": "DB-written-shape",
+      "kind": "decode-boundary",
+      "lane": "adopt",
+      "when": {
+        "DB5": "yes",
+        "DB1": "yes"
+      },
+      "concept": "schema-class",
+      "mechanism": "A shape written and read by separate code drifts unless one schema owns both directions.",
+      "counter": "The writer is another system whose schema this code cannot share."
+    },
+    {
+      "id": "DB-decode-as-outage",
+      "kind": "decode-boundary",
+      "lane": "adopt",
+      "when": {
+        "DB6": "no"
+      },
+      "concept": "tagged-error",
+      "mechanism": "A corrupt record reported as a transport failure is retried as an outage instead of reaching a person.",
+      "counter": "Every consumer treats both the same by design."
+    },
+    {
+      "id": "SW-lost-update",
+      "kind": "state-write",
+      "lane": "defect",
+      "when": {
+        "SW1": "yes",
+        "SW2": "yes",
+        "SW3": "no"
+      },
+      "concept": "cas-record",
+      "mechanism": "Two writers that read, compute and write unconditionally overwrite each other's update.",
+      "counter": "A cited concurrency setting or lock serializes every writer of the record."
+    },
+    {
+      "id": "SW-ambiguous-conflict",
+      "kind": "state-write",
+      "lane": "defect",
+      "when": {
+        "SW4": "no"
+      },
+      "concept": "cas-record",
+      "mechanism": "A retry after a committed write whose response was lost sees a conflict and treats its own write as another writer's.",
+      "counter": "The write is never retried."
+    },
+    {
+      "id": "SW-unrecorded-effect",
+      "kind": "state-write",
+      "lane": "primitive",
+      "when": {
+        "SW6": "no"
+      },
+      "concept": "outbox",
+      "mechanism": "A crash between the write and its paired effect loses or repeats the effect.",
+      "counter": "The effect is idempotent and a reconciler repeats it from the written state."
+    },
+    {
+      "id": "SW-single-writer-assumed",
+      "kind": "state-write",
+      "lane": "primitive",
+      "when": {
+        "SW1": "no",
+        "SW2": "yes"
+      },
+      "concept": "cas-record",
+      "mechanism": "A read-modify-write with one code path is still lost when two requests or instances run it at once, unless a deployment setting prevents that.",
+      "counter": "The code's own structure, not deployment configuration, keeps the path from running twice at once."
+    },
+    {
+      "id": "PG-unbounded",
+      "kind": "pagination-loop",
+      "lane": "defect",
+      "when": {
+        "PG1": "no"
+      },
+      "concept": "stream-paginate",
+      "mechanism": "An unbounded page walk grows with the data until it exceeds the deadline or memory.",
+      "counter": "The data set is bounded by a cited invariant."
+    },
+    {
+      "id": "PG-no-deadline",
+      "kind": "pagination-loop",
+      "lane": "adopt",
+      "when": {
+        "PG2": "no"
+      },
+      "concept": "deadline",
+      "mechanism": "One slow page holds the whole walk with no named failure.",
+      "counter": "An enclosing deadline covers the loop."
+    },
+    {
+      "id": "PG-repeated-loop",
+      "kind": "pagination-loop",
+      "lane": "adopt",
+      "when": {
+        "PG3": "yes",
+        "PG4": "no"
+      },
+      "concept": "stream-paginate",
+      "mechanism": "Each hand-written page loop restates token handling and termination.",
+      "counter": "Each loop's API differs in token shape so that one helper would need a callback per API."
+    },
+    {
+      "id": "FO-unbounded",
+      "kind": "fan-out",
+      "lane": "adopt",
+      "when": {
+        "FO1": "no",
+        "FO2": "yes"
+      },
+      "concept": "bounded-concurrency",
+      "mechanism": "Starting every item at once against a downstream service hits its rate limit or connection cap as the data grows.",
+      "counter": "The items are CPU-only work, or the downstream has no limit at the possible counts."
+    },
+    {
+      "id": "FO-one-fails-all",
+      "kind": "fan-out",
+      "lane": "adopt",
+      "when": {
+        "FO3": "yes",
+        "FO4": "yes"
+      },
+      "concept": "partial-failure",
+      "mechanism": "One item's failure abandons independent items that would have succeeded.",
+      "counter": "The caller retries the whole batch and every item is idempotent."
+    },
+    {
+      "id": "FO-silent-partial",
+      "kind": "fan-out",
+      "lane": "defect",
+      "when": {
+        "FO3": "yes",
+        "FO5": "no"
+      },
+      "concept": "partial-failure",
+      "mechanism": "Item failures that are not reported make a partial result look complete.",
+      "counter": "The caller's result does not claim completeness."
+    },
+    {
+      "id": "FO-unused-batch",
+      "kind": "fan-out",
+      "lane": "adopt",
+      "when": {
+        "FO6": "yes"
+      },
+      "concept": "request-batching",
+      "mechanism": "One request per item multiplies latency and rate-limit cost where the provider accepts a list.",
+      "counter": "The batch API has different semantics or limits that the items exceed."
+    },
+    {
+      "id": "FO-timer-race",
+      "kind": "fan-out",
+      "lane": "adopt",
+      "when": {
+        "FO7": "yes"
+      },
+      "concept": "deadline",
+      "mechanism": "A timer race abandons the slower promise without cancelling it; the work continues unobserved.",
+      "counter": "The losing work holds no resource and has no effect."
+    },
+    {
+      "id": "TM-untested-decision",
+      "kind": "time-read",
+      "lane": "adopt",
+      "when": {
+        "TM2": "no"
+      },
+      "concept": "clock",
+      "mechanism": "A time-based decision without a test is exercised only in production.",
+      "counter": "The decision is a log timestamp or a trivial comparison."
+    },
+    {
+      "id": "TM-real-wait-test",
+      "kind": "time-read",
+      "lane": "adopt",
+      "when": {
+        "TM3": "yes"
+      },
+      "concept": "test-clock",
+      "mechanism": "Tests that wait real time are slow and flaky; patched globals leak between tests.",
+      "counter": "The code under test cannot read an injected clock and changing it is out of scope."
+    },
+    {
+      "id": "TM-wall-clock-elapsed",
+      "kind": "time-read",
+      "lane": "adopt",
+      "when": {
+        "TM4": "yes"
+      },
+      "concept": "clock",
+      "mechanism": "Wall-clock time can jump, so an elapsed check can fire early or never.",
+      "counter": "The duration is long and a clock jump only shifts it by a tolerated amount."
+    },
+    {
+      "id": "LG-unstructured",
+      "kind": "log-site",
+      "lane": "adopt",
+      "when": {
+        "LG1": "no"
+      },
+      "concept": "log-annotations",
+      "mechanism": "Free-text logs cannot be filtered or counted by event and field.",
+      "counter": "A developer-only debug line not shipped to production."
+    },
+    {
+      "id": "LG-no-correlation",
+      "kind": "log-site",
+      "lane": "adopt",
+      "when": {
+        "LG2": "no"
+      },
+      "concept": "log-annotations",
+      "mechanism": "A log without the request id cannot be joined to the request that produced it.",
+      "counter": "A startup or process-wide log."
+    },
+    {
+      "id": "LG-sensitive",
+      "kind": "log-site",
+      "lane": "defect",
+      "when": {
+        "LG3": "yes"
+      },
+      "concept": "redacted",
+      "mechanism": "A logged secret or full payload is exposed to everyone with log access.",
+      "counter": "The value is masked before output, and the mask is cited."
+    },
+    {
+      "id": "LG-understated-failure",
+      "kind": "log-site",
+      "lane": "defect",
+      "when": {
+        "LG4": "yes"
+      },
+      "concept": "log-annotations",
+      "mechanism": "An actionable failure below warning level is filtered out of alerts and level-filtered logs.",
+      "counter": "The failure is expected and handled, and this line is detail; or it is reported at the right level elsewhere."
+    },
+    {
+      "id": "LG-floating-log",
+      "kind": "log-site",
+      "lane": "defect",
+      "when": {
+        "LG5": "yes"
+      },
+      "concept": "log-annotations",
+      "mechanism": "An Effect log that is never yielded never runs, so the record is silently missing.",
+      "counter": "The Effect value is stored and run later, and the run is cited."
+    },
+    {
+      "id": "RS-leaks-on-exit",
+      "kind": "resource",
+      "lane": "adopt",
+      "when": {
+        "RS1": "no"
+      },
+      "concept": "scoped-resource",
+      "mechanism": "A resource released only on success leaks on failure, timeout or cancellation.",
+      "counter": "The process exits on every failure path, which releases it."
+    },
+    {
+      "id": "RS-process-lifetime",
+      "kind": "resource",
+      "lane": "adopt",
+      "when": {
+        "RS2": "yes"
+      },
+      "concept": "managed-runtime",
+      "mechanism": "A process-lifetime resource held in a module variable has no owner that can rebuild or release it.",
+      "counter": "The resource is stateless and never needs release."
+    },
+    {
+      "id": "RS-double-init",
+      "kind": "resource",
+      "lane": "defect",
+      "when": {
+        "RS3": "yes"
+      },
+      "concept": "memoized-init",
+      "mechanism": "Two concurrent first callers each create the resource; one leaks or both are used.",
+      "counter": "The process handles one request at a time by configuration, or a duplicate is harmless."
+    },
+    {
+      "id": "RS-hand-controller",
+      "kind": "resource",
+      "lane": "adopt",
+      "when": {
+        "RS4": "yes"
+      },
+      "concept": "deadline",
+      "mechanism": "A hand-built abort controller restates timer setup and cleanup that interruption provides.",
+      "counter": "The controller is owned by a framework boundary that passes the signal in."
+    },
+    {
+      "id": "MS-unbounded-cache",
+      "kind": "module-state",
+      "lane": "adopt",
+      "when": {
+        "MS2": "no"
+      },
+      "concept": "cache",
+      "mechanism": "A cache with no expiry or bound grows without limit and serves stale values.",
+      "counter": "The keys are a small fixed set and values never change."
+    },
+    {
+      "id": "MS-stampede",
+      "kind": "module-state",
+      "lane": "adopt",
+      "when": {
+        "MS3": "no"
+      },
+      "concept": "cache",
+      "mechanism": "Concurrent misses each start a lookup, multiplying load on the source at cold start.",
+      "counter": "The process handles one request at a time."
+    },
+    {
+      "id": "MS-cached-failure",
+      "kind": "module-state",
+      "lane": "defect",
+      "when": {
+        "MS4": "yes"
+      },
+      "concept": "cache",
+      "mechanism": "A cached failure keeps failing after the source recovers.",
+      "counter": "The failure is cached deliberately with a short expiry that is cited."
+    },
+    {
+      "id": "MS-stale-source",
+      "kind": "module-state",
+      "lane": "defect",
+      "when": {
+        "MS5": "yes",
+        "MS2": "no"
+      },
+      "concept": "cache",
+      "mechanism": "A source that changes while cached forever is never seen again by this process.",
+      "counter": "A change to the source does not affect correctness here, or the process lifetime is shorter than the change interval by a cited bound."
+    },
+    {
+      "id": "MS-await-race",
+      "kind": "module-state",
+      "lane": "defect",
+      "when": {
+        "MS6": "yes"
+      },
+      "concept": "atomic-state",
+      "mechanism": "A write computed from a read taken before an await overwrites changes made during the await.",
+      "counter": "The process handles one request at a time and no timer touches the state."
+    },
+    {
+      "id": "BG-lost-required-work",
+      "kind": "background-work",
+      "lane": "defect",
+      "when": {
+        "BG1": "yes",
+        "BG2": "yes"
+      },
+      "concept": "scoped-fiber",
+      "mechanism": "Required work started without waiting is lost when the owner returns or the process freezes.",
+      "counter": "A durable queue or reconciler repeats the work."
+    },
+    {
+      "id": "BG-unobserved-failure",
+      "kind": "background-work",
+      "lane": "adopt",
+      "when": {
+        "BG3": "no"
+      },
+      "concept": "scoped-fiber",
+      "mechanism": "A background failure that nothing observes never reaches a log or a caller.",
+      "counter": "A failure has nothing to report, such as a cache warm whose miss is retried on use."
+    },
+    {
+      "id": "EB-nested-run",
+      "kind": "effect-boundary",
+      "lane": "defect",
+      "when": {
+        "EB1": "yes"
+      },
+      "concept": "managed-runtime",
+      "mechanism": "Running an Effect inside Effect code starts a new runtime that loses the caller's interruption, context and span.",
+      "counter": "The nested run is inside a callback API that cannot take an Effect, and it receives the caller's signal."
+    },
+    {
+      "id": "EB-provide-per-call",
+      "kind": "effect-boundary",
+      "lane": "adopt",
+      "when": {
+        "EB2": "yes"
+      },
+      "concept": "managed-runtime",
+      "mechanism": "Providing a layer on every call rebuilds it each time and breaks memoization.",
+      "counter": "The layer is a constant with no setup, and the call is a test."
+    },
+    {
+      "id": "EB-flat-exit",
+      "kind": "effect-boundary",
+      "lane": "adopt",
+      "when": {
+        "EB3": "no"
+      },
+      "concept": "cause-aware-recovery",
+      "mechanism": "A boundary that treats interruption and defects like typed failures reports a cancelled request as a server fault or a bug as a rejection.",
+      "counter": "The boundary only logs and rethrows."
+    },
+    {
+      "id": "EB-uncancellable-run",
+      "kind": "effect-boundary",
+      "lane": "adopt",
+      "when": {
+        "EB4": "no"
+      },
+      "concept": "deadline",
+      "mechanism": "A run without the caller's signal continues after the caller has given up.",
+      "counter": "The run is the process's main program."
+    },
+    {
+      "id": "EB-captured-request-scope",
+      "kind": "effect-boundary",
+      "lane": "defect",
+      "when": {
+        "EB5": "yes"
+      },
+      "concept": "managed-runtime",
+      "mechanism": "A request-scoped value captured at layer build is shared by later requests.",
+      "counter": "The captured value is the same for every request."
+    },
+    {
+      "id": "TD-duplicated-double",
+      "kind": "test-double",
+      "lane": "primitive",
+      "when": {
+        "TD1": "yes"
+      },
+      "concept": "shared-fake",
+      "mechanism": "Each copy of a double drifts from the others and from the real service.",
+      "counter": "The copies deliberately model different services."
+    },
+    {
+      "id": "TD-patched-global",
+      "kind": "test-double",
+      "lane": "adopt",
+      "when": {
+        "TD2": "yes",
+        "TD3": "no"
+      },
+      "concept": "test-layer",
+      "mechanism": "A double installed by patching a global leaks between tests and hides the dependency from the code's interface.",
+      "counter": "The global belongs to third-party code with no seam."
+    },
+    {
+      "id": "TD-success-only",
+      "kind": "test-double",
+      "lane": "primitive",
+      "when": {
+        "TD4": "no"
+      },
+      "concept": "fault-injection",
+      "mechanism": "A double that cannot apply-and-lose-the-response never exercises the replay path.",
+      "counter": "The code under test makes no change outside the process."
+    },
+    {
+      "id": "TD-real-wait",
+      "kind": "test-double",
+      "lane": "adopt",
+      "when": {
+        "TD5": "yes"
+      },
+      "concept": "test-clock",
+      "mechanism": "Real waits make tests slow and timing-dependent.",
+      "counter": "The wait is for a real external process in an integration test."
+    }
+  ],
+  "coverage": [
+    {
+      "label": "External calls bounded by a deadline",
+      "question": "XC4",
+      "has": "yes"
+    },
+    {
+      "label": "Changes that carry a dedupe key",
+      "question": "XC2",
+      "has": "yes",
+      "among": {
+        "XC1": "yes"
+      }
+    },
+    {
+      "label": "Retried calls with a single retry owner",
+      "question": "XC6",
+      "has": "no",
+      "among": {
+        "XC5": "yes"
+      }
+    },
+    {
+      "label": "External calls whose failure names the operation and keeps the cause",
+      "question": "XC11",
+      "has": "yes"
+    },
+    {
+      "label": "External calls through the project wrapper",
+      "question": "XC16",
+      "has": "yes"
+    },
+    {
+      "label": "External responses decoded by a schema",
+      "question": "XC13",
+      "has": "yes"
+    },
+    {
+      "label": "Clients imported in several files under an enforced boundary",
+      "question": "IM3",
+      "has": "yes",
+      "among": {
+        "IM2": "yes"
+      }
+    },
+    {
+      "label": "Entries with a deadline from the platform",
+      "question": "EP2",
+      "has": "yes"
+    },
+    {
+      "label": "Entries that validate input with a schema",
+      "question": "EP5",
+      "has": "yes"
+    },
+    {
+      "label": "Redeliverable entries that deduplicate",
+      "question": "EP7",
+      "has": "yes",
+      "among": {
+        "EP6": "yes"
+      }
+    },
+    {
+      "label": "Config reads that report a missing value by key",
+      "question": "CF3",
+      "has": "yes"
+    },
+    {
+      "label": "Secrets kept out of logs, errors and responses",
+      "question": "CF6",
+      "has": "no",
+      "among": {
+        "CF1": "yes"
+      }
+    },
+    {
+      "label": "Swallowed failures marked as intended",
+      "question": "EH2",
+      "has": "yes",
+      "among": {
+        "EH1": "yes"
+      }
+    },
+    {
+      "label": "External data validated by a schema",
+      "question": "DB2",
+      "has": "yes",
+      "among": {
+        "DB1": "yes"
+      }
+    },
+    {
+      "label": "Shared read-modify-writes that are conditional",
+      "question": "SW3",
+      "has": "yes",
+      "among": {
+        "SW1": "yes",
+        "SW2": "yes"
+      }
+    },
+    {
+      "label": "Fan-outs over external data with bounded concurrency",
+      "question": "FO1",
+      "has": "yes",
+      "among": {
+        "FO2": "yes"
+      }
+    },
+    {
+      "label": "Structured log records",
+      "question": "LG1",
+      "has": "yes"
+    }
+  ]
+}
