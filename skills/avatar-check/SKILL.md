@@ -31,17 +31,19 @@ Recommend and apply changes only from this table.
 
 | Change | Flag | Risk | What the user loses | Recommend |
 |---|---|---|---|---|
-| Merge duplicate texture entries | `--merge-textures` | None | Nothing. Same pixels, same look. | Always |
+| Share duplicate texture references | `--merge-textures` | None | Nothing. Same pixels, same look; small or zero file-size savings, no MEs GPU savings | Optional cleanup when the measured file-size benefit helps |
 | Remove unused images and data | `--prune` | None | Nothing MEs or another app shows | Always |
 | Recompress PNGs losslessly | `--png` | None | Nothing. Identical pixels. | Always |
 | Use one copy of near-identical images | `--merge-similar` | Visual, tiny | Under 1% pixel difference on the merged texture | When found |
-| Clamp material values to 0-1 | `--clamp-materials` | Visual change, usually a fix | The out-of-range look | When found; the user checks the look |
+| Clamp material values to 0-1 | `--clamp-materials` | Visual change | Authored effects from values outside the spec range | Only when the user wants spec-range values; intentional finite values are fine in MEs |
 | Fill name, author, version | `--name`, `--author`, `--meta-version` | None | Nothing | When placeholder; the user supplies the text, never invent it |
 | JPEG for opaque color textures | `--jpeg 95` | Visual, small loss; VRoid Hub lists PNG only | Slight detail; normal and data maps stay PNG | When over the size limit and the file must work in Unity-based apps. Read `references/webp-support.md` if the user publishes on VRoid Hub or BOOTH |
 | WebP for all textures | `--webp 90` | Visual, small loss; **portability** | Missing textures in every Unity-based VRM app (VRChat, VSeeFace, Warudo) and on VRoid Hub, BOOTH previews, and cluster | When the file is for MEs only. Read `references/webp-support.md` before recommending it |
 | Shrink large textures | `--max-side 1024` | **Visual regression** | Softer textures up close; GPU memory per 2048 px texture drops from 16.8 to 4.2 MB | Only when the user wants less memory and accepts softer textures |
 
 `--safe` is `--merge-textures --prune --png`. Lossy rows report quality as PSNR: 40 dB or more is hard to see; below 35 dB is visible. Quote the lowest color and data values from the trial.
+
+Treat texture-reference sharing as file cleanup, not wasted GPU memory. Use its separate `merge-textures` trial for file-size savings; quote `bytes_saved` when the saving rounds to zero MB. Do not recommend clamping solely because a value exceeds 1, or describe intentional values as a broken look. Keeping them preserves the artist's effect; other apps may render them differently.
 
 These need the creator's tools (Blender, VRoid, Unity). List the ones that apply; never attempt them:
 
@@ -53,6 +55,8 @@ These need the creator's tools (Blender, VRoid, Unity). List the ones that apply
 ## Report
 
 The reader may not know glTF. Use the plain term first and the technical name in parentheses once: "blendshapes (morph targets)", "texture entries". Sizes come from the script in MB (1,000,000 bytes, as Finder shows). Every problem says what it costs the user and what fixes it.
+
+Validator errors describe spec compliance. Put errors solely about material factors outside the spec range under other-app compatibility, alongside the advisory finding. They do not establish a loading failure or an unwanted appearance in MEs.
 
 ```markdown
 ## <file name>: <one-line verdict>
@@ -68,15 +72,15 @@ The reader may not know glTF. Use the plain term first and the technical name in
 <cost and ignored findings, largest first>
 
 ### Looks different in MEs
-<looks-different findings and validator errors; "Nothing found." if none>
+<looks-different findings and relevant validator errors, excluding spec-range-only material errors; "Nothing found." if none>
 
 ### For other VRM apps
-<other-apps findings>
+<other-apps findings and spec-range-only material validator errors>
 
 ### Changes
 | Change | Result (measured) | Risk | Your call |
 |---|---|---|---|
-<rows from the Changes table that apply to this file, with trial numbers. "Your call" names the judgment, or "None" for no-risk rows>
+<rows from the Changes table that apply to this file, with trial numbers. If --quick skipped trials, say "Not measured" rather than inventing savings. "Your call" names the judgment, "Optional cleanup" for texture-reference sharing, or "None" for other no-risk rows>
 
 Needs Blender or VRoid: <the creator-tool items that apply>
 

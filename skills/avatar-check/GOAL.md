@@ -10,7 +10,7 @@ Avatar creators export VRM files from Blender, VRoid, or Unity without knowing w
 
 - **Read-only unless asked.** A check never changes the user's file. Writing needs an explicit request, and even then the original stays.
 - **Never break the avatar.** A smaller file that lost its VRM data is worse than no change. Edits keep every VRM object, and the script proves it before writing.
-- **Every change names its risk.** No-risk changes are always recommended. Visual and portability changes are the user's call, made with measured numbers and the platforms that would break.
+- **Every change names its risk and benefit.** Offer no-risk cleanup when its measured benefit serves the user's goal; negligible savings are optional. Visual and portability changes are the user's call, made with measured numbers and the platforms that would break. Finite material values outside the spec range can be intentional artistic choices.
 - **Plain words for creators.** The reader may not know glTF. Each problem says what it costs them and what fixes it.
 - **MEs facts come from MEs code.** Support claims trace to the importer source, and the reference records the changeset they were read from.
 - **Nothing to install but Node.** Codecs and the validator ship with the skill, so the user never installs global tools. If Node is missing, the skill asks first.

@@ -39,7 +39,7 @@ const MIB = 1024 * 1024; // MEs file limits are in MiB.
 const FILE_CAP_FREE = 25 * MIB;
 const FILE_CAP_PREMIUM = 100 * MIB;
 const PLACEHOLDER_META = new Set(['', 'undefined', 'null', 'none', 'untitled', 'unknown']);
-// glTF slot -> MEs decode usage. Each (texture entry, usage) pair is one decode.
+// glTF slot -> MEs decode usage. Each (image, effective sampler, usage) combination is one decode.
 const SLOT_USAGE = {
   baseColorTexture: 'color', diffuseTexture: 'color', specularGlossinessTexture: 'color',
   emissiveTexture: 'color', sheenColorTexture: 'color', specularColorTexture: 'color',
@@ -148,39 +148,66 @@ function* materialTextureRefs(o) {
   }
 }
 
-// Texture slots MEs reads, following its one-material-type priority.
+// MEs material selection and texture slots follow one material-family priority.
+// CommonImporter GlftMaterial.cpp, Release A cs:16513/16519; finite strengths pass through unclamped.
+function mesMaterialEffects(m) {
+  const ext = m.extensions ?? {};
+  const positive = v => Number.isFinite(v) && v > 0;
+  const transmission = positive(ext.KHR_materials_transmission?.transmissionFactor);
+  const anisotropy = ext.KHR_materials_anisotropy?.anisotropyStrength;
+  return {
+    KHR_materials_transmission: transmission,
+    KHR_materials_volume: transmission && positive(ext.KHR_materials_volume?.thicknessFactor),
+    KHR_materials_clearcoat: positive(ext.KHR_materials_clearcoat?.clearcoatFactor),
+    KHR_materials_sheen: ext.KHR_materials_sheen?.sheenColorFactor?.some(positive) ?? false,
+    KHR_materials_anisotropy: Number.isFinite(anisotropy) && anisotropy !== 0,
+  };
+}
+
+function mesMaterialFamily(m) {
+  const ext = m.extensions ?? {}, active = mesMaterialEffects(m);
+  if (ext.KHR_materials_unlit) return 'unlit';
+  if (ext.KHR_materials_pbrSpecularGlossiness) return 'specular-glossiness';
+  if (active.KHR_materials_transmission) return 'transmission';
+  if (active.KHR_materials_clearcoat) return 'clearcoat';
+  if (active.KHR_materials_sheen) return 'sheen';
+  return 'default';
+}
+
 function mesMaterialSlots(m) {
   const ext = m.extensions ?? {}, pbr = m.pbrMetallicRoughness ?? {};
-  if (ext.KHR_materials_unlit) return [['baseColorTexture', pbr.baseColorTexture]].filter(s => s[1]);
+  const family = mesMaterialFamily(m);
+  if (family === 'unlit') return [['baseColorTexture', pbr.baseColorTexture]].filter(s => s[1]);
   const slots = [['normalTexture', m.normalTexture], ['occlusionTexture', m.occlusionTexture]];
-  const transmissive = ext.KHR_materials_transmission || ext.KHR_materials_volume;
+  const transmissive = family === 'transmission';
   if (!transmissive) slots.push(['emissiveTexture', m.emissiveTexture]);
   const sg = ext.KHR_materials_pbrSpecularGlossiness;
-  if (sg) slots.push(['diffuseTexture', sg.diffuseTexture], ['specularGlossinessTexture', sg.specularGlossinessTexture]);
+  if (family === 'specular-glossiness') slots.push(['diffuseTexture', sg.diffuseTexture], ['specularGlossinessTexture', sg.specularGlossinessTexture]);
   else {
     slots.push(['baseColorTexture', pbr.baseColorTexture], ['metallicRoughnessTexture', pbr.metallicRoughnessTexture]);
     const sp = ext.KHR_materials_specular ?? {};
     slots.push(['specularTexture', sp.specularTexture], ['specularColorTexture', sp.specularColorTexture]);
-    slots.push(['anisotropyTexture', ext.KHR_materials_anisotropy?.anisotropyTexture]);
+    if (!transmissive) slots.push(['anisotropyTexture', ext.KHR_materials_anisotropy?.anisotropyTexture]);
   }
   if (transmissive) slots.push(['transmissionTexture', ext.KHR_materials_transmission?.transmissionTexture], ['thicknessTexture', ext.KHR_materials_volume?.thicknessTexture]);
-  else if (ext.KHR_materials_clearcoat) for (const k of ['clearcoatTexture', 'clearcoatNormalTexture', 'clearcoatRoughnessTexture']) slots.push([k, ext.KHR_materials_clearcoat[k]]);
-  else if (ext.KHR_materials_sheen) for (const k of ['sheenColorTexture', 'sheenRoughnessTexture']) slots.push([k, ext.KHR_materials_sheen[k]]);
+  else if (family === 'clearcoat') for (const k of ['clearcoatTexture', 'clearcoatNormalTexture', 'clearcoatRoughnessTexture']) slots.push([k, ext.KHR_materials_clearcoat[k]]);
+  else if (family === 'sheen') for (const k of ['sheenColorTexture', 'sheenRoughnessTexture']) slots.push([k, ext.KHR_materials_sheen[k]]);
   return slots.filter(s => s[1]);
 }
 
 function droppedMaterialFeatures(m) {
-  const ext = new Set(Object.keys(m.extensions ?? {})), lost = [];
-  if (ext.has('KHR_materials_unlit')) {
+  const active = mesMaterialEffects(m);
+  const ext = new Set(Object.keys(m.extensions ?? {}).filter(e => active[e] !== false)), lost = [];
+  const family = mesMaterialFamily(m);
+  if (family === 'unlit') {
     for (const k of ['normalTexture', 'occlusionTexture', 'emissiveTexture']) if (m[k]) lost.push(k);
     for (const e of ext) if (e !== 'KHR_materials_unlit') lost.push(e);
-  } else if (ext.has('KHR_materials_pbrSpecularGlossiness')) {
+  } else if (family === 'specular-glossiness') {
     for (const e of ['KHR_materials_specular', 'KHR_materials_anisotropy', 'KHR_materials_ior']) if (ext.has(e)) lost.push(e);
-  }
-  if (ext.has('KHR_materials_transmission') || ext.has('KHR_materials_volume')) {
-    for (const e of ['KHR_materials_clearcoat', 'KHR_materials_sheen']) if (ext.has(e)) lost.push(e);
+  } else if (family === 'transmission') {
+    for (const e of ['KHR_materials_clearcoat', 'KHR_materials_sheen', 'KHR_materials_anisotropy']) if (ext.has(e)) lost.push(e);
     if (m.emissiveTexture || m.emissiveFactor?.some(v => v)) lost.push('emissive');
-  } else if (ext.has('KHR_materials_clearcoat') && ext.has('KHR_materials_sheen')) lost.push('KHR_materials_sheen');
+  } else if (family === 'clearcoat' && ext.has('KHR_materials_sheen')) lost.push('KHR_materials_sheen');
   return lost;
 }
 
@@ -211,15 +238,23 @@ function vrmInfo(js) {
   return null;
 }
 
+// ConvertGltfSampler's one-filter rule, including nearest magnification (cs:16513).
+function mesSamplerKey(s = {}) {
+  const nearest = s.magFilter === 9728 || (s.magFilter === undefined && [9728, 9984, 9986].includes(s.minFilter));
+  const filter = nearest ? 'nearest' : s.minFilter === 9985 ? 'bilinear' : s.minFilter === 9987 ? 'trilinear' : 'default';
+  const wrap = v => [33071, 33648].includes(v) ? v : 10497;
+  return `${filter}/${wrap(s.wrapS)}/${wrap(s.wrapT)}`;
+}
+
 // GPU bytes of the BGRA8 one-mip textures MEs creates, and the decode count.
-function gpuCost(js, bin, { merged = false } = {}) {
+function gpuCost(js, bin) {
   const textures = js.textures ?? [], keys = new Map();
   const usedMeshes = new Set((js.nodes ?? []).filter(n => n.mesh !== undefined).map(n => n.mesh));
   const usedMats = new Set();
   for (const mi of usedMeshes) for (const p of js.meshes[mi].primitives) if (p.material !== undefined) usedMats.add(p.material);
   for (const mi of usedMats) for (const [slot, info] of mesMaterialSlots(js.materials[mi])) {
     const t = textures[info.index], img = textureImage(t);
-    const key = `${merged ? `${img}/${t.sampler}` : info.index}|${SLOT_USAGE[slot] ?? 'data'}`;
+    const key = `${img}/${mesSamplerKey(js.samplers?.[t.sampler])}|${SLOT_USAGE[slot] ?? 'data'}`;
     keys.set(key, img);
   }
   let total = 0;
@@ -584,7 +619,7 @@ async function audit(file, { quick }) {
     if (lost.length) add('looks-different', 'material-feature', `Material ${mi} '${m.name ?? ''}': MEs drops ${lost.join(', ')}.`);
   });
   const clampPreview = clampMaterials(clone(js));
-  if (clampPreview.length) add('looks-different', 'out-of-range', `${clampPreview.length} material settings are outside the glTF 0-1 range. MEs passes them through unclamped, so those surfaces can look too shiny, too rough, or glowing.`, { values: clampPreview.map(l => l.replace(/^clamp: /, '')), fix: 'clamp-materials' });
+  if (clampPreview.length) add('other-apps', 'out-of-range', `${clampPreview.length} material settings are outside the glTF 0-1 range. MEs preserves finite values, which may intentionally create the authored look. Other apps may clamp them or render them differently. Keeping intentional values is fine; clamp only if you want the spec-range look, because it changes these effects.`, { values: clampPreview.map(l => l.replace(/^clamp: /, '')), fix: 'clamp-materials' });
   if (info) {
     const text = v => String(Array.isArray(v) ? v[0] ?? '' : v ?? '').trim().toLowerCase();
     const ph = Object.entries(info.meta).filter(([, v]) => PLACEHOLDER_META.has(text(v))).map(([k]) => k);
@@ -609,15 +644,11 @@ async function audit(file, { quick }) {
     if (!roles.has(i) && i !== info?.thumbImage) add('cost', 'unused-image', `Image ${i} '${im.name ?? ''}' is not used by any material (${mb(b?.length ?? 0)} MB).`, { fix: 'prune' });
     if (i === info?.thumbImage) add('ignored', 'thumbnail', `Thumbnail is ${s.width}x${s.height}, ${mb(b?.length ?? 0)} MB. MEs does not show it; other VRM apps and stores do.`);
   }
-  const now = gpuCost(js, bin), merged = gpuCost(js, bin, { merged: true });
-  if (merged.decodes < now.decodes) {
-    const count = new Map();
-    for (const t of textures) count.set(textureImage(t), (count.get(textureImage(t)) ?? 0) + 1);
-    const repeats = [...count].filter(([, n]) => n > 1).sort((x, y) => y[1] - x[1]).map(([i, n]) => `${js.images[i]?.name || i} x${n}`).join(', ');
-    add('cost', 'duplicate-texture-entries', `${textures.length} texture entries point at ${count.size} images, because the exporter wrote a separate entry for each material that uses an image (${repeats}). MEs decodes each entry separately: ${now.decodes} textures, about ${now.gpu_mb} MB of GPU memory. Merged: ${merged.decodes} textures, about ${merged.gpu_mb} MB. The avatar looks the same.`, { fix: 'merge-textures' });
-  }
+  const now = gpuCost(js, bin), mergePreview = clone(js);
+  if (mergeTextures(mergePreview).length)
+    add('cost', 'duplicate-texture-entries', 'Some material slots can share the same texture reference. This is optional file cleanup: it may slightly reduce the JSON size, but does not remove image data. MEs already shares matching images, sampler settings and usage types, so this does not reduce GPU memory or texture decodes. See the merge-textures trial for the measured file size.', { fix: 'merge-textures', optional: true });
   for (const p of similarPairs(js, decoded, info?.thumbImage))
-    add('cost', 'similar-images', `Images ${p.keep} '${js.images[p.keep].name ?? ''}' and ${p.drop} '${js.images[p.drop].name ?? ''}' are the same picture (${p.rmse}% different). Keeping one saves ${mb(imageBytes(js, bin, p.drop).length)} MB of file and one texture on the GPU.`, { fix: 'merge-similar', ...p });
+    add('cost', 'similar-images', `Images ${p.keep} '${js.images[p.keep].name ?? ''}' and ${p.drop} '${js.images[p.drop].name ?? ''}' are nearly identical (${p.rmse}% different). Sharing one image can save ${mb(imageBytes(js, bin, p.drop).length)} MB of file after pruning; GPU savings depend on the resulting sampler settings and usage types. See the trial for measured savings.`, { fix: 'merge-similar', ...p });
 
   const validation = await validate(bytes);
 
@@ -625,6 +656,7 @@ async function audit(file, { quick }) {
   const trials = [];
   if (!quick) {
     const runs = [
+      ['merge-textures', { mergeTextures: true }],
       ['safe', { mergeTextures: true, prune: true, png: true }],
       ['safe + merge-similar', { mergeTextures: true, prune: true, png: true, mergeSimilar: true }],
       ['safe + clamp-materials', { mergeTextures: true, prune: true, png: true, clampMaterials: true }],
@@ -638,7 +670,7 @@ async function audit(file, { quick }) {
       const lossy = r.quality.filter(q => q.psnr_db !== Infinity);
       const g = gpuCost(r.js, r.bin);
       trials.push({
-        label, mb_after: mb(r.bytes.length), gpu_mb_after: g.gpu_mb, under_free_cap: r.bytes.length <= FILE_CAP_FREE,
+        label, mb_after: mb(r.bytes.length), bytes_saved: bytes.length - r.bytes.length, gpu_mb_after: g.gpu_mb, under_free_cap: r.bytes.length <= FILE_CAP_FREE,
         lowest_psnr_color_db: lossy.some(q => q.color) ? Math.min(...lossy.filter(q => q.color).map(q => q.psnr_db)) : null,
         lowest_psnr_data_db: lossy.some(q => !q.color) ? Math.min(...lossy.filter(q => !q.color).map(q => q.psnr_db)) : null,
         validator_errors: (await validate(r.bytes)).errors,
@@ -651,7 +683,7 @@ async function audit(file, { quick }) {
     meta: info?.meta ?? {}, extensions_used: js.extensionsUsed ?? [], extensions_required: js.extensionsRequired ?? [],
     breakdown_mb: { images: mb(imagesTotal), geometry: mb(geometry), blendshapes: mb(morphs), animations: mb(animations), json: mb(JSON.stringify(js).length) },
     counts: { triangles: tris, skin_joints: joints, humanoid_bones: info?.bones.size ?? 0, meshes: js.meshes?.length ?? 0, materials: js.materials?.length ?? 0, textures: textures.length, images: images.length, expressions: info?.expressions ?? 0, springs: js.extensions?.VRMC_springBone?.springs?.length ?? 0 },
-    mes_textures: { ...now, gpu_mb_if_merged: merged.gpu_mb },
+    mes_textures: { ...now, gpu_mb_if_merged: now.gpu_mb },
     validation, images, findings: F, trials,
   };
 }
