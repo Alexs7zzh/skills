@@ -7,8 +7,12 @@ usage:
   sweep.py boundary     RUN [--tsgo-json FILE]
   sweep.py shard        RUN [--answers N]
   sweep.py packet       RUN SHARD
-  sweep.py check        RUN [--stage answers|verdicts|merges] [--part A01|J01]
-  sweep.py map          RUN [--rulings FILE] [--clusters-per-judge N]
+  sweep.py check        RUN [--stage answers|audit|verdicts|merges] [--part A01|J01]
+  sweep.py map          RUN [--rulings FILE] [--sites-per-judge N]
+  sweep.py audit        RUN [--sample N] (0 = all eligible negatives)
+  sweep.py facts        RUN [--sites S,S]
+  sweep.py correct      RUN --file FILE
+  sweep.py reconcile    RUN
   sweep.py judge-packet RUN GROUP
   sweep.py merge-packet RUN
   sweep.py rule         RUN --decision accept|reject|defer --verdicts V,V --reason TEXT
@@ -18,7 +22,7 @@ Every command reads catalog.json in the skill directory and writes only inside
 RUN, except `rule`, which writes the rulings file. The rulings file defaults to
 backend-primitives.rulings.json at the target's root. A failing command prints
 one line per failure and exits 1. Each command's last line names the next
-step. Only the Python 3 standard library.
+step. Only the Python 3.9+ standard library.
 """
 import argparse
 import copy
@@ -28,6 +32,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -38,18 +44,9 @@ SCRIPT = Path(__file__).resolve()
 RULINGS_NAME = "backend-primitives.rulings.json"
 ANSWER_TOKENS = ("yes", "no", "unknown", "n/a")
 LANES = ("defect", "primitive", "adopt")
-VERDICTS = ("refuted", "fix", "decide", "leave", "build", "adopt", "local")
-CHANGE_VERDICTS = ("fix", "decide", "build", "adopt", "local")
+FINDINGS = ("defect", "improvement", "fine", "refuted", "unresolved")
+REMEDIES = ("primitive", "effect", "local", "none")
 LAYERS = ("schema", "error", "config", "primitive", "service", "entry", "test")
-VERDICT_SLOTS = {
-    "refuted": ("fact", "evidence", "note"),
-    "fix": ("evidence", "consequence", "proposal", "layer"),
-    "decide": ("question", "recommendation", "consequence"),
-    "leave": ("counter", "evidence"),
-    "build": ("evidence", "proposal", "layer"),
-    "adopt": ("evidence", "proposal", "layer"),
-    "local": ("evidence", "proposal", "layer"),
-}
 EVIDENCE = re.compile(r"^(?P<path>[^:\s][^:]*):(?P<start>\d+)(?:-(?P<end>\d+))?$")
 COMMENT = re.compile(r"^\s*(//|\*|/\*)")
 
@@ -73,7 +70,11 @@ def load_jsonl(path, failures):
     for n, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
         if line.strip():
             try:
-                rows.append((n, json.loads(line)))
+                row = json.loads(line)
+                if not isinstance(row, dict):
+                    failures.append(f"{Path(path).name}:{n}: expected a JSON object")
+                else:
+                    rows.append((n, row))
             except json.JSONDecodeError as e:
                 failures.append(f"{Path(path).name}:{n}: not valid JSON: {e}")
     return rows
@@ -108,7 +109,7 @@ def sites_of(run):
 
 
 def cmd(*parts):
-    return " ".join(["python3", str(SCRIPT), *map(str, parts)])
+    return shlex.join(["python3", str(SCRIPT), *map(str, parts)])
 
 
 def pack(units, budget, split=True):
@@ -116,6 +117,8 @@ def pack(units, budget, split=True):
 
     With split, a unit over budget is split by item; without it, a unit
     stays whole and an oversized unit fills a bin alone."""
+    if budget <= 0:
+        die("budget must be positive")
     bins, current, cost = [], [], 0
     for unit_cost, items in units:
         if current and cost + unit_cost > budget:
@@ -140,12 +143,12 @@ def pack(units, budget, split=True):
 def site_line(sid, s, derived=None):
     also = f" (also lines {', '.join(map(str, s['also']))})" if s.get("also") else ""
     given = ", ".join(q + "=" + a["a"] for q, a in (derived or {}).items())
-    done = f" (answered by the script: {given})" if given else ""
+    done = f" (positive hints to confirm or correct: {given})" if given else ""
     return f"- {sid} `{s['path']}:{s['line']}`{also} `{s['snippet']}`{done}"
 
 
 def header(meta):
-    return f"Repository root: `{meta['root']}` at {meta['vcs']} {meta['revision'] or meta['digest']} ({meta['state']})."
+    return f"Snapshot root (read this): `{meta['root']}`; live repository: `{meta.get('source_root', meta['root'])}` at {meta['vcs']} {meta['revision'] or meta['digest']} ({meta['state']})."
 
 
 # ---------------------------------------------------------------- setup
@@ -178,7 +181,7 @@ def revision(root, digest):
 def default_run_dir(root, label):
     base = Path(os.environ.get("TMPDIR") or tempfile.gettempdir()) / "backend-primitives"
     candidate, n = base / f"{root.name}-{label}", 2
-    while (candidate / "sites.jsonl").exists():
+    while candidate.exists():
         candidate, n = base / f"{root.name}-{label}-{n}", n + 1
     return candidate
 
@@ -189,10 +192,19 @@ def cmd_inventory(args):
     if not root.is_dir():
         die(f"{root} is not a directory")
     kinds = args.kinds.split(",") if args.kinds else list(cat["kinds"])
+    if "entry-point" in kinds and "client-contract" not in kinds:
+        kinds.append("client-contract")
     for k in kinds:
         if k not in cat["kinds"]:
             die(f"unknown kind {k}; kinds are {', '.join(cat['kinds'])}")
     globs = args.paths.split(",") if args.paths else []
+    live_root = root
+    run = Path(args.run).resolve() if args.run else default_run_dir(root, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    if run.resolve().is_relative_to(root):
+        die("run directory must be outside the target repository")
+    if run.exists() and any(run.iterdir()):
+        die(f"{run} is not empty; choose a new run directory")
+    root = snapshot_sources(live_root, run)
     test_path = re.compile(cat["test_path"])
     compiled = {k: [re.compile(p) for p in cat["kinds"][k]["patterns"]] for k in kinds}
     hasher = hashlib.sha256()
@@ -202,11 +214,15 @@ def cmd_inventory(args):
         hasher.update(rel.encode() + text.encode())
         is_test = bool(test_path.search("/" + rel))
         for k in kinds:
+            if cat["kinds"][k].get("scope") == "run" and any(s["kind"] == k for s in found):
+                continue
             if (cat["kinds"][k]["scan"] == "tests") != is_test:
                 continue
             for n, line in enumerate(text.splitlines(), 1):
                 if not COMMENT.match(line) and any(p.search(line) for p in compiled[k]):
                     found.append({"kind": k, "path": rel, "line": n, "snippet": line.strip()[:160], "source": "scan"})
+                    if cat["kinds"][k].get("scope") == "run":
+                        break
     if args.extra:
         for n, line in enumerate(Path(args.extra).read_text(encoding="utf-8").splitlines(), 1):
             parts = line.split()
@@ -219,12 +235,9 @@ def cmd_inventory(args):
             ln = int(m["start"])
             found.append({"kind": parts[0], "path": m["path"], "line": ln, "source": "extra",
                           "snippet": lines[ln - 1].strip()[:160] if 0 < ln <= len(lines) else ""})
-    meta = {"root": str(root), "kinds": kinds, "paths": globs, "catalog": cat["written_against"],
+    meta = {"root": str(root), "source_root": str(live_root), "kinds": kinds, "paths": globs, "catalog": cat["written_against"],
             "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-            **revision(root, hasher.hexdigest()[:16])}
-    run = Path(args.run) if args.run else default_run_dir(root, (meta["revision"] or meta["digest"])[:8])
-    if (run / "sites.jsonl").exists():
-        die(f"{run} already holds an inventory; omit --run to get a new run directory")
+            **revision(live_root, hasher.hexdigest()[:16])}
     seen, sites = set(), []
     for s in sorted(found, key=lambda s: (list(cat["kinds"]).index(s["kind"]), s["path"], s["line"])):
         key = (s["kind"], s["path"], s["line"])
@@ -248,8 +261,11 @@ def cmd_inventory(args):
             if len(s["lines"]) > 1:
                 row["also"] = s["lines"][1:]
             f.write(json.dumps(row) + "\n")
+    meta.update(format=3, inputs=input_manifest(root), bundle=bundle_digest())
     write_json(run / "run.json", meta)
+    (run / "discovery.md").write_text(discovery_text(meta), encoding="utf-8")
     print(f"run directory: {run}")
+    print("Discovery is limited to catalog patterns; see discovery.md for blind spots and exclusions.")
     print(f"{len(sites)} sites at {meta['vcs']} {meta['revision'] or meta['digest']} ({meta['state']})")
     for k in kinds:
         print(f"  {k}: {sum(1 for s in sites if s['kind'] == k)}")
@@ -272,17 +288,18 @@ def cmd_api(args):
         write_json(run / "api.json", {"installed": None, "missing": {}})
         print(f"effect is not installed at {effect}; concept APIs are unverified")
     else:
-        version = load_json(effect / "package.json").get("version")
+        package = load_json(effect / "package.json")
+        version = package.get("version")
         cache, missing = {}, {}
         for cid, concept in cat["concepts"].items():
             for api in concept["apis"]:
                 module, _, name = api.rpartition(".")
                 if module not in cache:
-                    dts = effect / "dist" / f"{module}.d.ts"
-                    cache[module] = export_names(dts.read_text(encoding="utf-8")) if dts.exists() else None
+                    dts = declaration_path(effect, package, module)
+                    cache[module] = export_names(dts.read_text(encoding="utf-8")) if dts and dts.exists() else None
                 if cache[module] is None or name not in cache[module]:
                     missing.setdefault(cid, []).append(api)
-        write_json(run / "api.json", {"installed": version, "catalog": cat["written_against"], "missing": missing})
+        write_json(run / "api.json", {"installed": version, "package": str(effect.resolve()), "catalog": cat["written_against"], "missing": missing})
         print(f"effect {version} installed; catalog written against {cat['written_against']}")
         for cid, apis in missing.items():
             print(f"  unavailable concept {cid}: {', '.join(apis)}")
@@ -300,7 +317,9 @@ def cmd_boundary(args):
     else:
         tool, project = root / "node_modules" / ".bin" / "effect-tsgo", root / "tsconfig.json"
         if not tool.exists() or not project.exists():
-            print(f"@effect/tsgo or tsconfig.json is not in {root}; no boundary counts")
+            write_json(run / "boundary.json", {"measured": False, "reason": "installed tooling or tsconfig missing"})
+            (run / "boundary.md").write_text("# Boundary comparison\n\nUnmeasured: installed @effect/tsgo or tsconfig.json missing. This is not zero violations.\n")
+            print(f"@effect/tsgo or tsconfig.json is not in {root}; unmeasured")
             print(f"next: {cmd('shard', run)}")
             return
         config = {"name": "@effect/language-service", "diagnosticSeverity": {r: "warning" for r in cat["tsgo_rules"]}}
@@ -310,29 +329,45 @@ def cmd_boundary(args):
             data = json.loads(out.stdout)
         except json.JSONDecodeError:
             die(f"effect-tsgo returned no JSON (exit {out.returncode}): {out.stderr.strip()[:300]}")
-    counts = {}
+    counts, locations = {}, []
+    kinds_by_rule = {"processEnv": "config-read", "globalDate": "time-read", "globalConsole": "log-site",
+                     "globalFetch": "external-call", "globalTimers": "time-read", "globalRandom": None,
+                     "nodeBuiltinImport": "import", "preferSchemaOverJson": "decode-boundary",
+                     "extendsNativeError": "error-definition", "newPromise": None, "cryptoRandomUUID": None}
+    sites = sites_of(run)
     for d in data.get("diagnostics", []):
         if d.get("name") not in cat["tsgo_rules"]:
             continue
         # Resolve both sides: tsgo may report a path through a symlink the root resolved.
-        rel = os.path.relpath(Path(d["file"]).resolve(), root.resolve()).replace(os.sep, "/") if os.path.isabs(d["file"]) else d["file"]
+        file = Path(d["file"])
+        live = Path(run_meta(run).get("source_root", root))
+        base = live if file.is_absolute() and file.resolve().is_relative_to(live) else root
+        rel = os.path.relpath(file.resolve(), base.resolve()).replace(os.sep, "/") if file.is_absolute() else str(file)
         area = "/".join(rel.split("/")[:2]) if "/" in rel else rel
         counts.setdefault(d["name"], {}).setdefault(area, 0)
         counts[d["name"]][area] += 1
-    write_json(run / "boundary.json", counts)
+        line = d.get("line")
+        kind = kinds_by_rule.get(d["name"])
+        matched = [sid for sid, site in sites.items() if site["path"] == rel and site["kind"] == kind
+                   and line in [site["line"], *site.get("also", [])]]
+        locations.append({"rule": d["name"], "path": rel, "line": line, "kind": kind, "inventory": matched})
+    write_json(run / "boundary.json", {"measured": True, "counts": counts, "locations": locations})
     lines = ["# Unwrapped boundary uses", "", "Counts from @effect/tsgo's Effect-native rules, per directory.", "",
              "| rule | total | largest areas |", "| --- | --- | --- |"]
     for rule, areas in sorted(counts.items(), key=lambda kv: -sum(kv[1].values())):
         top = ", ".join(f"{a} {n}" for a, n in sorted(areas.items(), key=lambda kv: -kv[1])[:4])
         lines.append(f"| {rule} | {sum(areas.values())} | {top} |")
+    unmatched = [x for x in locations if not x["inventory"]]
+    lines += ["", "Diagnostic and inventory rules have different denominators; matching totals do not prove completeness.",
+              f"Diagnostics without an exact same-kind inventory location: {len(unmatched)}/{len(locations)}.",
+              "Review boundary.json locations against discovery.md; a missing line is uncomparable, not proof of a missed call."]
+    lines += [f"- {x['rule']} {x['path']}:{x['line'] if x['line'] is not None else '?'}" for x in unmatched]
     (run / "boundary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines[4:]))
     print(f"next: {cmd('shard', run)}")
 
 
-# Questions a search can settle exactly are answered here, not by agents.
-# A site whose line lacks the identifying string (a named type instead of a
-# literal, an indirect env read) keeps the question for its answerer.
+# Pattern matches are hints, never answers or proof of absence.
 SPECIFIER = re.compile(r"""(?:from\s+|require\(\s*)['"]([^'"]+)['"]""")
 ENV_KEY = re.compile(r"""(?:process\.env|Bun\.env|import\.meta\.env|Deno\.env)(?:\.(\w+)|\[\s*['"](\w+)['"]\s*\])""")
 TYPE_LITERAL = re.compile(r"\bas\s+(\{[^{}]*\})")
@@ -343,40 +378,43 @@ def fields_of(literal):
 
 
 def derive_answers(cat, root, sites):
-    test_path = re.compile(cat["test_path"])
-    lines = {rel: (root / rel).read_text(encoding="utf-8", errors="replace").splitlines()
-             for rel in source_files(root, cat, []) if not test_path.search("/" + rel)}
-
-    def others(path, line, match):
-        return [f"{p}:{n}" for p, ls in lines.items() for n, text in enumerate(ls, 1)
-                if (p, n) != (path, line) and not COMMENT.match(text) and match(text)]
-
-    derived = {}
-    for sid, s in sites.items():
-        file_lines = lines.get(s["path"], [])
-        text = file_lines[s["line"] - 1] if s["line"] <= len(file_lines) else ""
-        for q in cat["kinds"][s["kind"]]["questions"]:
-            method, hits, searched = q.get("derive"), None, None
+    """Positive hints only. Workers confirm them or replace them with evidence."""
+    indexes = {"same-import": {}, "same-env-key": {}, "same-shape": {}}
+    lines = {}
+    for rel in source_files(root, cat, []):
+        if re.search(cat["test_path"], "/" + rel):
+            continue
+        lines[rel] = (root / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+        for n, text in enumerate(lines[rel], 1):
+            if COMMENT.match(text):
+                continue
+            keys = {"same-import": SPECIFIER.findall(text),
+                    "same-env-key": [g for match in ENV_KEY.findall(text) for g in match if g],
+                    "same-shape": [fields_of(v) for v in TYPE_LITERAL.findall(text)]}
+            for method, values in keys.items():
+                for key in set(values):
+                    if key:
+                        indexes[method].setdefault(key, []).append((rel, n))
+    hints = {}
+    for sid, site in sites.items():
+        ls = lines.get(site["path"], [])
+        text = ls[site["line"] - 1] if 0 < site["line"] <= len(ls) else ""
+        for q in cat["kinds"][site["kind"]]["questions"]:
+            method = q.get("derive")
+            key = None
             if method == "same-import" and SPECIFIER.search(text):
-                spec = SPECIFIER.search(text).group(1)
-                searched = f"imports of '{spec}' in every source file"
-                hits = [h for h in others(s["path"], s["line"], lambda t: spec in SPECIFIER.findall(t))
-                        if h.split(":")[0] != s["path"]]
+                key = SPECIFIER.search(text).group(1)
             elif method == "same-env-key" and ENV_KEY.search(text):
                 key = next(g for g in ENV_KEY.search(text).groups() if g)
-                searched = f"reads of {key} in every source file"
-                hits = others(s["path"], s["line"], lambda t: key in [g for m in ENV_KEY.findall(t) for g in m if g])
             elif method == "same-shape" and TYPE_LITERAL.search(text):
-                shape = fields_of(TYPE_LITERAL.search(text).group(1))
-                searched = f"casts to a type literal with the fields {', '.join(sorted(shape))} in every source file"
-                hits = others(s["path"], s["line"], lambda t: any(fields_of(l) == shape for l in TYPE_LITERAL.findall(t)))
-            if hits is None:
-                continue
-            answer = ({"a": "yes", "ev": hits[0], "note": f"{len(hits)} other place{'' if len(hits) == 1 else 's'}"}
-                      if hits else {"a": "no", "note": "none found", "searched": searched})
-            derived.setdefault(sid, {})[q["id"]] = {**answer, "derived": True}
-    return derived
-
+                key = fields_of(TYPE_LITERAL.search(text).group(1))
+            hits = [(p, n) for p, n in indexes.get(method, {}).get(key, [])
+                    if (p, n) != (site["path"], site["line"])
+                    and (method != "same-import" or p != site["path"])]
+            if hits:
+                hints.setdefault(sid, {})[q["id"]] = {"a": "yes", "ev": f"{hits[0][0]}:{hits[0][1]}",
+                    "note": "pattern match; confirm its meaning at the citation", "derived": True}
+    return hints
 
 def derived_of(run):
     path = Path(run) / "derived.json"
@@ -401,9 +439,10 @@ def cmd_shard(args):
         nq = len(cat["kinds"][kind]["questions"])
         units += [(nq * len(ids), ids) for _, ids in sorted(files.items())]
     shards = pack(units, args.answers)
+    (run / "answers").mkdir(exist_ok=True)
     derived = derive_answers(cat, Path(run_meta(run)["root"]), sites)
     write_json(run / "derived.json", derived)
-    print(f"{sum(map(len, derived.values()))} answers derived by search at {len(derived)} sites")
+    print(f"{sum(map(len, derived.values()))} positive hints found by search at {len(derived)} sites")
     for n, ids in enumerate(shards, 1):
         kinds = [k for k in cat["kinds"] if any(sites[i]["kind"] == k for i in ids)]
         write_json(shard_dir / f"A{n:02d}.json", {"id": f"A{n:02d}", "kinds": kinds, "sites": ids})
@@ -415,11 +454,13 @@ def cmd_shard(args):
 def question_lines(q):
     cond = ""
     if q.get("only_if"):
-        cond = " Answer only if " + " and ".join(f"{k} is {v}" for k, v in q["only_if"].items()) + "; otherwise n/a."
+        cond = " Applies when " + " and ".join(f"{k} is {v}" for k, v in q["only_if"].items())
+        cond += ". A known-false prerequisite means n/a; an unknown prerequisite means unknown, with missing."
+    if q.get("allow_na"):
+        cond += " n/a is also allowed when " + q["allow_na"] + "; give a note establishing it."
     if q.get("search"):
         cond += " Search the repository; a no needs `searched`."
     return [f"- **{q['id']}** {q['text']}{cond}", f"  - yes: {q['yes']}", f"  - no: {q['no']}"]
-
 
 def cmd_packet(args):
     cat = catalog()
@@ -429,7 +470,7 @@ def cmd_packet(args):
     derived = derived_of(run)
     out = [f"# Answer shard {shard['id']}", "", header(run_meta(run)),
            f"Write answers to `{run / 'answers' / (shard['id'] + '.jsonl')}`, one JSON object per site.",
-           f"Follow `{SKILL / 'answer.md'}`. Leave out the answers a site line says the script gave.", ""]
+           f"Follow `{SKILL / 'answer.md'}`. Answer every question, including positive hints; confirm them or correct them at their citations.", ""]
     for kind_id in shard["kinds"]:
         kind = cat["kinds"][kind_id]
         out += [f"## Kind {kind_id}: {kind['title']}", "", f"Read: {kind['read']}", "", "### Questions", ""]
@@ -461,7 +502,10 @@ def check_evidence(root, ev, where, failures):
             failures.append(f"{where}: evidence '{item}' is not path:line or path:start-end")
             continue
         path = Path(root) / m["path"]
-        if not path.is_file():
+        allowed = path.resolve().is_relative_to(Path(root).resolve())
+        if not allowed:
+            allowed = any(path.resolve().is_relative_to(deps.resolve()) for deps in dependency_roots(Path(root)))
+        if not allowed or not path.is_file():
             failures.append(f"{where}: evidence file {m['path']} does not exist under the root")
             continue
         count = len(path.read_text(encoding="utf-8", errors="replace").splitlines())
@@ -470,15 +514,20 @@ def check_evidence(root, ev, where, failures):
             failures.append(f"{where}: evidence {item} is outside {m['path']} (1-{count})")
 
 
-def check_answer_set(root, qs, answers, where, failures, derived=None):
-    answers = {**answers, **(derived or {})}
+def check_answer_set(root, qs, answers, where, failures):
+    if not isinstance(answers, dict) or any(not isinstance(a, dict) for a in answers.values()):
+        failures.append(f"{where}: answers must map question ids to answer objects")
+        return
     for qid in answers:
         if qid not in qs:
             failures.append(f"{where}: unknown question {qid}")
     for qid, q in qs.items():
         ans = answers.get(qid)
-        if condition_met(q.get("only_if", {}), answers) is False:
-            if ans is not None and ans.get("a") != "n/a":
+        applicability = condition_met(q.get("only_if", {}), answers)
+        if applicability is None and (ans is None or ans.get("a") != "unknown"):
+            failures.append(f"{where} {qid}: unknown prerequisite requires unknown with missing")
+        if applicability is False:
+            if ans is None or ans.get("a") != "n/a":
                 failures.append(f"{where} {qid}: its condition is not met, so the answer is n/a")
             continue
         if ans is None:
@@ -487,8 +536,8 @@ def check_answer_set(root, qs, answers, where, failures, derived=None):
         a = ans.get("a")
         if a not in ANSWER_TOKENS:
             failures.append(f"{where} {qid}: answer '{a}' is not one of {', '.join(ANSWER_TOKENS)}")
-        elif a == "n/a" and not ans.get("note"):
-            failures.append(f"{where} {qid}: n/a on an applicable question needs a note saying why")
+        elif a == "n/a" and (not q.get("allow_na") or not ans.get("note")):
+            failures.append(f"{where} {qid}: n/a requires a known-false prerequisite or an explicit catalog exception with note")
         elif a == "yes" and not ans.get("ev"):
             failures.append(f"{where} {qid}: yes needs ev")
         elif a == "no" and not (ans.get("ev") or ans.get("note")):
@@ -501,13 +550,19 @@ def check_answer_set(root, qs, answers, where, failures, derived=None):
             check_evidence(root, ans["ev"], f"{where} {qid}", failures)
 
 
+def check_hint_answers(sid, answers, hints, failures):
+    for qid, hint in hints.items():
+        answer = answers.get(qid, {})
+        if answer.get("a") in ("no", "n/a") and not answer.get("hint_refutation"):
+            failures.append(f"{sid} {qid}: contradicts hint {hint['ev']}; requires hint_refutation explaining why it does not count")
+
+
 def check_answers(run, cat, sites, meta, failures, only_shard=None):
     shards = {p.stem: load_json(p) for p in sorted((Path(run) / "shards").glob("*.json"))
               if only_shard is None or p.stem == only_shard}
     if not shards:
         failures.append(f"no shard {only_shard}" if only_shard else "no shards; run shard first")
     files = {p.stem: p for p in sorted((Path(run) / "answers").glob("*.jsonl"))}
-    derived = derived_of(run)
     for sid, shard in shards.items():
         if sid not in files:
             failures.append(f"answers/{sid}.jsonl does not exist")
@@ -538,18 +593,26 @@ def check_answers(run, cat, sites, meta, failures, only_shard=None):
                 if other not in shard["sites"] or other == site or sites[other]["kind"] != sites[site]["kind"]:
                     failures.append(f"{where}: same_as {other} must be another site of the same kind in this shard")
             elif status == "site":
-                check_answer_set(meta["root"], questions_of(cat, sites[site]["kind"]), row.get("answers", {}), where, failures,
-                                 derived.get(site))
+                check_answer_set(meta["root"], questions_of(cat, sites[site]["kind"]), row.get("answers", {}), where, failures)
             else:
                 failures.append(f"{where}: status '{status}' is not site or not-a-site")
         for site in shard["sites"]:
             if site not in rows:
                 failures.append(f"{files[sid].name}: site {site} has no row")
         for site, row in rows.items():
+            answer = rows.get(row.get("same_as"), row)
+            if row.get("status") != "not-a-site":
+                check_hint_answers(site, answer.get("answers", {}), derived_of(run).get(site, {}), failures)
             target = rows.get(row.get("same_as"), {})
             if row.get("same_as") and (target.get("same_as") or target.get("status") == "not-a-site"):
                 failures.append(f"{files[sid].name}: {site} same_as {row['same_as']}, which has no answers of its own")
     if only_shard is None:
+        if not failures:
+            effective, all_sites = merged_answers(run, sites)
+            for site, row in effective.items():
+                if row["status"] == "site":
+                    check_answer_set(meta["root"], questions_of(cat, all_sites[site]["kind"]), row["answers"], site, failures)
+                    check_hint_answers(site, row["answers"], derived_of(run).get(site, {}), failures)
         failures += [f"answers/{stem}.jsonl matches no shard" for stem in files if stem not in shards]
 
 
@@ -565,13 +628,17 @@ def merged_answers(run, sites):
                 merged[sid] = {"status": "site", "answers": row.get("answers", {})}
             else:
                 merged[row["site"]] = {"status": row.get("status", "site"), "answers": row.get("answers", {}),
-                                       "same_as": row.get("same_as")}
+                                       "same_as": row.get("same_as"), "note": row.get("note")}
+    corrections = load_json(Path(run) / "corrections.json") if (Path(run) / "corrections.json").exists() else {}
+    for sid, answers in corrections.items():
+        if sid in merged:
+            merged[sid]["answers"] = copy.deepcopy(answers)
     for m in merged.values():
         if m.get("same_as"):
             m["answers"] = copy.deepcopy(merged.get(m["same_as"], {}).get("answers", {}))
-    for sid, answers in derived_of(run).items():
+    for sid, answers in corrections.items():
         if sid in merged:
-            merged[sid]["answers"].update(answers)
+            merged[sid].update(status="site", answers=copy.deepcopy(answers), same_as=None)
     if failures:
         die("; ".join(failures))
     return merged, all_sites
@@ -584,7 +651,7 @@ def evaluate(rule, answers):
     state = "matched"
     for qid, want in rule["when"].items():
         got = answers.get(qid, {}).get("a")
-        if got == "unknown":
+        if got in ("unknown", None):
             state = "unresolved"
         elif got != want:
             return None
@@ -592,23 +659,20 @@ def evaluate(rule, answers):
 
 
 def rulings_path(run, given):
-    return Path(given) if given else Path(run_meta(run)["root"]) / RULINGS_NAME
+    return Path(given) if given else Path(run_meta(run).get("source_root", run_meta(run)["root"])) / RULINGS_NAME
 
 
-def ruling_effect(rulings, rule_id, site_path):
-    """None, or suppress, accepted or requeue, from the last matching ruling."""
+def ruling_effect(rulings, rule_id, site_path, identity=None):
+    """A matching decision is context for a judge, never proof of implementation."""
     hit = None
-    for r in rulings:
-        if r["rule"] == rule_id and (site_path in r.get("paths", []) or (r.get("scope") and fnmatch.fnmatch(site_path, r["scope"]))):
-            hit = r
-    if hit is None:
-        return None, None
-    if hit["decision"] == "defer":
-        return "suppress", hit
-    if hit["verdict_token"] in CHANGE_VERDICTS:
-        return ("accepted" if hit["decision"] == "accept" else "suppress"), hit
-    return ("suppress" if hit["decision"] == "accept" else "requeue"), hit
-
+    for row in rulings:
+        if row.get("rule") != rule_id:
+            continue
+        scoped = row.get("policy") is True and fnmatch.fnmatch(site_path, row.get("scope", ""))
+        exact = identity is not None and identity in row.get("identities", [])
+        if scoped or exact:
+            hit = row
+    return (hit.get("decision"), hit) if hit else (None, None)
 
 def coverage(cat, merged, all_sites):
     rows = []
@@ -619,12 +683,16 @@ def coverage(cat, merged, all_sites):
             if m["status"] != "site" or all_sites[sid]["kind"] != kind:
                 continue
             a = m["answers"]
-            if any(a.get(q, {}).get("a") != v for q, v in c.get("among", {}).items()):
+            eligible = condition_met(c.get("among", {}), a)
+            if eligible is False:
+                continue
+            if eligible is None:
+                unknown += 1
                 continue
             got = a.get(c["question"], {}).get("a")
             if got == c["has"]:
                 has += 1
-            elif got == "unknown":
+            elif got in ("unknown", None):
                 unknown += 1
             elif got in ("yes", "no"):
                 lacks += 1
@@ -633,76 +701,101 @@ def coverage(cat, merged, all_sites):
 
 
 def cmd_map(args):
-    cat = catalog()
-    run = Path(args.run)
+    require_answers(args.run)
+    failures = []
+    check_audit(args.run, failures)
+    if audit_refutations(args.run):
+        failures.append("audit refutations remain; run reconcile --stage audit before map")
+    if failures:
+        die("; ".join(failures))
+    cat, run = catalog(), Path(args.run)
+    meta = run_meta(run)
     merged, all_sites = merged_answers(run, sites_of(run))
     api = load_json(run / "api.json") if (run / "api.json").exists() else {"installed": None, "missing": {}}
     rpath = rulings_path(run, args.rulings)
     rulings = load_json(rpath).get("rulings", []) if rpath.exists() else []
-    rules = {r["id"]: r for r in cat["rules"]}
-    clusters, suppressed, accepted = {}, {}, {}
-    for sid, m in sorted(merged.items()):
-        if m["status"] != "site":
+    by_rule = {r["id"]: r for r in cat["rules"]}
+    matches, held = {}, []
+    for sid, row in sorted(merged.items()):
+        if row["status"] != "site":
             continue
         site = all_sites[sid]
         for rule in cat["rules"]:
-            state = evaluate(rule, m["answers"]) if rule["kind"] == site["kind"] else None
-            if not state:
+            state = evaluate(rule, row["answers"]) if rule["kind"] == site["kind"] else None
+            if state is None:
                 continue
-            effect, hit = ruling_effect(rulings, rule["id"], site["path"])
-            if effect == "suppress":
-                suppressed.setdefault(rule["id"], []).append(sid)
-            elif effect == "accepted":
-                accepted.setdefault(rule["id"], []).append(sid)
-            else:
-                entry = {"site": sid, "state": state}
-                if effect == "requeue":
-                    entry["user"] = f"the user rejected an earlier leave: {hit['reason']}"
-                clusters.setdefault(rule["id"], []).append(entry)
-    order = sorted(clusters, key=lambda rid: (list(cat["kinds"]).index(rules[rid]["kind"]), LANES.index(rules[rid]["lane"]), rid))
-    out = [{"id": f"C{n:02d}", "rule": rid, "lane": rules[rid]["lane"], "kind": rules[rid]["kind"],
-            "concept": rules[rid]["concept"], "unavailable": api["missing"].get(rules[rid]["concept"], []),
-            "sites": clusters[rid]} for n, rid in enumerate(order, 1)]
-    # A kind's clusters stay in one group, so one judge sees every cluster at
-    # a site and can let one change cover the others. Small kinds share.
-    units = [(len(ids), ids) for ids in ([c["id"] for c in out if c["kind"] == k] for k in cat["kinds"]) if ids]
-    groups = pack(units, args.clusters_per_judge, split=False)
-    for old in (run / "judges").glob("*.json") if (run / "judges").exists() else []:
-        old.unlink()
-    for n, g in enumerate(groups, 1):
-        write_json(run / "judges" / f"J{n:02d}.json", {"id": f"J{n:02d}", "clusters": g})
+            identity = site_identity(meta, site, row["answers"], rule)
+            decision, previous = ruling_effect(rulings, rule["id"], site["path"], identity)
+            item = {"site": sid, "state": state, "identity": identity}
+            if decision in ("reject", "defer") and not args.include_held:
+                held.append({"rule": rule["id"], "site": sid, "identity": identity, "path": site["path"],
+                             "line": site["line"], "decision": decision, "reason": previous["reason"],
+                             "finding": previous.get("finding"), "state": state})
+                continue
+            if previous:
+                item["user"] = f"{decision}: {previous['reason']} (not implementation evidence)"
+            matches.setdefault(rule["id"], []).append(item)
+    # Split large kinds by unique sites, keeping all rules for a site's chunk together.
+    out, groups = [], []
+    for kind in cat["kinds"]:
+        ids = sorted(sid for sid, site in all_sites.items() if site["kind"] == kind)
+        for start in range(0, len(ids), args.sites_per_judge):
+            chunk = set(ids[start:start + args.sites_per_judge])
+            group = []
+            for rule in sorted((r for r in cat["rules"] if r["kind"] == kind), key=lambda r: (LANES.index(r["lane"]), r["id"])):
+                rows = [x for x in matches.get(rule["id"], []) if x["site"] in chunk]
+                if not rows:
+                    continue
+                cid = f"C{len(out)+1:03d}"
+                out.append({"id": cid, "rule": rule["id"], "kind": kind, "lane": rule["lane"],
+                            "concept": rule["concept"], "unavailable": api["missing"].get(rule["concept"], []), "sites": rows})
+                group.append(cid)
+            if group:
+                groups.append(group)
+    save_reusable(run)
+    archive_outputs(run)
+    (run / "verdicts").mkdir(exist_ok=True)
+    for n, group in enumerate(groups, 1):
+        write_json(run / "judges" / f"J{n:02d}.json", {"id": f"J{n:02d}", "clusters": group})
     cov = coverage(cat, merged, all_sites)
-    write_json(run / "clusters.json", {"clusters": out, "suppressed": suppressed, "accepted": accepted,
-                                       "rulings": str(rpath) if rpath.exists() else None,
-                                       "effect": api.get("installed"), "coverage": cov})
-    lines = ["# Guarantee coverage", "", "| guarantee | sites that have it | unknown |", "| --- | --- | --- |"]
+    audit = load_json(run / "audit.json")
+    write_json(run / "clusters.json", {"clusters": out, "effect": api.get("installed"), "coverage": cov,
+               "facts_digest": effective_digest(run), "rulings": str(rpath), "held": held,
+               "audit": {"eligible": audit["eligible"], "checked": len(audit["selected"])}})
+    restore_verdicts(run)
+    lines = ["# Coverage of inventoried sites", "", "Discovery limits: see discovery.md. Unknown eligibility is included in unknown.", "",
+             "| guarantee | has / known applicable | unknown |", "| --- | --- | --- |"]
     lines += [f"| {r['label']} | {r['has']}/{r['of']} | {r['unknown']} |" for r in cov if r["of"] or r["unknown"]]
+    lines += ["", f"Eligible negatives and hint contradictions audited: {len(audit['selected'])}/{audit['eligible']}. "
+              "Other negatives, exclusions and discovery blind spots are not audited by this sample."]
     (run / "coverage.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print("\n".join(lines[2:]))
-    print(f"{len(out)} clusters in {len(groups)} judge groups; rulings {rpath if rpath.exists() else 'none'}; "
-          f"{sum(map(len, suppressed.values()))} candidates suppressed, {sum(map(len, accepted.values()))} accepted earlier")
-    for c in out:
-        unresolved = sum(1 for s in c["sites"] if s["state"] == "unresolved")
-        print(f"  {c['id']} {c['lane']:9} {c['rule']}: {len(c['sites'])} sites" + (f", {unresolved} unresolved" if unresolved else "")
-              + (f", concept unavailable: {', '.join(c['unavailable'])}" if c["unavailable"] else ""))
-    print("next: report that no rule matched" if not out else
-          f"next: one judge per group in {run / 'judges'}, each briefed with {cmd('judge-packet', run, '<group>')}")
-
+    print("\n".join(lines))
+    print(f"{len(out)} clusters in {len(groups)} judge groups; {len(held)} rejected or deferred candidates held out")
+    if not out:
+        (run / "merges.jsonl").write_text("")
+        print_verdicts(run)
+    print("next: report coverage and discovery limits; no rule matched" if not out else
+          f"next: judges use {cmd('judge-packet', run, '<group>')}; schedule within available agent capacity")
 
 def cmd_judge_packet(args):
     cat = catalog()
     run = Path(args.run).resolve()
     merged, all_sites = merged_answers(run, sites_of(run))
-    data = load_json(run / "clusters.json")
+    data = require_mapping(run)
     group = load_json(run / "judges" / f"{args.group}.json")
     by_id = {c["id"]: c for c in data["clusters"]}
     rules = {r["id"]: r for r in cat["rules"]}
     out = [f"# Judge group {group['id']}", "", header(run_meta(run)),
            f"Installed effect: {data.get('effect') or 'not installed, so API names are unverified'}. "
            f"Catalog API names are from {cat['written_against']}.",
-           f"Write verdicts to `{run / 'verdicts' / (group['id'] + '.jsonl')}`. Follow `{SKILL / 'judge.md'}`.", ""]
+           f"Write verdicts to `{run / 'verdicts' / (group['id'] + '.jsonl')}`. Follow `{SKILL / 'judge.md'}`.",
+           f"Complete facts and correction digests: `{cmd('facts', run)}`.", ""]
+    out.append("Carried findings are in carried.jsonl; do not rewrite them. Use explicit site lists for pending subsets.")
     for cid in group["clusters"]:
         c = by_id[cid]
+        pending = group.get("pending", {}).get(cid, [x["site"] for x in c["sites"]])
+        if not pending:
+            continue
         rule, concept, qs = rules[c["rule"]], cat["concepts"][c["concept"]], questions_of(cat, c["kind"])
         out += [f"## {cid} {c['rule']} ({c['lane']}, {c['kind']})", "",
                 f"- Mechanism: {rule['mechanism']}",
@@ -715,6 +808,8 @@ def cmd_judge_packet(args):
             out.append(f"- Unavailable in the installed version: {', '.join(c['unavailable'])}")
         out += ["", "Sites:", ""]
         for s in c["sites"]:
+            if s["site"] not in pending:
+                continue
             facts = []
             for q in rule["when"]:
                 ans = merged[s["site"]]["answers"].get(q, {})
@@ -731,95 +826,147 @@ def cmd_judge_packet(args):
 
 def load_verdicts(run, failures):
     d = Path(run) / "verdicts"
-    return [(f"{p.name}:{n}", p.stem, row) for p in (sorted(d.glob("*.jsonl")) if d.exists() else [])
+    rows = [(f"{p.name}:{n}", p.stem, row) for p in sorted(d.glob("*.jsonl"))
             for n, row in load_jsonl(p, failures)]
+    carried = Path(run) / "carried.jsonl"
+    if carried.exists():
+        rows += [(f"carried.jsonl:{n}", row.get("id", "").split("-")[0], row)
+                 for n, row in load_jsonl(carried, failures)]
+    return rows
 
 
 def check_verdicts(run, failures, only_group=None):
     cat = catalog()
-    rules = {r["id"]: r for r in cat["rules"]}
-    data = load_json(Path(run) / "clusters.json")
+    data = require_mapping(run)
     root = run_meta(run)["root"]
+    rules = {r["id"]: r for r in cat["rules"]}
     clusters = {c["id"]: c for c in data["clusters"]}
-    _, all_sites = merged_answers(run, sites_of(run))
+    effective, sites = merged_answers(run, sites_of(run))
     groups = {p.stem: load_json(p)["clusters"] for p in sorted((Path(run) / "judges").glob("*.json"))}
     rows = load_verdicts(run, failures)
-    by_id = {row.get("id"): (stem, row) for _, stem, row in rows}
-    if only_group is not None:
-        rows = [r for r in rows if r[1] == only_group]
-        if not rows:
-            failures.append(f"verdicts/{only_group}.jsonl has no rows")
+    if only_group and only_group not in groups:
+        failures.append(f"unknown judge group {only_group}")
+        return
     seen, covered = set(), {}
     for where, stem, row in rows:
-        vid, cid, verdict = row.get("id"), row.get("cluster"), row.get("verdict")
-        if not vid or vid in seen:
-            failures.append(f"{where}: verdict id '{vid}' is missing or repeated")
+        if only_group and stem != only_group:
+            continue
+        vid, cid = row.get("id"), row.get("cluster")
+        finding, remedy = row.get("finding"), row.get("remedy")
+        if not isinstance(vid, str) or not re.fullmatch(re.escape(stem) + (r"-R\d+" if where.startswith("carried.jsonl:") else r"-\d+"), vid) or vid in seen:
+            failures.append(f"{where}: id must be unique {stem}-<number>")
         seen.add(vid)
-        if cid not in clusters:
-            failures.append(f"{where}: unknown cluster {cid}")
+        if stem not in groups or cid not in groups[stem]:
+            failures.append(f"{where}: cluster must belong to this judge group")
             continue
-        if stem in groups and cid not in groups[stem]:
-            failures.append(f"{where}: cluster {cid} belongs to another judge group")
-        if verdict not in VERDICTS:
-            failures.append(f"{where}: verdict '{verdict}' is not one of {', '.join(VERDICTS)}")
+        c = clusters[cid]
+        if finding not in FINDINGS or remedy not in REMEDIES or not isinstance(row.get("decision"), bool):
+            failures.append(f"{where}: requires finding, remedy and boolean decision (legacy verdict tokens are unsupported)")
             continue
-        failures += [f"{where}: {verdict} needs {slot}" for slot in VERDICT_SLOTS[verdict] if not row.get(slot)]
-        when = rules[clusters[cid]["rule"]]["when"]
-        if verdict == "refuted" and row.get("fact") not in when:
-            failures.append(f"{where}: refuted fact must be one of the rule's questions: {', '.join(when)}")
+        slots = ["evidence"]
+        if finding == "defect":
+            slots += ["consequence"]
+        if finding in ("defect", "improvement"):
+            slots += ["proposal", "layer"]
+            if remedy == "none":
+                failures.append(f"{where}: a supported change needs a remedy")
+        if finding == "fine":
+            slots += ["counter"]
+        if finding == "refuted":
+            slots += ["fact", "corrections"]
+        if finding == "unresolved":
+            slots += ["limit"]
+        if finding in ("fine", "refuted", "unresolved") and (remedy != "none" or row["decision"]):
+            failures.append(f"{where}: {finding} requires remedy none and decision false")
+        if row["decision"]:
+            slots += ["question", "recommendation"]
+        if remedy == "primitive":
+            slots += ["signature", "enforcement"]
+        for slot in slots:
+            if not row.get(slot):
+                failures.append(f"{where}: {finding}/{remedy} needs {slot}")
         if row.get("layer") and row["layer"] not in LAYERS:
-            failures.append(f"{where}: layer '{row['layer']}' is not one of {', '.join(LAYERS)}")
+            failures.append(f"{where}: invalid layer")
         if row.get("evidence"):
             check_evidence(root, row["evidence"], where, failures)
-        if row.get("covered_by"):
-            target = by_id.get(row["covered_by"])
-            if verdict != "leave":
-                failures.append(f"{where}: covered_by belongs on a leave row")
-            elif target is None or target[0] != stem:
-                failures.append(f"{where}: covered_by {row['covered_by']} must name a row in the same verdict file")
-            elif target[1].get("verdict") not in ("fix", "build", "adopt", "local"):
-                failures.append(f"{where}: covered_by must name a fix, build, adopt or local row")
-        cluster_sites = [s["site"] for s in clusters[cid]["sites"]]
-        listed = cluster_sites if row.get("sites") == "all" else row.get("sites") or []
-        if not listed:
-            failures.append(f"{where}: sites must be 'all' or a list of the cluster's site ids")
-        for s in listed:
-            if s not in cluster_sites:
-                failures.append(f"{where}: site {s} is not in cluster {cid}")
-            covered.setdefault((cid, s), []).append(vid)
-        if verdict == "build" and (len(listed) < 3 or len({all_sites[s]["path"] for s in listed if s in all_sites}) < 2):
-            failures.append(f"{where}: build needs at least 3 sites in at least 2 files; use local otherwise")
-        states = {s["site"]: s["state"] for s in clusters[cid]["sites"]}
-        if verdict != "refuted" and any(states.get(s) == "unresolved" for s in listed):
-            limit = str(row.get("limit", ""))
-            if not limit:
-                failures.append(f"{where}: rows covering unresolved sites need limit: the fact still missing, or 'settled at path:line'")
-            elif verdict == "fix" and not limit.startswith("settled at "):
-                failures.append(f"{where}: fix cannot rest on an unresolved fact; settle it at the source or use another verdict")
-            elif limit.startswith("settled at "):
-                check_evidence(root, limit[len("settled at "):].strip(), where, failures)
-        if verdict == "adopt" and clusters[cid]["unavailable"]:
-            failures.append(f"{where}: adopt names a concept whose APIs are unavailable: {', '.join(clusters[cid]['unavailable'])}")
-    for cid, c in clusters.items():
-        if only_group is not None and cid not in groups.get(only_group, []):
+        cluster_ids = [x["site"] for x in c["sites"]]
+        listed = cluster_ids if row.get("sites") == "all" else row.get("sites")
+        if not isinstance(listed, list) or not listed or len(listed) != len(set(listed)):
+            failures.append(f"{where}: sites must be all or a nonempty unique list")
             continue
-        for s in c["sites"]:
-            ids = covered.get((cid, s["site"]), [])
-            if not ids:
-                failures.append(f"{cid}: site {s['site']} has no verdict")
-            elif len(ids) > 1:
-                failures.append(f"{cid}: site {s['site']} has verdicts {', '.join(ids)}; give each site one")
+        dependencies = row.get("depends_on", [])
+        if not isinstance(dependencies, list) or any(not isinstance(x, str) or x not in effective for x in dependencies):
+            failures.append(f"{where}: depends_on must list existing site ids")
+        for sid in listed:
+            if sid not in cluster_ids:
+                failures.append(f"{where}: site {sid} is not in cluster")
+            covered.setdefault((cid, sid), []).append(vid)
+        inspected = row.get("inspected")
+        if not isinstance(inspected, list) or not inspected or any(not isinstance(x, str) for x in inspected) or len(inspected) != len(set(inspected)) or not set(inspected) <= set(listed):
+            failures.append(f"{where}: inspected must list unique reviewed sites from this row")
+        elif finding in ("defect", "refuted", "unresolved") and set(inspected) != set(listed):
+            failures.append(f"{where}: {finding} requires inspecting every listed site")
+        elif len(inspected) < min(5, len(listed)) or (len(inspected) < len(listed) and not row.get("limit")):
+            failures.append(f"{where}: inspect at least five sites (or all); a sample requires limit")
+        if finding != "refuted" and finding != "unresolved" and any(x["state"] == "unresolved" for x in c["sites"] if x["site"] in listed):
+            failures.append(f"{where}: unresolved facts require unresolved or refuted with corrections; correct and remap before a supported finding")
+        if remedy == "primitive" and (len(listed) < 3 or len({sites[x]['path'] for x in listed if x in sites}) < 2):
+            if not row.get("boundary") or not row.get("enforcement"):
+                failures.append(f"{where}: small primitive needs boundary and enforcement; convenience helpers need 3 sites in 2 files")
+        if remedy == "effect":
+            proposed = row.get("apis")
+            api = load_json(Path(run) / "api.json") if (Path(run) / "api.json").exists() else {}
+            effect = Path(api["package"]) if api.get("package") else None
+            if not data.get("effect") or not effect or not (effect / "package.json").exists():
+                failures.append(f"{where}: Effect remedy requires an installed package; use conditional adoption or unresolved")
+            elif not isinstance(proposed, list) or not proposed or any(not isinstance(a, str) or "." not in a for a in proposed):
+                failures.append(f"{where}: Effect remedy needs apis naming the actual Module.symbol values proposed")
+            else:
+                package = load_json(effect / "package.json")
+                if package.get("version") != data["effect"]:
+                    failures.append(f"{where}: installed Effect version changed; rerun api and map")
+                for name in proposed:
+                    module, _, symbol = name.rpartition(".")
+                    declaration = declaration_path(effect, package, module)
+                    if not declaration or not declaration.is_file() or symbol not in export_names(declaration.read_text(encoding="utf-8")):
+                        failures.append(f"{where}: proposed API {name} is unavailable in installed Effect")
+        if finding == "refuted":
+            if row.get("fact") not in rules[c["rule"]]["when"]:
+                failures.append(f"{where}: refuted fact must decide the rule")
+            corrections = row.get("corrections", [])
+            if not isinstance(corrections, list) or any(not isinstance(x, dict) for x in corrections):
+                failures.append(f"{where}: corrections must be a list")
+                continue
+            if {x.get("site") for x in corrections} != set(listed) or len(corrections) != len(listed):
+                failures.append(f"{where}: one correction required per refuted site")
+            for update in corrections:
+                sid = update.get("site")
+                if sid not in effective:
+                    continue
+                if update.get("before") != digest(effective[sid]) or not update.get("reason"):
+                    failures.append(f"{where}: correction requires current before digest and reason")
+                check_answer_set(root, questions_of(cat, sites[sid]["kind"]), update.get("answers", {}), where, failures)
+                fact = row.get("fact")
+                if update.get("answers", {}).get(fact) == effective[sid]["answers"].get(fact):
+                    failures.append(f"{where}: refuted fact must change")
+        if row.get("covered_by"):
+            failures.append(f"{where}: keep the original finding; merge duplicate remedies in merges.jsonl instead of covered_by")
+    for cid, c in clusters.items():
+        if only_group and cid not in groups[only_group]:
+            continue
+        for site in c["sites"]:
+            if len(covered.get((cid, site["site"]), [])) != 1:
+                failures.append(f"{cid}: site {site['site']} needs exactly one finding")
 
-
-def verdict_line(r, clusters, rules, all_sites, extra=""):
-    c = clusters[r["cluster"]]
-    listed = [s["site"] for s in c["sites"]] if r["sites"] == "all" else r["sites"]
+def verdict_line(row, clusters, rules, all_sites, extra=""):
+    c = clusters[row["cluster"]]
+    listed = [s["site"] for s in c["sites"]] if row["sites"] == "all" else row["sites"]
     files = sorted({all_sites[s]["path"] for s in listed})
-    where = ", ".join(files[:3]) + (f" +{len(files) - 3}" if len(files) > 3 else "")
-    text = r.get("proposal") or r.get("recommendation") or r.get("counter") or f"{r['fact']}: {r['note']}"
-    return (f"{r['id']} {r['verdict']} {rules[c['rule']]['id']} [{r.get('layer', '-')}] "
-            f"{len(listed)} site{'' if len(listed) == 1 else 's'} in {where}{extra}: {text}")
-
+    details = [row.get(k) for k in ("consequence", "proposal", "counter", "limit") if row.get(k)]
+    if row.get("decision"):
+        details += ["DECISION: " + row["question"], "recommend: " + row["recommendation"]]
+    return (f"{row['id']} {row['finding']}/{row['remedy']} {c['rule']} [{row.get('layer', '-')}] "
+            f"{len(listed)} sites in {', '.join(files)}{extra}: " + "; ".join(details))
 
 def load_merges(run, failures):
     path = Path(run) / "merges.jsonl"
@@ -832,8 +979,9 @@ def cmd_merge_packet(args):
     rules = {r["id"]: r for r in cat["rules"]}
     clusters = {c["id"]: c for c in load_json(run / "clusters.json")["clusters"]}
     _, all_sites = merged_answers(run, sites_of(run))
-    rows = [row for _, _, row in load_verdicts(run, []) if row["verdict"] in CHANGE_VERDICTS]
-    out = ["# Merge duplicate changes", "", f"Write merges to `{run / 'merges.jsonl'}`. Follow `{SKILL / 'merge.md'}`.", "",
+    rows = [row for _, _, row in load_verdicts(run, []) if row["finding"] in ("defect", "improvement")]
+    require_mapping(run)
+    out = ["# Merge duplicate changes", header(run_meta(run)), "", f"Write merges to `{run / 'merges.jsonl'}`. Follow `{SKILL / 'merge.md'}`.", "",
            "## Change rows", ""]
     out += [f"- {verdict_line(r, clusters, rules, all_sites)}" for r in sorted(rows, key=lambda r: r["id"])]
     out += ["", f"When done, run `{cmd('check', run, '--stage', 'merges')}` and fix every failure it reports."]
@@ -847,109 +995,571 @@ def check_merges(run, failures):
         return
     rows = {row.get("id"): (stem, row) for _, stem, row in load_verdicts(run, [])}
     merged = {}
-    for n, m in merges:
-        where = f"merges.jsonl:{n}"
-        a, b = rows.get(m.get("row")), rows.get(m.get("into"))
+    for n, item in merges:
+        a, b = rows.get(item.get("row")), rows.get(item.get("into"))
         if a is None or b is None:
-            failures.append(f"{where}: row and into must both be verdict ids")
+            failures.append(f"merge:{n}: row and into must both be finding ids")
             continue
-        if a[1]["verdict"] not in CHANGE_VERDICTS or b[1]["verdict"] not in CHANGE_VERDICTS:
-            failures.append(f"{where}: only {', '.join(CHANGE_VERDICTS)} rows merge")
-        if a[0] == b[0]:
-            failures.append(f"{where}: rows in one verdict file use covered_by, not a merge")
-        if not m.get("reason"):
-            failures.append(f"{where}: a merge needs a reason")
-        if m["row"] in merged:
-            failures.append(f"{where}: {m['row']} is merged twice")
-        merged[m["row"]] = m["into"]
+        if a[1]["finding"] not in ("defect", "improvement") or b[1]["finding"] not in ("defect", "improvement"):
+            failures.append(f"merge:{n}: only supported changes merge")
+        if item["row"] == item["into"]:
+            failures.append(f"merge:{n}: a row cannot merge into itself")
+        if not item.get("reason") or item["row"] in merged:
+            failures.append(f"merge:{n}: reason required; a row may merge once")
+        merged[item["row"]] = item["into"]
     for row, into in merged.items():
         if into in merged:
-            failures.append(f"merges.jsonl: {row} merges into {into}, which is itself merged; point at the final row")
-
+            failures.append(f"merge: {row} points to a row that is itself merged")
+    if any(row["finding"] == "refuted" for _, row in rows.values()):
+        failures.append("refuted facts remain; run reconcile, audit and map before reporting")
 
 def print_verdicts(run):
-    """One line per verdict, in the order the reply uses."""
-    cat = catalog()
-    rules = {r["id"]: r for r in cat["rules"]}
-    clusters = {c["id"]: c for c in load_json(Path(run) / "clusters.json")["clusters"]}
-    _, all_sites = merged_answers(run, sites_of(run))
-    rows = [row for _, _, row in load_verdicts(run, [])]
+    data = require_mapping(run)
+    clusters = {c["id"]: c for c in data["clusters"]}
+    _, sites = merged_answers(run, sites_of(run))
+    rows = {r["id"]: r for _, _, r in load_verdicts(run, [])}
     merges = {m["row"]: m["into"] for _, m in load_merges(run, []) or []}
-    covers, absorbs = {}, {}
-    for r in rows:
-        if r.get("covered_by"):
-            # A row covered by a merged row is covered by the row that absorbed it.
-            r["covered_by"] = merges.get(r["covered_by"], r["covered_by"])
-            covers.setdefault(r["covered_by"], []).append(clusters[r["cluster"]]["rule"])
-        if r["id"] in merges:
-            absorbs.setdefault(merges[r["id"]], []).append(f"{r['id']} {clusters[r['cluster']]['rule']}")
-    order = {v: i for i, v in enumerate(("fix", "decide", "build", "adopt", "local", "leave", "refuted"))}
-    rows.sort(key=lambda r: (order[r["verdict"]], LAYERS.index(r["layer"]) if r.get("layer") in LAYERS else len(LAYERS), r["id"]))
-    for r in rows:
-        if r["id"] in merges:
-            continue
-        extra = f"; covers {', '.join(covers[r['id']])}" if r["id"] in covers else ""
-        extra += f"; merges {', '.join(absorbs[r['id']])}" if r["id"] in absorbs else ""
-        extra += f"; covered by {r['covered_by']}" if r.get("covered_by") else ""
-        print(verdict_line(r, clusters, rules, all_sites, extra))
-
+    groups = {}
+    for vid, row in rows.items():
+        groups.setdefault(merges.get(vid, vid), []).append(row)
+    report = []
+    for owner, members in groups.items():
+        # Preserve every source finding, consequence and decision; only presentation is folded.
+        priority = min((FINDINGS.index(m["finding"]) for m in members))
+        report.append({"id": owner, "finding": FINDINGS[priority], "decision": any(m["decision"] for m in members),
+                       "members": members})
+    report.sort(key=lambda r: (FINDINGS.index(r["finding"]), not r["decision"], r["id"]))
+    write_json(Path(run) / "report.json", {"groups": report, "held": data.get("held", []), "audit": data["audit"], "facts_digest": data["facts_digest"]})
+    rules = {r["id"]: r for r in catalog()["rules"]}
+    print(f"Held by user ruling: {len(data.get('held', []))}; details remain in report.json, separate from coverage.")
+    for group in report:
+        print(f"{group['id']} {group['finding']}" + ("; needs decision" if group["decision"] else ""))
+        for row in group["members"]:
+            print("  " + verdict_line(row, clusters, rules, sites))
 
 def cmd_check(args):
-    cat = catalog()
-    run = Path(args.run)
-    failures = []
+    cat, run, failures = catalog(), Path(args.run), []
     if args.stage == "answers":
         check_answers(run, cat, sites_of(run), run_meta(run), failures, args.part)
+    elif args.stage == "audit":
+        check_audit(run, failures)
     elif args.stage == "verdicts":
         check_verdicts(run, failures, args.part)
     else:
         check_verdicts(run, failures)
         check_merges(run, failures)
-    for f in failures:
-        print(f)
     if failures:
-        sys.exit(1)
+        die("\n".join(failures))
     print(f"{args.stage}{' ' + args.part if args.part else ''}: pass")
     if args.part:
         return
     if args.stage == "answers":
-        print(f"next: {cmd('map', run)}")
+        print(f"next: {cmd('audit', run)}")
+    elif args.stage == "audit":
+        print(f"next: {cmd('reconcile', run, '--stage', 'audit')}" if audit_refutations(run) else f"next: {cmd('map', run)}")
     elif args.stage == "verdicts":
-        print(f"next: one consolidator briefed with {cmd('merge-packet', run)}")
+        rows = [r for _, _, r in load_verdicts(run, [])]
+        print(f"next: {cmd('reconcile', run)}" if any(r["finding"] == "refuted" for r in rows) else
+              f"next: consolidator uses {cmd('merge-packet', run)}")
     else:
         print_verdicts(run)
-        print("next: reply to the user from these verdicts and ask for rulings by verdict id")
-
-
-# ---------------------------------------------------------------- rulings
+        print("next: reply using report.json, coverage.md and discovery.md; ask for rulings")
 
 def cmd_rule(args):
     run = Path(args.run)
-    rows = {row.get("id"): row for _, _, row in load_verdicts(run, [])}
-    clusters = {c["id"]: c for c in load_json(run / "clusters.json")["clusters"]}
-    _, all_sites = merged_answers(run, sites_of(run))
+    failures = []
+    check_verdicts(run, failures)
+    check_merges(run, failures)
+    if failures:
+        die("; ".join(failures))
+    rows = {row["id"]: row for _, _, row in load_verdicts(run, [])}
+    clusters = {c["id"]: c for c in require_mapping(run)["clusters"]}
     meta = run_meta(run)
     path = rulings_path(run, args.rulings)
-    store = load_json(path) if path.exists() else {"rulings": []}
-    ids = args.verdicts.split(",")
-    # A ruling on a row also rules the duplicates merged into it.
+    live_root = Path(meta.get("source_root", meta["root"]))
+    if path.resolve().is_relative_to(live_root) and path.resolve() != live_root / RULINGS_NAME:
+        die("a custom rulings file must be outside the pinned repository; use the default file at the repository root")
+    store = load_json(path) if path.exists() else {"format": 2, "rulings": []}
+    ids = list(dict.fromkeys(args.verdicts.split(",")))
     merges = [m for _, m in load_merges(run, []) or []]
     ids += [m["row"] for m in merges if m["into"] in ids and m["row"] not in ids]
+    entries = []
     for vid in ids:
-        row = rows.get(vid)
-        if row is None:
-            die(f"no verdict {vid} in {run / 'verdicts'}")
+        if vid not in rows:
+            die(f"unknown finding {vid}")
+        row = rows[vid]
         c = clusters[row["cluster"]]
-        listed = [s["site"] for s in c["sites"]] if row["sites"] == "all" else row["sites"]
-        entry = {"rule": c["rule"], "verdict": vid, "verdict_token": row["verdict"], "decision": args.decision,
-                 "reason": args.reason, "date": datetime.date.today().isoformat(), "revision": meta["revision"] or meta["digest"]}
+        listed = [x["site"] for x in c["sites"]] if row["sites"] == "all" else row["sites"]
+        entry = {"rule": c["rule"], "verdict": vid, "finding": row["finding"], "remedy": row["remedy"],
+                 "decision": args.decision, "reason": args.reason, "date": datetime.date.today().isoformat(),
+                 "revision": meta["revision"] or meta["digest"], "proposal": row.get("proposal"),
+                 "identities": [x["identity"] for x in c["sites"] if x["site"] in listed]}
         if args.scope:
-            entry["scope"] = args.scope
-        else:
-            entry["paths"] = sorted({all_sites[s]["path"] for s in listed})
-        store["rulings"].append(entry)
+            entry.update(policy=True, scope=args.scope)
+        entries.append(entry)
+    store["rulings"].extend(entries)
     write_json(path, store)
-    print(f"{len(ids)} rulings written to {path}")
+    print(f"{len(entries)} rulings written to {path}; decisions remain visible on later matches")
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def file_digest(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def bundle_digest():
+    paths = [SKILL / "catalog.json", *SKILL.glob("*.md"), *SKILL.glob("scripts/*.py")]
+    return digest({str(p.relative_to(SKILL)): file_digest(p) for p in sorted(paths)})
+
+
+def input_manifest(root):
+    """Pin source, deployment/config and lockfiles, including untracked inputs."""
+    excluded = set(catalog()["exclude_dirs"]) | {"__pycache__", ".venv", ".pytest_cache", ".claude", ".codex", ".idea", ".vscode"}
+    result = {}
+    for directory, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in excluded)
+        for name in sorted(files):
+            path = Path(directory) / name
+            rel = str(path.relative_to(root))
+            if rel == RULINGS_NAME or name == ".DS_Store" or name.endswith((".swp", ".swo", "~")):
+                continue
+            if path.is_file():
+                result[rel] = file_digest(path)
+    return result
+
+
+def dependency_roots(root):
+    excluded = set(catalog()["exclude_dirs"]) | {".claude", ".codex", ".idea", ".vscode"}
+    for directory, dirs, _ in os.walk(root):
+        if "node_modules" in dirs:
+            yield Path(directory) / "node_modules"
+        dirs[:] = [d for d in dirs if d not in excluded and d != "node_modules"]
+
+
+def snapshot_sources(root, run):
+    """Freeze review evidence once; live editor or source changes cannot invalidate it."""
+    before = input_manifest(root)
+    target = run / "source"
+    target.mkdir(parents=True)
+    for rel in before:
+        dest = target / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / rel, dest)
+    if input_manifest(target) != before or input_manifest(root) != before:
+        die("source changed while taking the snapshot; choose a new run directory and retry inventory")
+    # Installed dependencies remain live and are explicitly outside source guarantees.
+    for deps in dependency_roots(root):
+        link = target / deps.relative_to(root)
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(deps.resolve(), target_is_directory=True)
+    return target
+
+
+def ensure_inputs(run):
+    meta = run_meta(run)
+    if meta.get("format") != 3:
+        die("legacy run format; start a new inventory (existing rulings remain on disk)")
+    if meta["bundle"] != bundle_digest():
+        die("skill/catalog changed since inventory; start a new run")
+    current = input_manifest(Path(meta["root"]))
+    if current != meta["inputs"]:
+        changed = sorted(k for k in set(current) | set(meta["inputs"]) if current.get(k) != meta["inputs"].get(k))
+        die("snapshot inputs changed; restore the snapshot or start a new inventory: " + ", ".join(changed[:10]))
+
+
+def discovery_text(meta):
+    return ("# Discovery scope\n\n"
+            "Counts cover catalog pattern matches, not every backend operation.\n"
+            f"Kinds: {', '.join(meta['kinds'])}. Paths: {', '.join(meta['paths']) or 'all scanned source'}.\n"
+            "Blind spots: aliases, dynamic/computed calls, unsupported SDK/framework names, multiline syntax, "
+            "multiple operations on one line, constructs folded by a kind's merge window. Comments/strings may match.\n"
+            "Only catalog source extensions are scanned. Declaration files, generated/dependency directories, "
+            "hidden directories and non-source deployment files are not site inventories. Tests use test-only kinds.\n"
+            "Agents may cite deployment and dependency evidence. Source and configuration inputs are snapshotted; dependency "
+            "files outside that manifest are not frozen. Recheck library evidence before final judgment.\n"
+            "Compare boundary.md diagnostic locations with sites.jsonl. Different tool rules have different "
+            "denominators; matching counts do not establish completeness. Missing tooling means unmeasured.\n")
+
+
+def declaration_path(effect, package, module):
+    def types(value):
+        if isinstance(value, str):
+            return value if value.endswith((".d.ts", ".d.mts", ".d.cts")) else None
+        if isinstance(value, dict):
+            if "types" in value:
+                found = types(value["types"])
+                if found:
+                    return found
+            for nested in value.values():
+                found = types(nested)
+                if found:
+                    return found
+        return None
+    exports = package.get("exports", {})
+    if isinstance(exports, dict):
+        key = "./" + module
+        target = types(exports.get(key))
+        if key in exports and not target:
+            return None
+        if not target:
+            for key, value in exports.items():
+                if "*" in key:
+                    before, after = key.split("*", 1)
+                    spec = "./" + module
+                    if spec.startswith(before) and spec.endswith(after):
+                        match = spec[len(before):len(spec) - len(after) if after else None]
+                        template = types(value)
+                        if template:
+                            target = template.replace("*", match)
+                            break
+        if target:
+            return effect / target
+    if "exports" in package:
+        return None
+    # Older packages and fixture packages may have no exports map.
+    for path in (effect / "dist" / f"{module}.d.ts", effect / "dist/dts" / f"{module}.d.ts"):
+        if path.exists():
+            return path
+    return None
+
+
+def effective_digest(run):
+    merged, sites = merged_answers(run, sites_of(run))
+    return digest({"answers": merged, "sites": sites})
+
+
+def require_answers(run):
+    failures = []
+    check_answers(run, catalog(), sites_of(run), run_meta(run), failures)
+    if failures:
+        die("; ".join(failures))
+
+
+def require_mapping(run):
+    data = load_json(Path(run) / "clusters.json")
+    if data.get("facts_digest") != effective_digest(run):
+        die("answers changed since map; rerun audit and map before judging or reporting")
+    return data
+
+
+def archive_outputs(run):
+    run = Path(run)
+    names = ("judges", "verdicts", "carried.jsonl", "merges.jsonl", "report.json", "clusters.json", "coverage.md")
+    existing = [run / name for name in names if (run / name).exists()]
+    if existing:
+        archive = run / "history" / str(len(list((run / "history").glob("*"))) + 1)
+        archive.mkdir(parents=True)
+        for path in existing:
+            shutil.move(str(path), str(archive / path.name))
+
+
+def verdict_context(cluster):
+    cat = catalog()
+    rule = next(r for r in cat["rules"] if r["id"] == cluster["rule"])
+    return digest({"rule": rule, "concept": cat["concepts"][rule["concept"]]})
+
+
+def save_reusable(run):
+    """Only checked rows may survive remapping; affected dependencies reopen the row."""
+    path = Path(run) / "clusters.json"
+    if not path.exists():
+        return
+    data = load_json(path)
+    if data["facts_digest"] != effective_digest(run):
+        return
+    effective, _ = merged_answers(run, sites_of(run))
+    clusters = {c["id"]: c for c in data["clusters"]}
+    rows = load_verdicts(run, [])
+    entries = load_json(Path(run) / "reusable.json") if (Path(run) / "reusable.json").exists() else []
+    # A completed group can survive even if another judge has not returned yet.
+    for group in sorted({stem for _, stem, _ in rows}):
+        failures = []
+        check_verdicts(run, failures, group)
+        if failures:
+            continue
+        for _, stem, row in rows:
+            if stem != group or row["finding"] == "refuted":
+                continue
+            c = clusters[row["cluster"]]
+            listed = [x["site"] for x in c["sites"]] if row["sites"] == "all" else row["sites"]
+            deps = set(listed) | set(row.get("depends_on", []))
+            entries.append({"row": {**row, "sites": listed}, "rule": c["rule"], "context": verdict_context(c),
+                            "facts": {sid: digest(effective[sid]) for sid in sorted(deps)},
+                            "user": {x["site"]: x.get("user") for x in c["sites"] if x["site"] in listed},
+                            "effect": data.get("effect")})
+    latest = {(e["rule"], tuple(e["row"]["sites"])): e for e in entries}
+    write_json(Path(run) / "reusable.json", list(latest.values()))
+
+
+def restore_verdicts(run):
+    run = Path(run)
+    entries = load_json(run / "reusable.json") if (run / "reusable.json").exists() else []
+    data = load_json(run / "clusters.json")
+    effective, _ = merged_answers(run, sites_of(run))
+    groups = {p.stem: load_json(p) for p in sorted((run / "judges").glob("*.json"))}
+    owners = {cid: gid for gid, g in groups.items() for cid in g["clusters"]}
+    carried, covered = [], set()
+    for entry in entries:
+        row = entry["row"]
+        if any(sid not in effective or digest(effective[sid]) != value for sid, value in entry["facts"].items()):
+            continue
+        if row["remedy"] == "effect" and entry["effect"] != data.get("effect"):
+            continue
+        for c in data["clusters"]:
+            ids = {x["site"] for x in c["sites"]}
+            if c["rule"] != entry["rule"] or not set(row["sites"]) <= ids or entry["context"] != verdict_context(c):
+                continue
+            user = {x["site"]: x.get("user") for x in c["sites"] if x["site"] in row["sites"]}
+            keys = {(c["id"], sid) for sid in row["sites"]}
+            if user != entry["user"] or keys & covered:
+                continue
+            carried.append({**row, "id": f"{owners[c['id']]}-R{len(carried)+1}", "cluster": c["id"]})
+            covered.update(keys)
+            break
+    (run / "carried.jsonl").write_text("".join(json.dumps(r) + "\n" for r in carried))
+    for gid, group in groups.items():
+        group["pending"] = {c["id"]: [x["site"] for x in c["sites"] if (c["id"], x["site"]) not in covered]
+                            for c in data["clusters"] if c["id"] in group["clusters"]}
+        write_json(run / "judges" / (gid + ".json"), group)
+        pending = {sid for ids in group["pending"].values() for sid in ids}
+        print(f"{gid}: {len(pending)} sites need judgment")
+    print(f"Carried {len(carried)} checked verdicts; affected rows require judgment.")
+
+
+def hint_conflicts(run):
+    effective, _ = merged_answers(run, sites_of(run))
+    result = {}
+    for sid, hints in derived_of(run).items():
+        row = effective.get(sid, {})
+        for qid, hint in hints.items():
+            if row.get("status") == "not-a-site" or row.get("answers", {}).get(qid, {}).get("a") in ("no", "n/a"):
+                result[sid + ":" + qid] = hint
+    return result
+
+
+def audit_candidates(run):
+    merged, sites = merged_answers(run, sites_of(run))
+    conflicts = hint_conflicts(run)
+    candidates = {}
+    for key, hint in conflicts.items():
+        sid, qid = key.split(":")
+        candidates[key] = {"id": key, "site": sid, "question": qid, "rules": [], "hint": hint, "mandatory": True}
+    for sid, row in sorted(merged.items()):
+        if row["status"] != "site":
+            continue
+        for rule in catalog()["rules"]:
+            if rule["kind"] != sites[sid]["kind"] or rule["lane"] != "defect" or evaluate(rule, row["answers"]) is not None:
+                continue
+            for qid, want in rule["when"].items():
+                if want == "yes" and row["answers"].get(qid, {}).get("a") == "no":
+                    key = sid + ":" + qid
+                    candidates.setdefault(key, {"id": key, "site": sid, "question": qid, "rules": [], "mandatory": False})["rules"].append(rule["id"])
+    for row in candidates.values():
+        row["fingerprint"] = digest({"candidate": row, "facts": merged[row["site"]]})
+    return list(candidates.values())
+
+
+def cmd_audit(args):
+    require_answers(args.run)
+    run = Path(args.run)
+    if audit_refutations(run):
+        die("unapplied audit refutations; use reconcile --stage audit before regenerating the audit")
+    candidates = audit_candidates(run)
+    mandatory = [r for r in candidates if r["mandatory"]]
+    optional = sorted((r for r in candidates if not r["mandatory"]), key=lambda row: digest(row["id"]))
+    selected = mandatory + (optional if args.all else optional[:args.sample])
+    cache = load_json(run / "audit-cache.json") if (run / "audit-cache.json").exists() else {}
+    reused = [cache[r["id"]] for r in selected if cache.get(r["id"], {}).get("fingerprint") == r["fingerprint"]]
+    reused_ids = {r["id"] for r in reused}
+    write_json(run / "audit.json", {"facts_digest": effective_digest(run), "eligible": len(candidates),
+                                    "selected": selected, "mandatory": len(mandatory), "sample": args.sample,
+                                    "reused": sorted(reused_ids)})
+    (run / "audit-answers.jsonl").write_text("".join(json.dumps(r) + "\n" for r in reused))
+    merged, sites = merged_answers(run, sites_of(run))
+    out = ["# Audit hint contradictions and defect-excluding negatives", header(run_meta(run)),
+           f"Follow `{SKILL / 'audit.md'}`. Append pending results to `{run.resolve() / 'audit-answers.jsonl'}`.",
+           f"Selected {len(selected)}/{len(candidates)} eligible answers, including every hint contradiction ({len(mandatory)}). "
+           f"Reused {len(reused)} confirmations; {len(candidates)-len(selected)} optional negatives remain unaudited.",
+           f"Complete answer sets and correction digests: `{cmd('facts', run)}`."]
+    for item in selected:
+        if item["id"] in reused_ids:
+            continue
+        q = questions_of(catalog(), sites[item["site"]]["kind"])[item["question"]]
+        out += [site_line(item["site"], sites[item["site"]]), *question_lines(q),
+                "Audit id: " + item["id"] + "; fingerprint: " + item["fingerprint"],
+                "Current site and answer: " + json.dumps(merged[item["site"]]),
+                "Hint to resolve: " + json.dumps(item.get("hint"))]
+    out.append(f"When done: {cmd('check', run, '--stage', 'audit')}")
+    (run / "audit-packet.md").write_text("\n\n".join(out) + "\n", encoding="utf-8")
+    print("\n".join(out))
+
+
+def validate_correction(run, update, effective, sites, where, failures):
+    if not isinstance(update, dict):
+        failures.append(f"{where}: correction must be an object")
+        return
+    sid = update.get("site")
+    if sid not in effective:
+        failures.append(f"{where}: correction needs an existing site")
+        return
+    if not update.get("reason") or update.get("before") != digest(effective[sid]):
+        failures.append(f"{where}: correction needs reason and current before digest")
+    answers = update.get("answers", {})
+    check_answer_set(run_meta(run)["root"], questions_of(catalog(), sites[sid]["kind"]), answers, where, failures)
+    check_hint_answers(sid, answers, derived_of(run).get(sid, {}), failures)
+    if answers == effective[sid]["answers"]:
+        failures.append(f"{where}: correction must change answers")
+
+
+def check_audit(run, failures):
+    run = Path(run)
+    if not (run / "audit.json").exists():
+        failures.append("run audit before map, even when no negatives are eligible")
+        return
+    data = load_json(run / "audit.json")
+    if data["facts_digest"] != effective_digest(run):
+        failures.append("audit is stale; rerun audit after answer changes")
+        return
+    path = run / "audit-answers.jsonl"
+    if not path.exists():
+        failures.append("audit-answers.jsonl is missing")
+        return
+    effective, sites = merged_answers(run, sites_of(run))
+    expected = {r["id"]: r for r in data["selected"]}
+    seen, confirmed = set(), {}
+    for n, row in load_jsonl(path, failures):
+        aid = row.get("id")
+        if aid not in expected or aid in seen:
+            failures.append(f"audit:{n}: unknown or duplicate id {aid}")
+            continue
+        seen.add(aid)
+        if row.get("fingerprint") != expected[aid]["fingerprint"]:
+            failures.append(f"audit:{n}: fingerprint must match the packet")
+        if row.get("result") not in ("confirmed", "refuted") or not row.get("evidence") or not row.get("searched"):
+            failures.append(f"audit:{n}: requires confirmed or refuted, evidence and searched")
+        if row.get("evidence"):
+            check_evidence(run_meta(run)["root"], row["evidence"], f"audit:{n}", failures)
+        if row.get("result") == "refuted":
+            update = row.get("correction")
+            validate_correction(run, update, effective, sites, f"audit:{n}", failures)
+            if isinstance(update, dict) and update.get("site") != expected[aid]["site"]:
+                failures.append(f"audit:{n}: correction must target this audited site")
+            if isinstance(update, dict) and effective[expected[aid]["site"]]["status"] != "not-a-site":
+                qid = expected[aid]["question"]
+                if update.get("answers", {}).get(qid) == effective[expected[aid]["site"]]["answers"].get(qid):
+                    failures.append(f"audit:{n}: the audited answer must change")
+        elif row.get("result") == "confirmed":
+            confirmed[aid] = row
+    for aid in sorted(set(expected) - seen):
+        failures.append(f"audit: missing {aid}")
+    if not failures:
+        cache = load_json(run / "audit-cache.json") if (run / "audit-cache.json").exists() else {}
+        for aid in seen - set(confirmed):
+            cache.pop(aid, None)
+        write_json(run / "audit-cache.json", {**cache, **confirmed})
+
+
+def audit_refutations(run):
+    path = Path(run) / "audit-answers.jsonl"
+    return [row["correction"] for _, row in load_jsonl(path, []) if row.get("result") == "refuted"] if path.exists() else []
+
+
+def cmd_correct(args):
+    """Apply complete per-site answer sets, then invalidate all dependent outputs."""
+    run = Path(args.run)
+    failures = []
+    merged, sites = merged_answers(run, sites_of(run))
+    updates = {}
+    for n, row in load_jsonl(args.file, failures):
+        sid = row.get("site")
+        if sid not in sites or sid in updates:
+            failures.append(f"correction:{n}: unknown or repeated site {sid}")
+            continue
+        if not row.get("reason") or row.get("before") != digest(merged[sid]):
+            failures.append(f"correction:{n}: reason and current before digest required; see facts command")
+        answers = row.get("answers", {})
+        check_answer_set(run_meta(run)["root"], questions_of(catalog(), sites[sid]["kind"]), answers, sid, failures)
+        check_hint_answers(sid, answers, derived_of(run).get(sid, {}), failures)
+        if answers == merged[sid]["answers"]:
+            failures.append(f"correction:{n}: answers did not change")
+        updates[sid] = answers
+    if failures:
+        die("; ".join(failures))
+    if not updates:
+        die("no corrections supplied")
+    old = load_json(run / "corrections.json") if (run / "corrections.json").exists() else {}
+    # Save exact correction evidence before replacing the effective facts.
+    history = run / "correction-history"
+    history.mkdir(exist_ok=True)
+    if len(list(history.glob("*.jsonl"))) >= args.max_rounds:
+        die("correction round limit reached; report this run as incomplete. Increase --max-rounds only for an agreed continuation")
+    shutil.copyfile(args.file, history / f"{len(list(history.iterdir())) + 1}.jsonl")
+    save_reusable(run)
+    write_json(run / "corrections.json", {**old, **updates})
+    archive_outputs(run)
+    for name in ("audit.json", "audit-answers.jsonl", "audit-packet.md"):
+        if (run / name).exists():
+            (run / name).unlink()
+    print("Corrections applied; checked verdicts saved for reuse. Rebuild audit selection and mapping.")
+    print(f"next: {cmd('check', run, '--stage', 'answers')}")
+
+
+def cmd_facts(args):
+    merged, sites = merged_answers(args.run, sites_of(args.run))
+    for sid, row in sorted(merged.items()):
+        if not args.sites or sid in args.sites.split(","):
+            print(json.dumps({"site": sid, "before": digest(row), "kind": sites[sid]["kind"], **row}))
+
+
+def site_identity(meta, site, answers, rule):
+    """A ruling follows the same operation and deciding facts, not the whole checkout."""
+    lines = (Path(meta["root"]) / site["path"]).read_text(encoding="utf-8").splitlines()
+    anchor = lines[site["line"] - 1].strip()
+    copies = [n for n, line in enumerate(lines, 1) if line.strip() == anchor]
+    # Repeated identical lines are ambiguous: changing their file reopens them.
+    duplicate = file_digest(Path(meta["root"]) / site["path"]) if len(copies) > 1 else None
+    qs = questions_of(catalog(), site["kind"])
+    deciding = set(rule["when"])
+    pending = list(deciding)
+    while pending:
+        for qid in qs[pending.pop()].get("only_if", {}):
+            if qid not in deciding:
+                deciding.add(qid); pending.append(qid)
+    values = {q: {k: answers.get(q, {}).get(k) for k in ("a", "missing")} for q in sorted(deciding)}
+    semantics = {"rule": rule, "questions": [qs[q] for q in sorted(deciding)]}
+    if catalog()["kinds"][site["kind"]].get("scope") == "run":
+        anchor, duplicate = "shared contract assessment", None
+        location = {"paths": meta["paths"], "kind": site["kind"]}
+    else:
+        location = {"path": site["path"], "anchor": anchor, "duplicate_file": duplicate,
+                    "duplicate_line": site["line"] if duplicate else None}
+    return digest({"location": location, "facts": values, "semantics": semantics})
+
+
+
+def cmd_reconcile(args):
+    failures = []
+    if args.stage == "audit":
+        check_audit(args.run, failures)
+        corrections = audit_refutations(args.run)
+    else:
+        check_verdicts(args.run, failures)
+        corrections = [update for _, _, row in load_verdicts(args.run, []) if row["finding"] == "refuted"
+                       for update in row["corrections"]]
+    if failures:
+        die("; ".join(failures))
+    updates = {}
+    for update in corrections:
+        sid = update["site"]
+        if sid in updates and updates[sid]["answers"] != update["answers"]:
+            die(f"conflicting corrections for {sid}; resolve the cited evidence before reconcile")
+        updates[sid] = update
+    path = Path(args.run) / "pending-corrections.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in updates.values()), encoding="utf-8")
+    args.file = str(path)
+    cmd_correct(args)
 
 
 # ---------------------------------------------------------------- main
@@ -957,28 +1567,40 @@ def cmd_rule(args):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("inventory"); s.add_argument("root"); s.add_argument("--run")
-    s.add_argument("--kinds"); s.add_argument("--paths"); s.add_argument("--extra")
-    s = sub.add_parser("api"); s.add_argument("run"); s.add_argument("--effect")
-    s = sub.add_parser("boundary"); s.add_argument("run"); s.add_argument("--tsgo-json")
-    s = sub.add_parser("shard"); s.add_argument("run"); s.add_argument("--answers", type=int, default=400)
-    s = sub.add_parser("packet"); s.add_argument("run"); s.add_argument("shard")
-    s = sub.add_parser("check"); s.add_argument("run")
-    s.add_argument("--stage", choices=("answers", "verdicts", "merges"), default="answers")
-    s.add_argument("--part", help="check one answer shard (A01) or one judge group (J01) only")
-    s = sub.add_parser("map"); s.add_argument("run"); s.add_argument("--rulings")
-    s.add_argument("--clusters-per-judge", type=int, default=12)
-    s = sub.add_parser("judge-packet"); s.add_argument("run"); s.add_argument("group")
-    s = sub.add_parser("merge-packet"); s.add_argument("run")
-    s = sub.add_parser("rule"); s.add_argument("run"); s.add_argument("--rulings")
-    s.add_argument("--decision", choices=("accept", "reject", "defer"), required=True)
-    s.add_argument("--verdicts", required=True); s.add_argument("--reason", required=True)
-    s.add_argument("--scope", help="a path glob; by default the ruling covers the verdict's site paths")
+    parser = sub.add_parser("inventory"); parser.add_argument("root"); parser.add_argument("--run")
+    parser.add_argument("--kinds"); parser.add_argument("--paths"); parser.add_argument("--extra")
+    parser = sub.add_parser("api"); parser.add_argument("run"); parser.add_argument("--effect")
+    parser = sub.add_parser("boundary"); parser.add_argument("run"); parser.add_argument("--tsgo-json")
+    parser = sub.add_parser("shard"); parser.add_argument("run"); parser.add_argument("--answers", type=int, default=400)
+    parser = sub.add_parser("packet"); parser.add_argument("run"); parser.add_argument("shard")
+    parser = sub.add_parser("check"); parser.add_argument("run")
+    parser.add_argument("--stage", choices=("answers", "audit", "verdicts", "merges"), default="answers")
+    parser.add_argument("--part")
+    parser = sub.add_parser("audit"); parser.add_argument("run"); parser.add_argument("--sample", type=int, default=30, help="optional negatives to audit, in addition to every hint contradiction")
+    parser.add_argument("--all", action="store_true", help="audit every eligible answer")
+    parser = sub.add_parser("correct"); parser.add_argument("run"); parser.add_argument("--file", required=True); parser.add_argument("--max-rounds", type=int, default=3)
+    parser = sub.add_parser("facts"); parser.add_argument("run"); parser.add_argument("--sites")
+    parser = sub.add_parser("reconcile"); parser.add_argument("run")
+    parser.add_argument("--stage", choices=("audit", "verdicts"), default="verdicts")
+    parser.add_argument("--max-rounds", type=int, default=3)
+    parser = sub.add_parser("map"); parser.add_argument("run"); parser.add_argument("--rulings")
+    parser.add_argument("--sites-per-judge", type=int, default=80)
+    parser.add_argument("--include-held", action="store_true", help="revisit rejected or deferred candidates for this run")
+    parser = sub.add_parser("judge-packet"); parser.add_argument("run"); parser.add_argument("group")
+    parser = sub.add_parser("merge-packet"); parser.add_argument("run")
+    parser = sub.add_parser("rule"); parser.add_argument("run"); parser.add_argument("--rulings")
+    parser.add_argument("--decision", choices=("accept", "reject", "defer"), required=True)
+    parser.add_argument("--verdicts", required=True); parser.add_argument("--reason", required=True)
+    parser.add_argument("--scope", help="explicit broad policy glob; otherwise bind to exact source/facts")
     args = p.parse_args()
-    {"inventory": cmd_inventory, "api": cmd_api, "boundary": cmd_boundary, "shard": cmd_shard, "packet": cmd_packet,
-     "check": cmd_check, "map": cmd_map, "judge-packet": cmd_judge_packet, "merge-packet": cmd_merge_packet,
-     "rule": cmd_rule}[args.cmd](args)
-
+    if args.cmd != "inventory":
+        ensure_inputs(args.run)
+    for attr in ("answers", "sites_per_judge", "max_rounds"):
+        if hasattr(args, attr) and getattr(args, attr) <= 0:
+            die(f"{attr} must be positive")
+    if hasattr(args, "sample") and args.sample < 0:
+        die("sample must be nonnegative")
+    globals()["cmd_" + args.cmd.replace("-", "_")](args)
 
 if __name__ == "__main__":
     main()

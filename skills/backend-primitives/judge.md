@@ -1,43 +1,61 @@
 # Judge the clusters
 
-Each cluster is one rule's matches: the sites whose answers meet the rule's facts. Your group holds every cluster of each of its kinds, so one site can appear in several clusters. You decide what each site needs. Answerers established the facts with cheap models, so check each fact at its citation before a verdict rests on it.
+Your packet contains every matched rule for a bounded set of sites. Other judges may handle more sites of the same kind. Check the cited facts before supporting a defect. For improvements or fine findings, inspect five sites or all if fewer, plus every unresolved site; list the inspected site ids in `inspected` and state the sampling limit in `limit` when others remain. A sample is not evidence that every site's facts were independently checked.
 
-## Reading
+Read the counter-condition before proposing a remedy. If the cited code contradicts a fact, or settles an unknown, record a refutation with corrected answers. The coordinator applies corrections and remaps before you judge the result. Use the packet's `facts` command for complete answer sets and their digests.
 
-Read the cited evidence for every site a `fix`, `decide` or `refuted` row covers. For other rows, read at least five sites, or all of them if fewer, including every unresolved site. Settle an unresolved site's missing fact at the source when the repository can settle it.
+For an API proposal, resolve the installed package's exports and type declarations, including the owning workspace package. List the actual proposed `apis` as Module.symbol values. The script checks those symbol names, not signatures or semantics. Missing alternative APIs in a concept are advisory. If Effect is absent or incompatible, use an unresolved finding when API facts are needed, or an improvement with a local or primitive proposal and `decision: true` for conditional adoption. Do not present an unchecked Effect remedy as ready.
 
-An API name you propose must exist in the installed package. The packet lists the concept's checked APIs and any that are missing. Look up any other name in `node_modules/effect/dist/<Module>.d.ts` before you write it. When Effect is not installed, the names are unverified; an `adopt` proposal then names the Effect version the packet gives.
+For endpoint, authorization, client-error or exception-handling proposals, read [contracts.md](contracts.md). It defines those boundaries and the staged exception-handling migration.
 
-## Verdicts
+## Finding
 
-Give each site exactly one verdict. One row may cover many sites. Split a cluster into several rows when its sites need different verdicts. Take the first token whose criterion holds:
+Choose one token, using the first matching criterion:
 
-1. `refuted`: the source contradicts one of the rule's facts at these sites. Name the question in `fact`, cite what contradicts it, and say what the source shows in `note`.
-2. `fix`: at these sites the facts lead to a consequence through a named path, and the counter-condition does not hold. Consequences: an effect applied twice, a lost update, an exposed secret, success reported for work that did not happen, work killed in the middle of a change, a hang past the caller's limit. Any lane can produce a fix.
-3. `decide`: the change would alter behavior the user sees or pays for, and the facts cannot settle which way. Examples: a failure a user sees, a latency or retry budget on a request path, cost, data retention, a deployment setting, the choice of library. Give the question and your recommendation.
-4. `leave`: the counter-condition holds at these sites; or a project primitive already owns the decision; or another row in this file removes these facts at these sites. Cite the evidence. When another row removes the facts, set `covered_by` to that row's id.
-5. `build`: the sites share the facts, and the remedy is one project primitive used at three or more sites in two or more files. If a project wrapper already covers part of it, the proposal extends that wrapper.
-6. `adopt`: an Effect API covers it as it stands, and every API it needs exists in the installed version.
-7. `local`: a change at these sites that needs neither a new primitive nor an Effect API.
+1. `refuted`: source contradicts or settles a deciding fact. Supply corrections, not a remedy.
+2. `unresolved`: required facts remain unknown. Name the missing source in `limit`; no supported change yet.
+3. `defect`: established facts violate a cited contract through a named path and consequence, after checking the counter-condition.
+4. `fine`: the counter-condition holds or an implemented primitive already owns the guarantee. Cite why.
+5. `improvement`: a concrete shared guarantee or maintenance task justifies a change without an established defect.
 
-Wrapping pure in-memory code, swapping standard collections for Effect ones, or converting a working loop that exits early earns `leave` with that reason.
+## Remedy and decision
 
-## Fields
+For a defect or improvement choose one remedy:
+
+- `primitive`: one shared owner for the guarantee. Extend an existing owner when available. Convenience helpers require at least three sites in two files. A boundary primitive may start at one site when you name the entry or adapter boundary and the compiler, lint or registration gate future sites must pass.
+- `effect`: an installed, compatible Effect API implements the remedy directly.
+- `local`: a change to existing code requiring neither a shared primitive nor direct Effect adoption.
+
+Other findings use `none`. Independently set `decision` to true when an unsettled user-owned behavior, cost or library choice is required. A defect can need a decision and a primitive. Reuse explicit user rulings; do not ask for a settled choice again.
+
+Pure in-memory helpers, standard collections and clear early-exit loops need no Effect conversion without a boundary guarantee to gain.
+
+## Records
+
+Each cluster site gets exactly one row. Split rows where outcomes differ.
 
 ```json
-{"id": "J01-1", "cluster": "C03", "verdict": "fix", "sites": ["S0012", "S0019"], "evidence": ["src/orders/create.ts:40", "node_modules/client/dist/retry.js:12"], "consequence": "a lost response repeats the order: the client retries 5xx three times without a key", "proposal": "send the order id as the provider's idempotency key", "layer": "service"}
+{"id":"J01-1","cluster":"C001","finding":"defect","remedy":"primitive","decision":false,"sites":["S0012"],"inspected":["S0012"],"evidence":["src/orders.ts:40"],"consequence":"lost responses repeat a charge","proposal":"route charges through chargeOnce","signature":"chargeOnce(input, operationId)","boundary":"payment adapter","enforcement":"restrict provider imports to the payment adapter","layer":"primitive"}
 ```
 
-- `id`: the group id, a dash, and a number.
-- `sites`: a list of the cluster's site ids, or `"all"`.
-- `evidence`: one or more `path:line` citations you read.
-- `fact` and `note`: for `refuted`, the question id whose answer the source contradicts, and what the source shows instead.
-- `consequence`: for `fix` and `decide`, what goes wrong and through which path.
-- `proposal`: the change. For `build`, give the primitive's name, a one-line signature, the Effect APIs it composes, and the rules it removes. For `adopt` and `local`, name the first site to change.
-- `question` and `recommendation`: for `decide`.
-- `counter`: for `leave`, the condition or reason that holds.
-- `covered_by`: for `leave` only, the id of a `fix`, `build`, `adopt` or `local` row in this file whose change removes this rule's facts at these sites. For example, a wrapper that gives every call a deadline, a typed failure and a span covers the clusters that ask for each of those.
-- `layer`: for `fix`, `build`, `adopt` and `local`, where the change starts: `schema`, `error`, `config`, `primitive`, `service`, `entry` or `test`. Work is ordered by layer, so what a later change depends on lands first.
-- `limit`: required when a row other than `refuted` covers an unresolved site. Write the fact still missing, or `settled at path:line`. A `fix` row needs every fact settled.
+- `id`: group id plus dash and number. `sites`: a unique list or `"all"`.
+- `evidence`: source citations read. `inspected`: site ids actually inspected, including every site for defects/refutations/unresolved facts.
+- `consequence`: required for defects. `proposal` and `layer`: required for defects/improvements. Layer is schema, error, config, primitive, service, entry or test.
+- `apis`: required for an Effect remedy; list only the installed APIs the proposal uses.
+- `signature` and `enforcement`: required for primitives. `boundary`: required for a primitive below the convenience-helper minimum.
+- `question` and `recommendation`: required when `decision` is true.
+- `counter`: required for fine. A proposed fix does not make the current site fine. Keep its finding and consequence; the consolidator merges duplicate remedies.
+- `limit`: required for unresolved findings and sampled findings. Missing facts cannot become a supported finding by saying they were settled in prose.
+- `fact` and `corrections`: required for refuted. `fact` names the rule's deciding question. Each covered site supplies a complete replacement answer set:
 
-You are done when the check command at the end of the packet passes.
+```json
+{"site":"S0012","before":"<digest from facts>","reason":"the caller supplies a finite deadline","answers":{"XC1":{"a":"no","ev":"src/orders.ts:40"},"XC4":{"a":"yes","ev":"src/handler.ts:10"}}}
+```
+
+The abbreviated answers above illustrate the shape; supply every applicable question, including explicit n/a for known-false prerequisites and dependent questions whose applicability changed. Correct all changed facts together. If several judges correct the same site, their replacement sets must agree before reconciliation.
+
+Run the packet's check. Refutations then go through `reconcile`; they cannot be merged into a final report.
+
+## Continuing after corrections
+
+Judge only the packet's pending sites. Retained verdicts in `carried.jsonl` are read-only. When only part of a cluster is pending, list those site ids explicitly; `sites: "all"` means the entire cluster. Add `depends_on: ["S0012"]` for other inventoried sites whose answers support your verdict. A change to any listed dependency reopens that verdict. Source citations stay bound to the run snapshot.

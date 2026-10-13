@@ -77,8 +77,8 @@
         {
           "id": "XC4",
           "text": "Is the call bounded by a deadline?",
-          "yes": "An abort signal, a client timeout option, or an enclosing timeout that interrupts it. Cite the bound and its value.",
-          "no": "Nothing bounds it short of the platform killing the process."
+          "yes": "A finite timeout/deadline is wired to this call. Trace the timer source and cite its value and cancellation path; a caller AbortSignal alone is insufficient.",
+          "no": "No finite time bound exists. A disconnect-only signal or an untraced caller signal does not establish a deadline; use unknown when the caller is unavailable."
         },
         {
           "id": "XC5",
@@ -144,7 +144,8 @@
           "id": "XC13",
           "text": "Is the response validated against a schema before its fields are used?",
           "yes": "Cite the decoder.",
-          "no": "Fields are read from an unvalidated or cast value. Answer n/a only when the response is unused."
+          "no": "Fields are read from an unvalidated or cast value.",
+          "allow_na": "the response is unused, or every consumer intentionally treats its payload as opaque data without interpreting fields; absent consumers leave this unknown"
         },
         {
           "id": "XC14",
@@ -228,9 +229,10 @@
         },
         {
           "id": "EP3",
-          "text": "Is every typed failure the work can produce mapped to a response or outcome by name?",
-          "yes": "Each failure kind has its own mapping; a generic fallback catches only defects.",
-          "no": "Some typed failures fall into a generic error response or a rethrow."
+          "text": "Does the entry classify expected failures and map every expected failure kind to a named response or outcome?",
+          "yes": "Cite the classification and exhaustive mapping; a generic fallback handles only unexpected defects.",
+          "no": "Unclassified fallible operations escape, or an expected failure reaches a generic error response or rethrow.",
+          "allow_na": "the entry starts no expected fallible operation after tracing its work; unexpected defects are outside this question"
         },
         {
           "id": "EP4",
@@ -242,7 +244,8 @@
           "id": "EP5",
           "text": "Is the input validated against a schema before use?",
           "yes": "Cite the validator.",
-          "no": "Fields are read from the raw event or a cast."
+          "no": "Fields are read from the raw event or a cast.",
+          "allow_na": "the entry consumes no input; cite the complete entry and work it starts"
         },
         {
           "id": "EP6",
@@ -272,6 +275,39 @@
           "no": "Layers are provided inside each run.",
           "only_if": {
             "EP8": "yes"
+          }
+        },
+        {
+          "id": "EP10",
+          "text": "Is this entry called by a client request rather than only an internal job or command?",
+          "yes": "Cite its HTTP, RPC or client invocation registration.",
+          "no": "Only an internal scheduled job, queue worker or command."
+        },
+        {
+          "id": "EP11",
+          "text": "Does the entry declare its authentication mode explicitly, including an intentional public mode?",
+          "yes": "Cite the declaration and validator, or the explicit public declaration.",
+          "no": "Authentication is implicit or missing; do not infer public intent from an absent validator.",
+          "only_if": {
+            "EP10": "yes"
+          }
+        },
+        {
+          "id": "EP12",
+          "text": "Does this request access a protected resource or action?",
+          "yes": "Cite the resource/action and the project policy requiring permission.",
+          "no": "An explicitly public operation with no protected resource/action.",
+          "only_if": {
+            "EP10": "yes"
+          }
+        },
+        {
+          "id": "EP13",
+          "text": "Is authorization enforced for the resource/action, and does a missing identity or policy failure deny access?",
+          "yes": "Cite the policy check and refusal before access; authentication alone is insufficient.",
+          "no": "No resource/action check, or missing identity/policy failure allows access.",
+          "only_if": {
+            "EP12": "yes"
           }
         }
       ]
@@ -795,9 +831,18 @@
         },
         {
           "id": "MS2",
-          "text": "Does the cache have an expiry or size bound?",
-          "yes": "Cite it.",
-          "no": "Entries live forever.",
+          "text": "Does the cache bound retained entries or bytes?",
+          "yes": "Cite the enforced capacity, or a fixed finite key set.",
+          "no": "No capacity limit or fixed finite key set; expiry alone is not a capacity bound.",
+          "only_if": {
+            "MS1": "yes"
+          }
+        },
+        {
+          "id": "MS7",
+          "text": "Does the cache have a freshness policy for changing source values?",
+          "yes": "Cite expiry with removal/refresh, invalidation, or revalidation on use. A size limit alone does not ensure freshness.",
+          "no": "No expiry, invalidation or revalidation.",
           "only_if": {
             "MS1": "yes"
           }
@@ -961,6 +1006,33 @@
           "no": "No waits, or injected time."
         }
       ]
+    },
+    "client-contract": {
+      "scan": "source",
+      "scope": "run",
+      "patterns": [
+        "export\\s+(const|let|async\\s+function|function)\\s+handler\\b",
+        "export\\s+default\\s+\\{",
+        "\\bBun\\.serve\\(",
+        "\\b(app|router|route|server)\\.(get|post|put|patch|delete|all|use|route)\\(",
+        "addEventListener\\(\\s*['\"]fetch",
+        "\\bcreateServer\\(",
+        "\\bcreateHandler\\(",
+        "\\bhandle\\(\\s*app\\b",
+        "export\\s+(async\\s+)?function\\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\b",
+        "export\\s+const\\s+(GET|POST|PUT|PATCH|DELETE)\\s*="
+      ],
+      "read": "Assess shared client contracts once for the run. Inspect the registrations of the entries in scope and name distinct client contracts, including consumers in other repositories that are unavailable. The anchor line identifies this shared assessment, not a separate contract per endpoint.",
+      "questions": [
+        {
+          "id": "EP14",
+          "text": "Do all client contracts serving the entries in scope distinguish application failures from failures outside the response envelope?",
+          "yes": "Name every distinct client contract and cite its error schema plus handling of transport, timeout, cancellation and invalid or gateway responses.",
+          "no": "Name a visible client contract that assumes every failure is an application envelope. If a required client repository or contract is unavailable, answer unknown and name it once.",
+          "allow_na": "the entries in scope are all internal jobs or commands; cite their registrations"
+        }
+      ],
+      "title": "Shared client failure contract"
     }
   },
   "concepts": {
@@ -1320,6 +1392,18 @@
       "type": "primitive",
       "apis": [],
       "note": "One adapter module owns the client; a lint rule such as no-restricted-imports with per-directory overrides lets only the adapter import it, so its deadline, typed failures and replay policy cannot be bypassed."
+    },
+    "authorized-entry": {
+      "title": "Endpoint authentication and authorization contract",
+      "type": "primitive",
+      "apis": [],
+      "note": "One entry definition declares authentication mode, protected action/resource, deny behavior, input/output schemas and exhaustive expected-error mapping. Reuse existing validators; restrict entry registration to the runner. Plain === comparisons of secret tokens require investigation of a constant-time verification path, not an assumption of proven exploitability."
+    },
+    "client-error-contract": {
+      "title": "Application and client-observed failure contract",
+      "type": "primitive",
+      "apis": [],
+      "note": "Use namespaced schema discriminants for validated application errors and transport, timeout, cancellation and unexpected-response failures. Lambda cannot serialize an envelope before invocation or after termination. Preserve sanitized platform details only when observable. Share a wire schema or generated protocol with non-TypeScript clients such as Unreal; do not assume shared TypeScript types cross that boundary."
     }
   },
   "rules": [
@@ -2090,7 +2174,7 @@
         "MS2": "no"
       },
       "concept": "cache",
-      "mechanism": "A cache with no expiry or bound grows without limit and serves stale values.",
+      "mechanism": "An unbounded key space can retain unlimited entries without a capacity bound; expiry alone does not bound peak memory.",
       "counter": "The keys are a small fixed set and values never change."
     },
     {
@@ -2121,7 +2205,7 @@
       "lane": "defect",
       "when": {
         "MS5": "yes",
-        "MS2": "no"
+        "MS7": "no"
       },
       "concept": "cache",
       "mechanism": "A source that changes while cached forever is never seen again by this process.",
@@ -2260,6 +2344,40 @@
       "concept": "test-clock",
       "mechanism": "Real waits make tests slow and timing-dependent.",
       "counter": "The wait is for a real external process in an integration test."
+    },
+    {
+      "id": "EP-implicit-auth",
+      "kind": "entry-point",
+      "lane": "primitive",
+      "when": {
+        "EP11": "no"
+      },
+      "concept": "authorized-entry",
+      "mechanism": "An entry with no declared authentication mode can bypass validation accidentally.",
+      "counter": "A cited registration layer enforces authentication or explicitly declares this operation public."
+    },
+    {
+      "id": "EP-missing-authorization",
+      "kind": "entry-point",
+      "lane": "defect",
+      "when": {
+        "EP12": "yes",
+        "EP13": "no"
+      },
+      "concept": "authorized-entry",
+      "mechanism": "A request can reach a protected resource without the required resource/action permission, or policy failure allows access.",
+      "counter": "A cited upstream boundary enforces the same resource/action policy and denies failures before this entry."
+    },
+    {
+      "id": "EP-client-failure-gap",
+      "kind": "client-contract",
+      "lane": "primitive",
+      "when": {
+        "EP14": "no"
+      },
+      "concept": "client-error-contract",
+      "mechanism": "The client assumes application error envelopes even when transport, gateway or runtime failures bypass the handler.",
+      "counter": "A cited shared client adapter already models and validates these outcomes independently of the handler."
     }
   ],
   "coverage": [
@@ -2375,6 +2493,44 @@
       "label": "Structured log records",
       "question": "LG1",
       "has": "yes"
+    },
+    {
+      "label": "Client entries with explicit authentication mode",
+      "question": "EP11",
+      "has": "yes",
+      "among": {
+        "EP10": "yes"
+      }
+    },
+    {
+      "label": "Protected entries with fail-closed resource authorization",
+      "question": "EP13",
+      "has": "yes",
+      "among": {
+        "EP12": "yes"
+      }
+    },
+    {
+      "label": "Shared client contract assessment covers failures outside the application envelope",
+      "question": "EP14",
+      "has": "yes"
+    },
+    {
+      "label": "Caches with bounded retained capacity",
+      "question": "MS2",
+      "has": "yes",
+      "among": {
+        "MS1": "yes"
+      }
+    },
+    {
+      "label": "Changing cached values with freshness policy",
+      "question": "MS7",
+      "has": "yes",
+      "among": {
+        "MS1": "yes",
+        "MS5": "yes"
+      }
     }
   ]
 }
