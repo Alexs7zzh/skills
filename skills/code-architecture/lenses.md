@@ -6,7 +6,7 @@ Every stage honors a lens's "Not a finding" line.
 
 ## Selection
 
-All design lenses apply to every run. Add diagnostics when the request names logging, telemetry, severity or monitoring, or the goals state a monitoring obligation. Add readability lenses only when the user asks for them. Extraction records the selection in the orientation; later stages read it there.
+All design lenses apply to every run. Add diagnostics when the request names logging, telemetry, severity or monitoring, the goals state a monitoring obligation, or the bounded subsystem retries or recovers a capability. Add readability lenses only when the user asks for them. Extraction records the selection in the orientation; later stages read it there.
 
 ## Checking a design
 

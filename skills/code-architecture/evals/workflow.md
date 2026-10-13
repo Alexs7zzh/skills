@@ -80,3 +80,14 @@ Fixture `fixtures/service-outcomes/`: required startup data is silently skipped 
 Expected: the coverage map includes silent setup and producer decisions before relay emission. Tables preserve predicate precedence, logical pending versus native progress, cause translation, episode start versus sample time, and full versus partial retention. Compare catches setup severity and absence, collapsed refusal reasons and late evidence discarded during aggregation. Remedies preserve activation, retry class, bounded history and one-summary reporting; they do not infer the provider cause or add a per-window stream.
 
 Fixture `fixtures/service-outcomes-good/` is the sibling with another service and measurement type: startup input classified once at one owner, construction failures left to theirs, admission reasons preserved, the first complete later sample adopted with its own observation time. Expected: no invented finding, no private data export. An explicitly admission-only extraction names setup and aggregation as excluded and stops before design.
+
+## Diagnostics: operation and recovery lifetime
+
+Supply checked flow facts without an incident disposition, and run extraction then compare in fresh contexts.
+
+- **Original file flow:** a thumbnail pipeline reports transport failure before closing its temporary file; close reveals storage failure, and the caller never sees that result. Extract the stage/result/owner/visibility chain through presentation, mark the lost finalization cause as a K row, and keep the preserved old image separate from evidence sufficiency. A one-shot load needs no new episode recorder.
+- **Retry sibling:** a document synchronizer counts connection success as recovery, opens its recorder only after subscription, and resets on account replacement. Extract the unrecorded startup interval and wrong ending; compare against usable cross-device document visibility, including prolonged impairment and recurrence.
+- **Near negative:** one-shot export already retains target, native cause before cleanup, duration and success/cancellation at its operation owner. Do not invent a retry or episode finding.
+- **Known-good:** image-stream evidence opens at first lost usable frame, including failed startup, retains bounded causes/attempts/duration, reports prolonged loss and later usable recovery or abandonment, and resets for a new episode. Accept its coverage without a parallel stream; unobserved process death remains unknown.
+
+The extraction rows must state inspected behavior, not silently turn desired repairs into facts. A session ID alone cannot establish any of these lifetimes.

@@ -13,6 +13,7 @@ For a specified mechanical or presentation edit, the target and relevant knowled
 |---|---|
 | Code implementation, review or diagnosis | [good-code.md](./good-code.md): Values and the relevant lenses; [good-change.md](./good-change.md): design and boundary judgment |
 | Explicit request to review code, a diff, branch, changeset, PR or uncommitted changes | [review.md](./review.md): selection, investigation and fresh verification |
+| Logs, file-loading failures, retry or recovery | [logging.md](./logging.md): operation and episode evidence, failure-stage checklist |
 | C++ | [cpp.md](./cpp.md) |
 | Unreal Engine | [unreal.md](./unreal.md), plus cpp.md when the code is C++ |
 

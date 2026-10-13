@@ -25,6 +25,7 @@ Prefer a checkable output, an object to enumerate, or a mechanism cue over anoth
 Settle the collaboration outcomes and evidence obligations before changing scripts. Do not translate every Markdown concept into a command or state. The ledger preserves explicit commitments, conclusions, agreement, replacement links, ownership and execution facts; investigators explain why evidence supports a claim, a replacement accounts for the original concern, or a design serves the user. Test the mechanism and the instructions together: simplifying the code is not a win if callers must reconstruct hidden policy or responsibility.
 
 For changes to failure ownership or outcome verification, use the bounded cases in [evals/failure-handling.md](evals/failure-handling.md).
+For changes to logging ownership, file finalization or recovery evidence, use [evals/logging.md](evals/logging.md).
 For changes to performance evidence interpretation, use the bounded cases in [evals/performance-diagnosis.md](evals/performance-diagnosis.md).
 For changes to authoritative state or capability dependencies, use the bounded cases in [evals/capability-dependencies.md](evals/capability-dependencies.md).
 For changes to responsibility boundaries, cohesion or dependency direction, use the bounded cases in [evals/architecture-boundaries.md](evals/architecture-boundaries.md).
