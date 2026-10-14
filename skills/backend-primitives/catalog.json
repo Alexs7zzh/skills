@@ -97,9 +97,9 @@
         },
         {
           "id": "XC7",
-          "text": "Is the repetition hand-written: a loop or recursion with a sleep or timer?",
-          "yes": "Cite the loop.",
-          "no": "A library, schedule or platform repeats it.",
+          "text": "Does project code implement that retry with a loop or recursion?",
+          "yes": "Cite the loop or recursive call that repeats the failed operation; a sleep or timer is not required.",
+          "no": "Only a library, schedule or platform implements the repetition.",
           "only_if": {
             "XC5": "yes"
           }
@@ -309,6 +309,19 @@
           "only_if": {
             "EP12": "yes"
           }
+        },
+        {
+          "id": "EP15",
+          "text": "Does a client-supplied static credential reach an ordinary equality comparison with a secret?",
+          "yes": "Trace both the client input and secret comparison; supply credential_ev and comparison_ev as well as ev.",
+          "no": "No static secret comparison is used, or an explicit credential verifier owns the comparison.",
+          "only_if": {
+            "EP10": "yes"
+          },
+          "yes_evidence": [
+            "credential_ev",
+            "comparison_ev"
+          ]
         }
       ]
     },
@@ -424,24 +437,27 @@
       "questions": [
         {
           "id": "EH1",
-          "text": "Does the handler end the failure without propagating it or returning a failure value?",
-          "yes": "It logs, returns a default, returns success or does nothing.",
-          "no": "It rethrows, fails, or returns a value that records the failure."
+          "text": "Does this handler turn a failure into ordinary success or absence, without a failure value consumed by its caller?",
+          "yes": "It logs, returns an ordinary default/success, or does nothing; trace what its caller receives.",
+          "no": "It propagates the failure, or returns an explicit failure outcome that the caller handles."
         },
         {
           "id": "EH2",
-          "text": "Is the swallow marked as intended?",
-          "yes": "A named optional step, a comment that names the consequence, or an outcome value the caller reads.",
-          "no": "Nothing marks it.",
+          "text": "Does the caller deliberately treat this swallowed failure as optional work?",
+          "yes": "Cite a named optional-work boundary or a comment naming the accepted consequence, and how the caller continues.",
+          "no": "Neither the boundary nor its caller identifies the accepted consequence; logging alone is insufficient.",
           "only_if": {
             "EH1": "yes"
           }
         },
         {
           "id": "EH3",
-          "text": "Does the handler catch interruption, abort or timeout failures along with ordinary failures?",
-          "yes": "It catches them in the same branch: Effect catchCause or ignoreCause without an interrupt check, or a catch-all around an abortable await.",
-          "no": "They pass through, or none can reach this handler."
+          "text": "Can a concrete interruption, abort or timeout source reach this handler and be consumed as an ordinary failure?",
+          "yes": "Trace the cancellation or timeout source through the awaited call into this branch. A catch-all alone is insufficient. Supply source_ev for that source as well as ev for the handler.",
+          "no": "No such source reaches the handler, or it is distinguished and propagated. Promise rejection alone does not establish cancellation.",
+          "yes_evidence": [
+            "source_ev"
+          ]
         },
         {
           "id": "EH4",
@@ -555,8 +571,8 @@
         {
           "id": "SW4",
           "text": "If the write committed but the response was lost, can a retry recognize its own earlier write?",
-          "yes": "A writer id or version in the record lets it.",
-          "no": "A retry sees a conflict or a changed record and cannot tell why.",
+          "yes": "A persisted operation identity, deterministic resource identity or conditional version tied to this operation lets a retry prove the earlier write was its own. Cite the write and retry recognition.",
+          "no": "The retry sees a conflict or changed value without proving which operation caused it; uniqueness alone is insufficient.",
           "only_if": {
             "SW3": "yes"
           }
@@ -603,8 +619,8 @@
         {
           "id": "PG2",
           "text": "Is each page request, or the whole loop, bounded by a deadline?",
-          "yes": "Cite it.",
-          "no": "No deadline."
+          "yes": "Cite the finite timer or deadline and its propagation to every page request, or termination of the whole loop. A bare signal, page count or cursor limit is insufficient.",
+          "no": "No finite deadline reaches the requests or ends the loop; a caller-only signal with an unseen timer is unknown."
         },
         {
           "id": "PG3",
@@ -2378,6 +2394,17 @@
       "concept": "client-error-contract",
       "mechanism": "The client assumes application error envelopes even when transport, gateway or runtime failures bypass the handler.",
       "counter": "A cited shared client adapter already models and validates these outcomes independently of the handler."
+    },
+    {
+      "id": "EP-credential-comparison",
+      "kind": "entry-point",
+      "when": {
+        "EP15": "yes"
+      },
+      "lane": "primitive",
+      "concept": "authorized-entry",
+      "counter": "An established verifier already owns this comparison and its relevant threat-model requirements; cite the verifier and input path.",
+      "mechanism": "A client-supplied static secret is compared directly; credential verification needs a verifier contract separate from identity and resource policy."
     }
   ],
   "coverage": [

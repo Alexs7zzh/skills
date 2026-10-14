@@ -4,15 +4,15 @@ You state what the code does in the run's source snapshot. You do not decide wha
 
 ## What to read
 
-Read what the kind's Read line names, starting at the site. A question marked "Search the repository" asks about other files: search the whole repository for the string that identifies the thing, such as a module specifier, a table name, a key or a field name, not only the name used at this site. Stop for a site when every question has an answer. Do not read past the entry point that starts the work.
+Read what the kind's Read line names, starting at the site. A question marked "Search the repository" asks about other files: search the whole repository for the string that identifies the thing, such as a module specifier, a table name, a key or a field name, not only the name used at this site. Answer gate questions first. Stop when every applicable question has an answer. Do not read past the entry point that starts the work.
 
-Library defaults count as code. When a question turns on one, such as a client's retry count, read the installed package under `node_modules` and cite it there. If the package is not installed, answer `unknown`. Apply the same evidence rule to runtime-native API defaults: use the installed runtime source or a checked-in runtime contract. An explicit call option is source evidence; familiarity with a default is not.
+Library defaults count as code. When a question turns on one, such as a client's retry count, read the installed package at the dependency path in the packet and cite it there. Use `rg --no-ignore`: the snapshot retains `.gitignore`, which can hide dependencies from ordinary searches. If the package is not installed, answer `unknown`. Apply the same evidence rule to runtime-native API defaults: use the installed runtime source or a checked-in runtime contract. An explicit call option is source evidence; familiarity with a default is not.
 
-Deployment configuration counts too: templates, schedules, queue and concurrency settings. Cite it when it is in the repository. Documentation outside the repository cannot be cited; the answer is `unknown` and `missing` names the document.
+Deployment configuration counts too: templates, schedules, queue and concurrency settings. Cite it when it is in the repository. For provider contracts, use only the run's registered, dated `@evidence` excerpts. If none settles the question, answer `unknown` and name the missing document. Provider defaults still require evidence of invocation mode and deployment overrides.
 
 ## Answer tokens
 
-Every question gets one token, including explicit `n/a` for known-false prerequisites:
+Every applicable question gets one token. You may omit conditional follow-ups when a prerequisite is false or unknown; the script derives `n/a` or `unknown`. Possible follow-ups still require answers, and positive hints still require inspection:
 
 - `yes`: the question's yes criterion holds. `ev` is required: `path:line` or `path:start-end`, relative to the repository root, pointing at the code that establishes it.
 - `no`: the no criterion holds. Give `ev` for the place inspected, or a `note` naming what was inspected and found absent. On a search question, also give `searched`: the strings or patterns you searched for.
@@ -20,6 +20,16 @@ Every question gets one token, including explicit `n/a` for known-false prerequi
 - `n/a`: a prerequisite is known false. When a prerequisite is unknown, answer `unknown` and name what would settle applicability. Only a question with an explicit catalog exception also permits `n/a`, with a note establishing that exception.
 
 An absence you did not look for is `unknown`, not `no`. Positive search hints are fallible evidence: answer those questions explicitly after checking their citations. For `no` or `n/a` against a hint, add `hint_refutation` explaining why its cited match does not establish the fact. Every such contradiction receives an audit. The script never overwrites your answer.
+
+## Shared facts
+
+When the packet supplies a checked shared fact, inspect the site's binding and the fact's conditions. Reference it with:
+
+```json
+{"XC5":{"shared":"F-retry","fact_digest":"<from packet>","binding":{"ev":"src/orders.ts:40","note":"calls request without retry:false"}}}
+```
+
+The script expands the sourced answer. A bypass, override or unknown connection needs its own answer. Similar notes across sites are valid only when the same inspected fact applies; a generator may serialize your observations, but cannot substitute a repeated claim for those observations.
 
 ## Row format
 

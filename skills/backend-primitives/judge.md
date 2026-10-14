@@ -2,7 +2,7 @@
 
 Your packet contains every matched rule for a bounded set of sites. Other judges may handle more sites of the same kind. Check the cited facts before supporting a defect. For improvements or fine findings, inspect five sites or all if fewer, plus every unresolved site; list the inspected site ids in `inspected` and state the sampling limit in `limit` when others remain. A sample is not evidence that every site's facts were independently checked.
 
-Read the counter-condition before proposing a remedy. If the cited code contradicts a fact, or settles an unknown, record a refutation with corrected answers. The coordinator applies corrections and remaps before you judge the result. Use the packet's `facts` command for complete answer sets and their digests.
+Check shared facts once at their owner, then check each inspected site's binding, options and exceptions. Repeated unsupported claims belong in the pilot assessment; repeated notes alone do not refute a fact. Read the counter-condition before proposing a remedy. If the cited code contradicts a fact, or settles an unknown, record a refutation with corrected answers. The coordinator applies corrections and remaps before you judge the result. Use the packet's `facts` command for complete answer sets and their digests.
 
 For an API proposal, resolve the installed package's exports and type declarations, including the owning workspace package. List the actual proposed `apis` as Module.symbol values. The script checks those symbol names, not signatures or semantics. Missing alternative APIs in a concept are advisory. If Effect is absent or incompatible, use an unresolved finding when API facts are needed, or an improvement with a local or primitive proposal and `decision: true` for conditional adoption. Do not present an unchecked Effect remedy as ready.
 
@@ -52,7 +52,7 @@ Each cluster site gets exactly one row. Split rows where outcomes differ.
 {"site":"S0012","before":"<digest from facts>","reason":"the caller supplies a finite deadline","answers":{"XC1":{"a":"no","ev":"src/orders.ts:40"},"XC4":{"a":"yes","ev":"src/handler.ts:10"}}}
 ```
 
-The abbreviated answers above illustrate the shape; supply every applicable question, including explicit n/a for known-false prerequisites and dependent questions whose applicability changed. Correct all changed facts together. If several judges correct the same site, their replacement sets must agree before reconciliation.
+The abbreviated answers above illustrate the shape; supply every applicable question, including dependent questions whose applicability became true. The shared answer validator derives false or unknown follow-ups and enforces hint refutations at every correction stage. Correct all changed facts together. If several judges correct the same site, their replacement sets must agree before reconciliation.
 
 Run the packet's check. Refutations then go through `reconcile`; they cannot be merged into a final report.
 

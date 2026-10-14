@@ -1,0 +1,80 @@
+[
+  {
+    "id": "retry-loop",
+    "question": "XC7",
+    "source": "XC5=yes. Complete retry implementation: for (;;) { try { return await fetch(url) } catch (e) { if (++attempts === 3) throw e } }",
+    "expected": "yes"
+  },
+  {
+    "id": "library-retry",
+    "question": "XC7",
+    "source": "XC5=yes. client library owns retries, project only calls: return client.send(input, { attempts: 3 })",
+    "expected": "no"
+  },
+  {
+    "id": "page-loop",
+    "question": "XC7",
+    "source": "XC5=yes from client library retries. Project code: do { page = await client.list({cursor}); cursor = page.next } while (cursor). The loop advances the cursor, not a failed attempt.",
+    "expected": "no"
+  },
+  {
+    "id": "ordinary-catch",
+    "question": "EH3",
+    "source": "Complete caught operation: try { await Promise.reject(new Error(\"bad format\")) } catch (e) { return null }. No cancellation, signal or timer source reaches it.",
+    "expected": "no"
+  },
+  {
+    "id": "abort-catch",
+    "question": "EH3",
+    "source": "try { await fetch(url, {signal: AbortSignal.timeout(1000)}) } catch (e) { return null }. Fetch rejects when this signal aborts, including this timeout.",
+    "expected": "yes"
+  },
+  {
+    "id": "caller-signal",
+    "question": "PG2",
+    "source": "do { page = await fetchPage(cursor, signal); cursor = page.next } while (cursor). The signal comes from an unavailable caller; whether it has a timer is unknown.",
+    "expected": "unknown"
+  },
+  {
+    "id": "finite-pages",
+    "question": "PG2",
+    "source": "do { page = await fetchPage(cursor, AbortSignal.timeout(1000)); cursor = page.next } while (cursor). fetchPage propagates the supplied signal to fetch; every request aborts on it.",
+    "expected": "yes"
+  },
+  {
+    "id": "count-pages",
+    "question": "PG2",
+    "source": "for (let n=0;n<10;n++) { await fetchPage(n) }. fetchPage calls fetch without a signal or timeout; complete caller graph contains no deadline.",
+    "expected": "no"
+  },
+  {
+    "id": "stable-write",
+    "question": "SW4",
+    "source": "SW3=yes. Conditional insert uses persisted operationId. After a lost reply, retry reads the row and compares its stored operationId with the same operationId before returning prior success.",
+    "expected": "yes"
+  },
+  {
+    "id": "unique-write",
+    "question": "SW4",
+    "source": "SW3=yes. Every attempt generates a new random id and inserts into a unique row key. On conflict it returns conflict without inspecting which operation wrote the row.",
+    "expected": "no"
+  },
+  {
+    "id": "logged-swallow",
+    "question": "EH1",
+    "source": "catch (error) { console.error(error); return undefined }. Its caller treats undefined as ordinary success and continues.",
+    "expected": "yes"
+  },
+  {
+    "id": "unmarked-swallow",
+    "question": "EH2",
+    "source": "EH1=yes. catch (error) { console.error(error); return undefined }. Its caller continues; complete source contains no optional-work boundary or accepted-consequence comment.",
+    "expected": "no"
+  },
+  {
+    "id": "handled-failure",
+    "question": "EH1",
+    "source": "catch (error) { return {ok:false, error} }. Caller inspects ok and propagates the failure to its entry error mapping.",
+    "expected": "no"
+  }
+]

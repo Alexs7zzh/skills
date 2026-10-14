@@ -5,16 +5,21 @@ usage:
   sweep.py inventory    ROOT [--run RUN] [--kinds K,K] [--paths GLOB,GLOB] [--extra FILE]
   sweep.py api          RUN [--effect DIR]
   sweep.py boundary     RUN [--tsgo-json FILE]
-  sweep.py shard        RUN [--answers N]
+  sweep.py owners       RUN
+  sweep.py evidence     RUN --file FILE --url URL --retrieved YYYY-MM-DD --id ID
+  sweep.py add-sites    RUN --file FILE
+  sweep.py pilot        RUN [--size N | --assess --decision focus|expand|repair --reason TEXT]
+  sweep.py shard        RUN [--answers N] [--owners O,O | --sites S,S]
   sweep.py packet       RUN SHARD
-  sweep.py check        RUN [--stage answers|audit|verdicts|merges] [--part A01|J01]
+  sweep.py check        RUN [--stage protections|answers|audit|verdicts|merges] [--part A01|J01]
   sweep.py map          RUN [--rulings FILE] [--sites-per-judge N]
-  sweep.py audit        RUN [--sample N] (0 = all eligible negatives)
+  sweep.py audit        RUN [--sample N | --all] (0 samples only mandatory hint conflicts)
   sweep.py facts        RUN [--sites S,S]
   sweep.py correct      RUN --file FILE
   sweep.py reconcile    RUN
   sweep.py judge-packet RUN GROUP
   sweep.py merge-packet RUN
+  sweep.py close        RUN [--clusters C,C] [--owners O,O] [--reason TEXT]
   sweep.py rule         RUN --decision accept|reject|defer --verdicts V,V --reason TEXT
                         [--rulings FILE] [--scope GLOB]
 
@@ -148,7 +153,15 @@ def site_line(sid, s, derived=None):
 
 
 def header(meta):
-    return f"Snapshot root (read this): `{meta['root']}`; live repository: `{meta.get('source_root', meta['root'])}` at {meta['vcs']} {meta['revision'] or meta['digest']} ({meta['state']})."
+    lines = [f"Snapshot root (read this): `{meta['root']}`; live repository: `{meta.get('source_root', meta['root'])}` at {meta['vcs']} {meta['revision'] or meta['digest']} ({meta['state']})."]
+    roots = list(dependency_roots(Path(meta["root"])))
+    if roots:
+        lines.append("Installed dependency roots (live, not frozen): " + ", ".join(f"`{p}` → `{p.resolve()}`" for p in roots))
+        lines.append("Search an explicit package directory, including ignored files and symlinks: "
+                     + "`" + shlex.join(["rg", "--no-ignore", "--follow", "-n", "PATTERN", str(roots[0] / "PACKAGE")]) + "`. A repository search miss does not mean a dependency is absent.")
+    else:
+        lines.append("No installed node_modules directory was found in the snapshotted workspace.")
+    return "\n\n".join(lines)
 
 
 # ---------------------------------------------------------------- setup
@@ -290,20 +303,24 @@ def cmd_api(args):
     else:
         package = load_json(effect / "package.json")
         version = package.get("version")
-        cache, missing = {}, {}
+        cache, missing, unverified = {}, {}, {}
         for cid, concept in cat["concepts"].items():
             for api in concept["apis"]:
                 module, _, name = api.rpartition(".")
                 if module not in cache:
                     dts = declaration_path(effect, package, module)
                     cache[module] = export_names(dts.read_text(encoding="utf-8")) if dts and dts.exists() else None
-                if cache[module] is None or name not in cache[module]:
+                if cache[module] is None:
+                    unverified.setdefault(cid, []).append(api)
+                elif name not in cache[module]:
                     missing.setdefault(cid, []).append(api)
-        write_json(run / "api.json", {"installed": version, "package": str(effect.resolve()), "catalog": cat["written_against"], "missing": missing})
+        write_json(run / "api.json", {"installed": version, "package": str(effect.resolve()), "catalog": cat["written_against"], "missing": missing, "unverified": unverified})
         print(f"effect {version} installed; catalog written against {cat['written_against']}")
         for cid, apis in missing.items():
             print(f"  unavailable concept {cid}: {', '.join(apis)}")
-        if not missing:
+        for cid, apis in unverified.items():
+            print(f"  unresolved declarations for {cid}: {', '.join(apis)}")
+        if not missing and not unverified:
             print("  every concept API resolves")
     print(f"next: {cmd('boundary', run)}")
 
@@ -320,7 +337,7 @@ def cmd_boundary(args):
             write_json(run / "boundary.json", {"measured": False, "reason": "installed tooling or tsconfig missing"})
             (run / "boundary.md").write_text("# Boundary comparison\n\nUnmeasured: installed @effect/tsgo or tsconfig.json missing. This is not zero violations.\n")
             print(f"@effect/tsgo or tsconfig.json is not in {root}; unmeasured")
-            print(f"next: {cmd('shard', run)}")
+            print(f"next: {cmd('owners', run)}")
             return
         config = {"name": "@effect/language-service", "diagnosticSeverity": {r: "warning" for r in cat["tsgo_rules"]}}
         out = subprocess.run([str(tool), "diagnostics", "--project", str(project), "--format", "json",
@@ -364,7 +381,7 @@ def cmd_boundary(args):
     lines += [f"- {x['rule']} {x['path']}:{x['line'] if x['line'] is not None else '?'}" for x in unmatched]
     (run / "boundary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines[4:]))
-    print(f"next: {cmd('shard', run)}")
+    print(f"next: {cmd('owners', run)}")
 
 
 # Pattern matches are hints, never answers or proof of absence.
@@ -421,20 +438,208 @@ def derived_of(run):
     return load_json(path) if path.exists() else {}
 
 
+def pilot_corrections(run, chosen):
+    changes = [row for path in sorted((run / "correction-history").glob("*.jsonl"))
+               for _, row in load_jsonl(path, []) if row["site"] in chosen]
+    pending = [c for _, _, row in load_verdicts(run, []) if row.get("finding") == "refuted"
+               for c in row.get("corrections", []) if c["site"] in chosen]
+    return changes, pending
+
+
+def check_pilot_repairs(run, data, context, corrected):
+    failures = []
+    if not isinstance(data, dict) or any(data.get(k) != v for k, v in context.items()):
+        die("pilot repairs need the current corrections and protections digests from pilot --assess")
+    repairs = data.get("repairs")
+    if not isinstance(repairs, list):
+        die("pilot repairs must be a list")
+    protections = require_protections(run)
+    owners = {o["id"] for o in protections["owners"]}
+    facts = {f["id"]: f for f in protections["facts"]}
+    sites, covered = sites_of(run), set()
+    for n, row in enumerate(repairs, 1):
+        where = f"pilot repair {n}"
+        if not isinstance(row, dict):
+            failures.append(f"{where}: requires an object"); continue
+        ids, affected = row.get("sites"), row.get("affected")
+        if not isinstance(ids, list) or not ids or any(s not in corrected for s in ids):
+            failures.append(f"{where}: sites must name corrected pilot sites"); continue
+        covered.update(ids)
+        if row.get("scope") not in ("site", "shared-fact", "binding") or not row.get("reason"):
+            failures.append(f"{where}: requires site, shared-fact or binding scope and its reason")
+        if not isinstance(affected, list) or not set(ids) <= set(affected) or any(s not in sites for s in affected):
+            failures.append(f"{where}: affected must include corrected sites and their inventoried siblings")
+        if not row.get("evidence"):
+            failures.append(f"{where}: cite the repaired claim or site-local exception")
+        else:
+            check_evidence(run_meta(run)["root"], row["evidence"], where, failures)
+        if row.get("scope") == "site":
+            continue
+        oids, fids = row.get("owners"), row.get("facts", [])
+        if not isinstance(oids, list) or not oids or any(o not in owners for o in oids):
+            failures.append(f"{where}: shared repairs name their current owners")
+        if not isinstance(fids, list) or any(f not in facts for f in fids):
+            failures.append(f"{where}: unknown shared fact")
+        elif row.get("scope") == "shared-fact" and not fids:
+            failures.append(f"{where}: shared-fact repair names the repaired facts")
+        elif isinstance(oids, list) and any(facts[f]["owner"] not in oids for f in fids):
+            failures.append(f"{where}: facts must belong to the named owners")
+        sibling = row.get("sibling")
+        if not isinstance(sibling, dict) or not sibling.get("result") or not sibling.get("evidence"):
+            failures.append(f"{where}: shared repairs need a sibling check with result and evidence")
+        else:
+            sid = sibling.get("site")
+            if sid is None:
+                if not sibling.get("searched"):
+                    failures.append(f"{where}: no sibling requires the search that established absence")
+            elif sid not in sites or sid in corrected or not isinstance(affected, list) or sid not in affected:
+                failures.append(f"{where}: sibling must be an affected site outside the corrected pilot sites")
+            check_evidence(run_meta(run)["root"], sibling["evidence"], where, failures)
+    if corrected - covered:
+        failures.append("pilot repairs leave corrected sites unaccounted for: " + ", ".join(sorted(corrected - covered)))
+    if failures:
+        die("; ".join(failures))
+
+
+def cmd_pilot(args):
+    run = Path(args.run)
+    sites = sites_of(run)
+    path = run / "pilot.json"
+    if not args.assess:
+        data = require_protections(run)
+        if path.exists():
+            die("pilot already exists; use --assess after its judgments")
+        pools = []
+        for owner in sorted(data["owners"], key=lambda x: (-len(x["sites"]), x["id"])):
+            for boundary in ("entry", "crossing", "cleanup"):
+                ids = [sid for row in owner["coverage"] if row["boundary"] == boundary
+                       and row["status"] in ("included", "unknown") for sid in row["sites"]]
+                if ids:
+                    pools.append(ids)
+            for relation in ("uses", "bypasses", "unknown"):
+                ids = [m["site"] for m in owner["sites"] if m["relation"] == relation]
+                if ids:
+                    pools.append(ids)
+        # Unowned kinds still get representation when the budget permits it.
+        pools += [[sid for sid, site in sites.items() if site["kind"] == kind] for kind in catalog()["kinds"]]
+        chosen = []
+        while len(chosen) < args.size:
+            before = len(chosen)
+            for pool in pools:
+                if len(chosen) >= args.size:
+                    break
+                sid = next((sid for sid in pool if sid not in chosen), None)
+                if sid:
+                    chosen.append(sid)
+            if len(chosen) == before:
+                break
+        if not chosen:
+            die("no sites to pilot")
+        write_json(path, {"sites": chosen, "protections_digest": digest(data)})
+        cmd_shard(argparse.Namespace(run=str(run), sites=",".join(chosen), owners=None, answers=200))
+        print(f"Pilot: {len(chosen)} sites across owners, bypasses and unowned kinds.")
+        print("next: answer, audit, map and judge the pilot before expanding the review")
+        return
+    if not path.exists():
+        die("run pilot before assessing it")
+    chosen = set(load_json(path)["sites"])
+    effective, _ = merged_answers(run, sites)
+    if chosen - set(effective):
+        die("pilot answers are incomplete")
+    failures = []
+    for sid in chosen:
+        row = effective[sid]
+        if row["status"] == "site":
+            validate_answers(run, sid, sites[sid], row["answers"], sid, failures)
+    if failures:
+        die("; ".join(failures))
+    receipt = run / "judged.json"
+    mapped = run / "clusters.json"
+    no_candidates = mapped.exists() and not require_mapping(run)["clusters"]
+    if not receipt.exists() and not no_candidates:
+        die("check the pilot verdicts before assessing its cost and corrections")
+    if receipt.exists() and not no_candidates:
+        judged = load_json(receipt)
+        if not chosen <= set(judged["answered_sites"]) or judged["facts_digest"] != effective_digest(run):
+            die("check current pilot judgments after changing its answers")
+    changes, pending = pilot_corrections(run, chosen)
+    corrected, repeated = {c["site"] for c in changes + pending}, []
+    repair_context = {"corrections_digest": digest(changes + pending),
+                      "protections_digest": digest(require_protections(run))}
+    buckets = {}
+    for sid in chosen:
+        for qid, answer in effective[sid]["answers"].items():
+            if answer.get("note") and not answer.get("shared"):
+                buckets.setdefault((qid, answer["note"]), []).append(sid)
+    for (qid, note), ids in buckets.items():
+        if len(ids) > 1:
+            repeated.append({"question": qid, "note": note, "sites": sorted(ids)})
+    written = [answer for path in (run / "answers").glob("*.jsonl")
+               for _, row in load_jsonl(path, []) if row.get("site") in chosen
+               for answer in row.get("answers", {}).values()]
+    metrics = {"sites": len(chosen), "corrected_sites": len(corrected),
+               "written_answers": len(written), "shared_references": sum(bool(a.get("shared")) for a in written),
+               "questions": sum(len(effective[s]["answers"]) for s in chosen),
+               "repeated_notes": sorted(repeated, key=lambda x: -len(x["sites"])),
+               "facts_digest": effective_digest(run),
+               "limit": "Corrections count sites, not site-verdict pairs. Answer counts are records, not tokens or elapsed time. Repetition is a review lead, not a failure."}
+    write_json(run / "pilot-metrics.json", metrics)
+    if corrected:
+        write_json(run / "pilot-repairs-template.json", {**repair_context, "repairs": []})
+        print(f"Account for corrected sites {', '.join(sorted(corrected))} using {SKILL / 'pilot.md'}; "
+              f"start from {run / 'pilot-repairs-template.json'}.")
+    if args.decision:
+        if not args.reason:
+            die("pilot decision requires the evidence-based reason for expanding, focusing or repairing")
+        repairs = {**repair_context, "repairs": []}
+        if args.decision in ("focus", "expand") and corrected:
+            if pending:
+                die("reconcile pending pilot refutations and recheck judgments before expansion")
+            if not args.repairs:
+                die("corrected pilot sites require --repairs FILE before focus or expand")
+            repairs = load_json(args.repairs)
+            check_pilot_repairs(run, repairs, repair_context, corrected)
+        write_json(run / "pilot-repairs.json", repairs)
+        write_json(run / "pilot-decision.json", {"decision": args.decision, "reason": args.reason,
+                                                 "facts_digest": metrics["facts_digest"],
+                                                 **repair_context, "repairs_digest": digest(repairs)})
+    print(json.dumps(metrics, indent=2))
+    print("next: inspect repeated claims and shared-fact corrections; record --decision focus, expand or repair with --reason")
+
+
 def cmd_shard(args):
     cat = catalog()
     run = Path(args.run)
     sites = sites_of(run)
     shard_dir = run / "shards"
-    if shard_dir.exists() and any(shard_dir.iterdir()):
-        die(f"{shard_dir} already holds shards")
+    assigned = {sid for p in shard_dir.glob("*.json") for sid in load_json(p)["sites"]}
+    selected = set(sites)
+    if getattr(args, "owners", None):
+        selected = owner_sites(run, args.owners)
+    if getattr(args, "sites", None):
+        selected = set(args.sites.split(","))
+    if selected - set(sites):
+        die("unknown sites: " + ", ".join(sorted(selected - set(sites))))
+    pilot = run / "pilot.json"
+    if pilot.exists() and selected - set(load_json(pilot)["sites"]):
+        decision = run / "pilot-decision.json"
+        prior = load_json(decision) if decision.exists() else {}
+        if prior.get("decision") not in ("focus", "expand") or prior.get("facts_digest") != effective_digest(run):
+            die("assess the pilot and record a current focus or expand decision before dispatching more sites")
+        repairs = run / "pilot-repairs.json"
+        changes, pending = pilot_corrections(run, set(load_json(pilot)["sites"]))
+        if (prior.get("protections_digest") != digest(require_protections(run))
+                or prior.get("corrections_digest") != digest(changes + pending)
+                or not repairs.exists() or prior.get("repairs_digest") != digest(load_json(repairs))):
+            die("pilot repair evidence changed; reassess before dispatching more sites")
+    selected -= assigned
     # The bound is answers, not sites: a kind with many questions gets fewer
     # sites per answerer, and small kinds share one. A file's sites of one
     # kind stay together when they fit.
     units = []
     for kind in cat["kinds"]:
         files = {}
-        for sid in sorted(sid for sid, x in sites.items() if x["kind"] == kind):
+        for sid in sorted(sid for sid, x in sites.items() if x["kind"] == kind and sid in selected):
             files.setdefault(sites[sid]["path"], []).append(sid)
         nq = len(cat["kinds"][kind]["questions"])
         units += [(nq * len(ids), ids) for _, ids in sorted(files.items())]
@@ -443,7 +648,8 @@ def cmd_shard(args):
     derived = derive_answers(cat, Path(run_meta(run)["root"]), sites)
     write_json(run / "derived.json", derived)
     print(f"{sum(map(len, derived.values()))} positive hints found by search at {len(derived)} sites")
-    for n, ids in enumerate(shards, 1):
+    start = max((int(p.stem[1:]) for p in shard_dir.glob("A*.json")), default=0) + 1
+    for n, ids in enumerate(shards, start):
         kinds = [k for k in cat["kinds"] if any(sites[i]["kind"] == k for i in ids)]
         write_json(shard_dir / f"A{n:02d}.json", {"id": f"A{n:02d}", "kinds": kinds, "sites": ids})
         print(f"  A{n:02d} {len(ids)} sites: {', '.join(kinds)}")
@@ -455,7 +661,7 @@ def question_lines(q):
     cond = ""
     if q.get("only_if"):
         cond = " Applies when " + " and ".join(f"{k} is {v}" for k, v in q["only_if"].items())
-        cond += ". A known-false prerequisite means n/a; an unknown prerequisite means unknown, with missing."
+        cond += ". You may omit this follow-up when a prerequisite is false or unknown; the script derives n/a or unknown."
     if q.get("allow_na"):
         cond += " n/a is also allowed when " + q["allow_na"] + "; give a note establishing it."
     if q.get("search"):
@@ -470,7 +676,20 @@ def cmd_packet(args):
     derived = derived_of(run)
     out = [f"# Answer shard {shard['id']}", "", header(run_meta(run)),
            f"Write answers to `{run / 'answers' / (shard['id'] + '.jsonl')}`, one JSON object per site.",
-           f"Follow `{SKILL / 'answer.md'}`. Answer every question, including positive hints; confirm them or correct them at their citations.", ""]
+           f"Follow `{SKILL / 'answer.md'}`. Answer gates first; omit only false or unknown follow-ups. Inspect every positive hint.", ""]
+    shared = protections_of(run)
+    applicable_owners = {o["id"] for o in shared["owners"] if any(m["site"] in shard["sites"] for m in o["sites"])}
+    if applicable_owners:
+        out += ["## Checked shared facts", "Use a fact only with a binding citation and its applicability note; optional settings and bypasses still need inspection."]
+        for fact in shared["facts"]:
+            if fact["owner"] in applicable_owners:
+                out.append(json.dumps({**fact, "fact_digest": shared_digest(shared, fact)}))
+        out += ["## Shared missing evidence", json.dumps(shared["unknowns"])]
+    contributing = [o for o in shared["owners"]
+                    if any(sid in shard["sites"] for row in o.get("coverage", []) for sid in row["sites"])]
+    if contributing:
+        out += ["## Contributing boundaries", "These dependencies belong to the focused review; they do not automatically inherit the owner's facts.",
+                json.dumps([{ "owner": o["id"], "coverage": o["coverage"]} for o in contributing])]
     for kind_id in shard["kinds"]:
         kind = cat["kinds"][kind_id]
         out += [f"## Kind {kind_id}: {kind['title']}", "", f"Read: {kind['read']}", "", "### Questions", ""]
@@ -479,6 +698,245 @@ def cmd_packet(args):
         out += ["", "### Sites", ""] + [site_line(i, sites[i], derived.get(i)) for i in shard["sites"] if sites[i]["kind"] == kind_id] + [""]
     out.append(f"When done, run `{cmd('check', run, '--stage', 'answers', '--part', shard['id'])}` and fix every failure it reports.")
     print("\n".join(out))
+
+
+# ---------------------------------------------------------------- shared evidence
+
+def protections_of(run):
+    path = Path(run) / "protections.json"
+    return load_json(path) if path.exists() else {"owners": [], "facts": [], "unknowns": []}
+
+
+def check_protections(run, failures):
+    data = protections_of(run)
+    root, sites = run_meta(run)["root"], sites_of(run)
+    for field in ("owners", "facts", "unknowns"):
+        if not isinstance(data.get(field), list) or any(not isinstance(x, dict) for x in data[field]):
+            failures.append(f"protections: {field} must be a list of objects")
+    if failures:
+        return
+    owners, seen = {}, set()
+    questions = {q["id"]: q for kind in catalog()["kinds"].values() for q in kind["questions"]}
+    for owner in data["owners"]:
+        oid = owner.get("id")
+        if not isinstance(oid, str) or not oid or oid in seen:
+            failures.append("protections: owner ids must be nonempty and unique")
+            continue
+        seen.add(oid); owners[oid] = owner
+        if not owner.get("name") or not owner.get("evidence") or not isinstance(owner.get("sites"), list):
+            failures.append(f"{oid}: requires name, evidence and sites")
+            continue
+        check_evidence(root, owner["evidence"], oid, failures)
+        members = set()
+        for member in owner["sites"]:
+            if not isinstance(member, dict):
+                failures.append(f"{oid}: site membership must be an object")
+                continue
+            sid = member.get("site")
+            if sid not in sites or sid in members or member.get("relation") not in ("uses", "bypasses", "unknown"):
+                failures.append(f"{oid}: membership requires unique inventoried site and uses, bypasses or unknown")
+            members.add(sid)
+            if not member.get("evidence") or not member.get("reason"):
+                failures.append(f"{oid} {sid}: membership needs evidence and reason")
+            else:
+                check_evidence(root, member["evidence"], f"{oid} {sid}", failures)
+        coverage = owner.get("coverage")
+        if not isinstance(coverage, list):
+            failures.append(f"{oid}: coverage must account for entry, crossing and cleanup boundaries")
+            continue
+        boundaries = set()
+        for row in coverage:
+            if not isinstance(row, dict):
+                failures.append(f"{oid}: coverage rows must be objects"); continue
+            boundary, status, ids = row.get("boundary"), row.get("status"), row.get("sites")
+            if boundary not in ("entry", "crossing", "cleanup"):
+                failures.append(f"{oid}: unknown contributing boundary")
+            boundaries.add(boundary)
+            if status not in ("included", "outside-scope", "unknown", "not-applicable"):
+                failures.append(f"{oid}: coverage needs included, outside-scope, unknown or not-applicable")
+            if not isinstance(ids, list) or any(s not in sites for s in ids):
+                failures.append(f"{oid}: coverage sites must be inventoried")
+            elif status == "included" and not ids:
+                failures.append(f"{oid}: included boundary needs at least one site")
+            elif status in ("outside-scope", "not-applicable") and ids:
+                failures.append(f"{oid}: excluded boundary must not list selected sites")
+            if not row.get("guarantee") or not row.get("reason") or not row.get("evidence"):
+                failures.append(f"{oid}: coverage needs guarantee, reason and evidence")
+            else:
+                check_evidence(root, row["evidence"], f"{oid} {boundary}", failures)
+            if status == "unknown" and not row.get("missing"):
+                failures.append(f"{oid}: unknown coverage names the missing fact")
+        if boundaries != {"entry", "crossing", "cleanup"}:
+            failures.append(f"{oid}: account for entry, crossing and cleanup, including explicit exclusions")
+    for fact in data["facts"]:
+        fid, qid = fact.get("id"), fact.get("question")
+        if not isinstance(fid, str) or not fid or fid in seen:
+            failures.append("protections: fact ids must be nonempty and unique")
+            continue
+        seen.add(fid)
+        if fact.get("owner") not in owners or qid not in questions:
+            failures.append(f"{fid}: unknown owner or question")
+            continue
+        if fact.get("basis") not in ("project", "library", "deployment", "provider-default", "client"):
+            failures.append(f"{fid}: name the evidence basis")
+        if not fact.get("conditions") or not fact.get("exceptions"):
+            failures.append(f"{fid}: requires applicability conditions and exceptions (or explicit none)")
+        if fact.get("basis") in ("library", "provider-default") and not fact.get("version"):
+            failures.append(f"{fid}: library version or dated provider contract required")
+        answer = fact.get("answer")
+        if not isinstance(answer, dict) or answer.get("a") not in ("yes", "no") or not answer.get("ev"):
+            failures.append(f"{fid}: shared facts require a sourced yes or no; use unknowns for missing facts")
+            continue
+        q = {**questions[qid]}; q.pop("only_if", None)
+        check_answer_set(root, {qid: q}, {qid: answer}, fid, failures)
+    for missing in data["unknowns"]:
+        uid = missing.get("id")
+        if not isinstance(uid, str) or not uid or uid in seen or not missing.get("missing"):
+            failures.append("protections: unknowns require unique id and missing evidence")
+        seen.add(uid)
+        if not isinstance(missing.get("sites"), list) or any(sid not in sites for sid in missing["sites"]):
+            failures.append(f"{uid}: unknowns must name affected inventoried sites")
+
+
+def require_protections(run):
+    path = Path(run) / "protections.checked.json"
+    data = protections_of(run)
+    if not path.exists() or load_json(path).get("digest") != digest(data):
+        die("run check --stage protections after establishing or changing shared evidence")
+    return data
+
+
+def owner_sites(run, ids):
+    owners = {x["id"]: x for x in require_protections(run)["owners"]}
+    requested = set(ids.split(","))
+    if requested - set(owners):
+        die("unknown owners: " + ", ".join(sorted(requested - set(owners))))
+    selected = {member["site"] for oid in requested for member in owners[oid]["sites"]}
+    selected.update(sid for oid in requested for row in owners[oid]["coverage"]
+                    if row["status"] in ("included", "unknown") for sid in row["sites"])
+    return selected
+
+
+def shared_digest(data, fact):
+    owner = next(x for x in data["owners"] if x["id"] == fact["owner"])
+    return digest({"fact": fact, "owner_evidence": owner["evidence"]})
+
+
+def expand_answers(run, sid, kind, answers):
+    """Reuse cited facts, and derive only follow-ups with false or unknown prerequisites."""
+    if not isinstance(answers, dict):
+        return answers
+    answers = copy.deepcopy(answers)
+    data = protections_of(run)
+    facts = {x["id"]: x for x in data["facts"]}
+    owners = {x["id"]: x for x in data["owners"]}
+    checked = Path(run) / "protections.checked.json"
+    for qid, answer in list(answers.items()):
+        if not isinstance(answer, dict) or not answer.get("shared"):
+            continue
+        fact = facts.get(answer["shared"])
+        error = None
+        if not fact or fact["question"] != qid:
+            error = "shared fact does not answer this question"
+        elif not checked.exists() or load_json(checked).get("digest") != digest(data):
+            error = "shared evidence must pass check --stage protections"
+        elif answer.get("fact_digest") != shared_digest(data, fact):
+            error = "shared fact changed; recheck its applicability before reusing it"
+        elif not any(x["site"] == sid and x["relation"] == "uses" for x in owners[fact["owner"]]["sites"]):
+            error = "site is not a verified user of this owner"
+        elif not isinstance(answer.get("binding"), dict) or not answer["binding"].get("ev") or not answer["binding"].get("note"):
+            error = "shared answer requires binding.ev and binding.note establishing its conditions at this site"
+        elif answer.get("a", fact["answer"]["a"]) != fact["answer"]["a"]:
+            error = "shared answer contradicts its fact"
+        if error:
+            answer["shared_error"] = error
+            continue
+        inherited = {**fact["answer"], **{k: answer[k] for k in ("shared", "fact_digest", "binding", "hint_refutation") if k in answer}}
+        inherited["ev"] = [*as_list(fact["answer"]["ev"]), *as_list(answer["binding"]["ev"])]
+        answers[qid] = inherited
+    for qid, q in questions_of(catalog(), kind).items():
+        if qid in answers or not q.get("only_if"):
+            continue
+        applies = condition_met(q["only_if"], answers)
+        if applies is False:
+            answers[qid] = {"a": "n/a"}
+        elif applies is None:
+            answers[qid] = {"a": "unknown", "missing": "prerequisite unresolved: " + ", ".join(q["only_if"])}
+    return answers
+
+
+def as_list(value):
+    return value if isinstance(value, list) else [value]
+
+
+def cmd_owners(args):
+    run = Path(args.run).resolve()
+    sites = sites_of(run)
+    lines = ["# Establish shared protections", header(run_meta(run)),
+             f"Follow `{SKILL / 'owners.md'}`. Write `{run / 'protections.json'}`.",
+             f"Inventory: `{run / 'sites.jsonl'}`. Inspect existing owners and their callers before dispatching answerers.",
+             "Classify uses, bypasses and unknown connections. A wrapper name alone supplies no guarantee.",
+             "Account for entry, crossing and cleanup dependencies for each owner, with the guarantee they supply or a sourced exclusion. Focus includes their inventoried sites.",
+             "When a helper call has distinct operation semantics missing from inventory, submit it through add-sites before shard.",
+             "## Catalog questions that facts may answer"]
+    for kind, spec in catalog()["kinds"].items():
+        count = sum(s["kind"] == kind for s in sites.values())
+        if count:
+            lines += [f"### {kind}: {count} sites"]
+            for q in spec["questions"]:
+                lines += question_lines(q)
+    lines.append(f"When done: {cmd('check', run, '--stage', 'protections')}")
+    (run / "owners-packet.md").write_text("\n\n".join(lines) + "\n")
+    print(f"Owner reviewer packet: {run / 'owners-packet.md'}")
+    print(f"next: reviewer follows {SKILL / 'owners.md'}")
+
+
+def cmd_evidence(args):
+    """Register a retrieved primary-source excerpt once, without changing the source snapshot."""
+    run = Path(args.run)
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", args.id) or not args.url.startswith("https://"):
+        die("evidence needs a simple id and its HTTPS primary-source URL")
+    try:
+        datetime.date.fromisoformat(args.retrieved)
+    except ValueError:
+        die("retrieved must be YYYY-MM-DD")
+    target = run / "evidence" / (args.id + ".md")
+    manifest = load_json(run / "evidence.json") if (run / "evidence.json").exists() else {}
+    if target.exists() or args.id in manifest:
+        die("evidence id already exists; use a new id for revised source material")
+    target.parent.mkdir(exist_ok=True)
+    shutil.copyfile(args.file, target)
+    manifest[args.id] = {"url": args.url, "retrieved": args.retrieved, "digest": file_digest(target)}
+    write_json(run / "evidence.json", manifest)
+    print(f"Cite @evidence/{args.id}.md:<line>; provider facts still need deployment applicability.")
+
+
+def cmd_add_sites(args):
+    run = Path(args.run)
+    if any((run / "shards").glob("*.json")):
+        die("add operation sites before sharding so site identities stay stable")
+    sites = sites_of(run)
+    meta = run_meta(run)
+    paths = set(source_files(Path(meta["root"]), catalog(), meta["paths"]))
+    existing = {(s["kind"], s["path"], s["line"]) for s in sites.values()}
+    failures, additions = [], []
+    for _, item in load_jsonl(args.file, failures):
+        if item.get("kind") not in meta["kinds"] or item.get("path") not in paths or not item.get("reason"):
+            failures.append("extra operation needs a kind and source path within this inventory scope, and a reason")
+            continue
+        check_evidence(run_meta(run)["root"], f"{item.get('path')}:{item.get('line')}", "extra operation", failures)
+        key = (item["kind"], item.get("path"), item.get("line"))
+        if key in existing:
+            continue
+        existing.add(key)
+        sid = f"S{len(sites)+len(additions)+1:04d}"
+        additions.append({**item, "id": sid, "snippet": item.get("snippet", item["reason"]), "source": "owner-review"})
+    if failures:
+        die("; ".join(failures))
+    with (run / "sites.jsonl").open("a") as out:
+        for row in additions:
+            out.write(json.dumps(row) + "\n")
+    print(f"Added {len(additions)} operation sites; link them to the transport owner in protections.json.")
 
 
 # ---------------------------------------------------------------- answers
@@ -502,7 +960,17 @@ def check_evidence(root, ev, where, failures):
             failures.append(f"{where}: evidence '{item}' is not path:line or path:start-end")
             continue
         path = Path(root) / m["path"]
+        if m["path"].startswith("@evidence/"):
+            relative = m["path"][len("@evidence/"):]
+            manifest_path = Path(root).parent / "evidence.json"
+            manifest = load_json(manifest_path) if manifest_path.exists() else {}
+            evidence = manifest.get(Path(relative).stem)
+            path = Path(root).parent / "evidence" / relative
+            if Path(relative).name != relative or not evidence or not path.is_file() or file_digest(path) != evidence["digest"]:
+                failures.append(f"{where}: evidence excerpt is not registered or has changed")
+                continue
         allowed = path.resolve().is_relative_to(Path(root).resolve())
+        allowed |= m["path"].startswith("@evidence/")
         if not allowed:
             allowed = any(path.resolve().is_relative_to(deps.resolve()) for deps in dependency_roots(Path(root)))
         if not allowed or not path.is_file():
@@ -546,6 +1014,12 @@ def check_answer_set(root, qs, answers, where, failures):
             failures.append(f"{where} {qid}: no on a search question needs searched: the strings or patterns you searched for")
         elif a == "unknown" and not ans.get("missing"):
             failures.append(f"{where} {qid}: unknown needs missing, the fact that would settle it")
+        if a == "yes":
+            for field in q.get("yes_evidence", []):
+                if not ans.get(field):
+                    failures.append(f"{where} {qid}: yes needs {field}")
+                else:
+                    check_evidence(root, ans[field], f"{where} {qid} {field}", failures)
         if ans.get("ev"):
             check_evidence(root, ans["ev"], f"{where} {qid}", failures)
 
@@ -557,12 +1031,30 @@ def check_hint_answers(sid, answers, hints, failures):
             failures.append(f"{sid} {qid}: contradicts hint {hint['ev']}; requires hint_refutation explaining why it does not count")
 
 
+def validate_answers(run, sid, site, answers, where, failures):
+    answers = expand_answers(run, sid, site["kind"], answers)
+    check_answer_set(run_meta(run)["root"], questions_of(catalog(), site["kind"]), answers, where, failures)
+    if isinstance(answers, dict) and all(isinstance(a, dict) for a in answers.values()):
+        check_hint_answers(sid, answers, derived_of(run).get(sid, {}), failures)
+        for qid, answer in answers.items():
+            if answer.get("shared_error"):
+                failures.append(f"{where} {qid}: {answer['shared_error']}")
+            if answer.get("shared") and answer.get("binding", {}).get("ev"):
+                ev = answer["binding"]["ev"]
+                check_evidence(run_meta(run)["root"], ev, f"{where} {qid} binding", failures)
+                paths = [EVIDENCE.match(str(x)) for x in as_list(ev)]
+                if not any(x and x["path"] == site["path"] for x in paths):
+                    failures.append(f"{where} {qid}: binding must cite this site's file")
+    return answers
+
+
 def check_answers(run, cat, sites, meta, failures, only_shard=None):
     shards = {p.stem: load_json(p) for p in sorted((Path(run) / "shards").glob("*.json"))
               if only_shard is None or p.stem == only_shard}
     if not shards:
         failures.append(f"no shard {only_shard}" if only_shard else "no shards; run shard first")
     files = {p.stem: p for p in sorted((Path(run) / "answers").glob("*.jsonl"))}
+    corrected = load_json(Path(run) / "corrections.json") if (Path(run) / "corrections.json").exists() else {}
     for sid, shard in shards.items():
         if sid not in files:
             failures.append(f"answers/{sid}.jsonl does not exist")
@@ -575,7 +1067,7 @@ def check_answers(run, cat, sites, meta, failures, only_shard=None):
                     failures.append(f"{where}: an added site's kind must be one of this shard's: {', '.join(shard['kinds'])}")
                     continue
                 check_evidence(meta["root"], f"{row.get('path')}:{row.get('line')}", where, failures)
-                check_answer_set(meta["root"], questions_of(cat, row["kind"]), row.get("answers", {}), where, failures)
+                validate_answers(run, None, row, row.get("answers", {}), where, failures)
                 continue
             site = row.get("site")
             if site not in shard["sites"]:
@@ -583,6 +1075,8 @@ def check_answers(run, cat, sites, meta, failures, only_shard=None):
                 continue
             if site in rows:
                 failures.append(f"{where}: site {site} answered twice")
+            if site in corrected:
+                row = {"site": site, "answers": corrected[site]}
             rows[site] = row
             status = row.get("status", "site")
             if status == "not-a-site":
@@ -593,7 +1087,7 @@ def check_answers(run, cat, sites, meta, failures, only_shard=None):
                 if other not in shard["sites"] or other == site or sites[other]["kind"] != sites[site]["kind"]:
                     failures.append(f"{where}: same_as {other} must be another site of the same kind in this shard")
             elif status == "site":
-                check_answer_set(meta["root"], questions_of(cat, sites[site]["kind"]), row.get("answers", {}), where, failures)
+                validate_answers(run, site, sites[site], row.get("answers", {}), where, failures)
             else:
                 failures.append(f"{where}: status '{status}' is not site or not-a-site")
         for site in shard["sites"]:
@@ -602,7 +1096,7 @@ def check_answers(run, cat, sites, meta, failures, only_shard=None):
         for site, row in rows.items():
             answer = rows.get(row.get("same_as"), row)
             if row.get("status") != "not-a-site":
-                check_hint_answers(site, answer.get("answers", {}), derived_of(run).get(site, {}), failures)
+                validate_answers(run, site, sites[site], answer.get("answers", {}), site, failures)
             target = rows.get(row.get("same_as"), {})
             if row.get("same_as") and (target.get("same_as") or target.get("status") == "not-a-site"):
                 failures.append(f"{files[sid].name}: {site} same_as {row['same_as']}, which has no answers of its own")
@@ -611,8 +1105,7 @@ def check_answers(run, cat, sites, meta, failures, only_shard=None):
             effective, all_sites = merged_answers(run, sites)
             for site, row in effective.items():
                 if row["status"] == "site":
-                    check_answer_set(meta["root"], questions_of(cat, all_sites[site]["kind"]), row["answers"], site, failures)
-                    check_hint_answers(site, row["answers"], derived_of(run).get(site, {}), failures)
+                    validate_answers(run, site, all_sites[site], row["answers"], site, failures)
         failures += [f"answers/{stem}.jsonl matches no shard" for stem in files if stem not in shards]
 
 
@@ -639,6 +1132,9 @@ def merged_answers(run, sites):
     for sid, answers in corrections.items():
         if sid in merged:
             merged[sid].update(status="site", answers=copy.deepcopy(answers), same_as=None)
+    for sid, row in merged.items():
+        if row["status"] == "site":
+            row["answers"] = expand_answers(run, sid, all_sites[sid]["kind"], row["answers"])
     if failures:
         die("; ".join(failures))
     return merged, all_sites
@@ -701,16 +1197,49 @@ def coverage(cat, merged, all_sites):
 
 
 def cmd_map(args):
-    require_answers(args.run)
-    failures = []
-    check_audit(args.run, failures)
-    if audit_refutations(args.run):
-        failures.append("audit refutations remain; run reconcile --stage audit before map")
-    if failures:
-        die("; ".join(failures))
+    partial = getattr(args, "partial", False)
+    if not partial:
+        require_answers(args.run)
+        failures = []
+        check_audit(args.run, failures)
+        if audit_refutations(args.run):
+            failures.append("audit refutations remain; run reconcile --stage audit before map")
+        if failures:
+            die("; ".join(failures))
     cat, run = catalog(), Path(args.run)
+    owner_coverage = owner_coverage_of(run)
     meta = run_meta(run)
     merged, all_sites = merged_answers(run, sites_of(run))
+    blocked = {}
+    if partial:
+        for sid, row in merged.items():
+            failures = []
+            if row["status"] == "site":
+                validate_answers(run, sid, all_sites[sid], row["answers"], sid, failures)
+            elif row["status"] != "not-a-site" or not row.get("note"):
+                failures.append("incomplete site classification")
+            if failures:
+                blocked[sid] = failures
+        # A pending correction makes both the site's old verdict and its dependents provisional.
+        updates = audit_refutations(run)
+        pending_file = run / "pending-corrections.jsonl"
+        if pending_file.exists():
+            updates += [row for _, row in load_jsonl(pending_file, [])]
+        for _, _, row in load_verdicts(run, []):
+            if row.get("finding") == "refuted":
+                updates += row.get("corrections", [])
+        current_updates = {}
+        for update in updates:
+            sid = update.get("site")
+            if sid in merged and update.get("before") == digest(merged[sid]):
+                blocked[sid] = ["unapplied correction; current answer is disputed"]
+                normalized = {**update, "answers": expand_answers(run, sid, all_sites[sid]["kind"], update.get("answers", {}))}
+                key = digest({k: normalized[k] for k in ("site", "before", "answers")})
+                current_updates[key] = normalized
+        # Closing archives verdicts. Keep disputes until their answers actually change.
+        # Multiple judges may submit the same correction with different reasons.
+        pending_file.write_text("".join(json.dumps(row) + "\n" for row in current_updates.values()))
+        merged = {sid: row for sid, row in merged.items() if sid not in blocked}
     api = load_json(run / "api.json") if (run / "api.json").exists() else {"installed": None, "missing": {}}
     rpath = rulings_path(run, args.rulings)
     rulings = load_json(rpath).get("rulings", []) if rpath.exists() else []
@@ -758,20 +1287,31 @@ def cmd_map(args):
     for n, group in enumerate(groups, 1):
         write_json(run / "judges" / f"J{n:02d}.json", {"id": f"J{n:02d}", "clusters": group})
     cov = coverage(cat, merged, all_sites)
-    audit = load_json(run / "audit.json")
-    write_json(run / "clusters.json", {"clusters": out, "effect": api.get("installed"), "coverage": cov,
-               "facts_digest": effective_digest(run), "rulings": str(rpath), "held": held,
-               "audit": {"eligible": audit["eligible"], "checked": len(audit["selected"])}})
+    audit = audit_summary(run)
+    round_path = run / "review-round.json"
+    round_state = load_json(round_path) if round_path.exists() else {"number": 0}
+    facts = effective_digest(run)
+    if not partial and round_state.get("facts_digest") != facts:
+        round_state = {"number": round_state["number"] + 1, "facts_digest": facts}
+        write_json(round_path, round_state)
+    write_json(run / "clusters.json", {"clusters": out, "effect": api.get("installed"), "coverage": cov, "owner_coverage": owner_coverage,
+               "facts_digest": facts, "rulings": str(rpath), "held": held, "round": round_state["number"],
+               "unanswered": sorted(set(all_sites) - set(merged)), "blocked": blocked, "audit": audit})
     restore_verdicts(run)
     lines = ["# Coverage of inventoried sites", "", "Discovery limits: see discovery.md. Unknown eligibility is included in unknown.", "",
              "| guarantee | has / known applicable | unknown |", "| --- | --- | --- |"]
     lines += [f"| {r['label']} | {r['has']}/{r['of']} | {r['unknown']} |" for r in cov if r["of"] or r["unknown"]]
-    lines += ["", f"Eligible negatives and hint contradictions audited: {len(audit['selected'])}/{audit['eligible']}. "
+    lines += ["", f"Eligible negatives and hint contradictions audited: {audit['checked']}/{audit['eligible']} ({audit['status']}). "
               "Other negatives, exclusions and discovery blind spots are not audited by this sample."]
+    if owner_coverage:
+        lines += ["", "## Contributing boundaries", "", "These are review dependencies, not proof that their guarantees hold."]
+        lines += [f"- {r['owner']} {r['boundary']} ({r['status']}): {r['guarantee']}; "
+                  f"sites {', '.join(r['sites']) or 'none'}; {r['reason']}" +
+                  (f" Missing: {r['missing']}" if r.get('missing') else '') for r in owner_coverage]
     (run / "coverage.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
     print(f"{len(out)} clusters in {len(groups)} judge groups; {len(held)} rejected or deferred candidates held out")
-    if not out:
+    if not out and not partial:
         (run / "merges.jsonl").write_text("")
         print_verdicts(run)
     print("next: report coverage and discovery limits; no rule matched" if not out else
@@ -790,6 +1330,8 @@ def cmd_judge_packet(args):
            f"Catalog API names are from {cat['written_against']}.",
            f"Write verdicts to `{run / 'verdicts' / (group['id'] + '.jsonl')}`. Follow `{SKILL / 'judge.md'}`.",
            f"Complete facts and correction digests: `{cmd('facts', run)}`.", ""]
+    if (run / "protections.json").exists():
+        out.append(f"Shared owners, source facts, applicability conditions and exceptions: `{run / 'protections.json'}`. Inspect referenced facts there and the site bindings returned by facts.")
     out.append("Carried findings are in carried.jsonl; do not rewrite them. Use explicit site lists for pending subsets.")
     for cid in group["clusters"]:
         c = by_id[cid]
@@ -835,15 +1377,20 @@ def load_verdicts(run, failures):
     return rows
 
 
-def check_verdicts(run, failures, only_group=None):
+def verdict_inputs(run, mapping=None):
     cat = catalog()
-    data = require_mapping(run)
+    data = require_mapping(run) if mapping is None else mapping
     root = run_meta(run)["root"]
     rules = {r["id"]: r for r in cat["rules"]}
     clusters = {c["id"]: c for c in data["clusters"]}
     effective, sites = merged_answers(run, sites_of(run))
     groups = {p.stem: load_json(p)["clusters"] for p in sorted((Path(run) / "judges").glob("*.json"))}
-    rows = load_verdicts(run, failures)
+    return cat, data, root, rules, clusters, effective, sites, groups
+
+
+def check_verdicts(run, failures, only_group=None, *, complete=True, rows_override=None, context=None):
+    cat, data, root, rules, clusters, effective, sites, groups = context or verdict_inputs(run)
+    rows = load_verdicts(run, failures) if rows_override is None else rows_override
     if only_group and only_group not in groups:
         failures.append(f"unknown judge group {only_group}")
         return
@@ -943,15 +1490,15 @@ def check_verdicts(run, failures, only_group=None):
                 sid = update.get("site")
                 if sid not in effective:
                     continue
-                if update.get("before") != digest(effective[sid]) or not update.get("reason"):
-                    failures.append(f"{where}: correction requires current before digest and reason")
-                check_answer_set(root, questions_of(cat, sites[sid]["kind"]), update.get("answers", {}), where, failures)
+                replacement = validate_correction(run, update, effective, sites, where, failures)
                 fact = row.get("fact")
-                if update.get("answers", {}).get(fact) == effective[sid]["answers"].get(fact):
+                if isinstance(replacement, dict) and replacement.get(fact) == effective[sid]["answers"].get(fact):
                     failures.append(f"{where}: refuted fact must change")
         if row.get("covered_by"):
             failures.append(f"{where}: keep the original finding; merge duplicate remedies in merges.jsonl instead of covered_by")
     for cid, c in clusters.items():
+        if not complete:
+            break
         if only_group and cid not in groups[only_group]:
             continue
         for site in c["sites"]:
@@ -1029,7 +1576,9 @@ def print_verdicts(run):
         report.append({"id": owner, "finding": FINDINGS[priority], "decision": any(m["decision"] for m in members),
                        "members": members})
     report.sort(key=lambda r: (FINDINGS.index(r["finding"]), not r["decision"], r["id"]))
-    write_json(Path(run) / "report.json", {"groups": report, "held": data.get("held", []), "audit": data["audit"], "facts_digest": data["facts_digest"]})
+    write_json(Path(run) / "report.json", {"groups": report, "held": data.get("held", []), "audit": data["audit"], "facts_digest": data["facts_digest"],
+               "status": "partial" if data.get("unanswered") or any(r['status'] == 'unknown' for r in data.get('owner_coverage', [])) else "complete",
+               "unanswered": data.get("unanswered", []), "owner_coverage": data.get("owner_coverage", [])})
     rules = {r["id"]: r for r in catalog()["rules"]}
     print(f"Held by user ruling: {len(data.get('held', []))}; details remain in report.json, separate from coverage.")
     for group in report:
@@ -1037,9 +1586,100 @@ def print_verdicts(run):
         for row in group["members"]:
             print("  " + verdict_line(row, clusters, rules, sites))
 
+def audit_summary(run):
+    run = Path(run)
+    path = run / "audit.json"
+    if not path.exists():
+        return {"status": "not-run", "eligible": None, "checked": 0}
+    data = load_json(path)
+    if data.get("facts_digest") != effective_digest(run):
+        return {"status": "stale", "eligible": None, "checked": 0}
+    failures = []
+    check_audit(run, failures)
+    if failures:
+        return {"status": "incomplete", "eligible": data["eligible"], "checked": 0, "failures": failures}
+    refuted = len(audit_refutations(run))
+    return {"status": "refuted" if refuted else "checked", "eligible": data["eligible"],
+            "checked": len(data["selected"]) - refuted, "refuted": refuted,
+            "optional_sampled": data.get("optional_sampled", 0),
+            "optional_retired": data.get("optional_retired", [])}
+
+
+def cmd_close(args):
+    """Close from current facts and validated findings, never from a raw cache."""
+    run = Path(args.run)
+    previous = run / "clusters.json"
+    if not previous.exists():
+        archived = sorted((run / "history").glob("*/clusters.json"), key=lambda p: int(p.parent.name))
+        previous = archived[-1] if archived else None
+    old = load_json(previous) if previous else {"clusters": []}
+    selected_pairs = None
+    if args.clusters:
+        requested = set(args.clusters.split(","))
+        known = {c["id"]: c for c in old["clusters"]}
+        if requested - set(known):
+            die("unknown close clusters: " + ", ".join(sorted(requested - set(known))))
+        selected_pairs = {(known[cid]["rule"], s["site"]) for cid in requested for s in known[cid]["sites"]}
+    selected_sites = None
+    if args.owners:
+        selected_sites = owner_sites(run, args.owners)
+    rulings = args.rulings or old.get("rulings")
+    cmd_map(argparse.Namespace(run=str(run), rulings=rulings, sites_per_judge=80, include_held=False, partial=True))
+    data = require_mapping(run)
+    clusters = {c["id"]: c for c in data["clusters"]}
+    rows = load_verdicts(run, [])
+    report, covered = [], set()
+    for _, _, row in rows:
+        c = clusters[row["cluster"]]
+        ids = [s["site"] for s in c["sites"]] if row["sites"] == "all" else row["sites"]
+        keys = {(c["rule"], sid) for sid in ids}
+        if selected_pairs is not None and not keys <= selected_pairs:
+            continue
+        if selected_sites is not None and not set(ids) <= selected_sites:
+            continue
+        report.append({"id": row["id"], "finding": row["finding"], "decision": row["decision"], "members": [row]})
+        covered.update(keys)
+    pending = []
+    for c in data["clusters"]:
+        for item in c["sites"]:
+            sid = item["site"]
+            key = (c["rule"], sid)
+            if key in covered:
+                continue
+            selected = (selected_pairs is None or key in selected_pairs) and (selected_sites is None or sid in selected_sites)
+            pending.append({"rule": c["rule"], "site": sid, "state": item["state"],
+                            "reason": "awaiting judgment" if selected else "outside selected work"})
+    effective, all_sites = merged_answers(run, sites_of(run))
+    unresolved = [{"site": sid, "question": qid, "missing": answer.get("missing")}
+                  for sid, row in effective.items() if sid not in data["blocked"]
+                  for qid, answer in row["answers"].items() if answer.get("a") == "unknown"]
+    unanswered = [{"site": sid, "path": all_sites[sid]["path"],
+                   "reason": data["blocked"].get(sid, ["not answered in this scope"])} for sid in data["unanswered"]]
+    report.sort(key=lambda r: (FINDINGS.index(r["finding"]), r["id"]))
+    payload = {"status": "partial", "closed": True, "reason": args.reason, "consolidated": False,
+               "groups": report, "pending": pending, "unanswered": unanswered, "unresolved": unresolved,
+               "held": data.get("held", []), "audit": data["audit"], "facts_digest": data["facts_digest"],
+               "scope": {"clusters": args.clusters, "owners": args.owners},
+               "inventory": len(all_sites), "coverage": data["coverage"], "owner_coverage": data.get("owner_coverage", [])}
+    write_json(run / "report.json", payload)
+    lines = ["# Partial review", "", args.reason, "", "Findings below have current facts and passed the verdict check. Remedies are not consolidated.",
+             f"Inventory: {len(all_sites)} sites; {len(report)} finding groups; {len(pending)} candidate judgments pending; "
+             f"{len(unanswered)} sites unanswered or disputed; {len(unresolved)} unknown answers.", ""]
+    rules = {r["id"]: r for r in catalog()["rules"]}
+    for group in report:
+        lines.append("- " + verdict_line(group["members"][0], clusters, rules, all_sites))
+    lines += ["", "Pending candidates, missing facts, exclusions and audit limits are listed in report.json."]
+    (run / "report.md").write_text("\n".join(lines) + "\n")
+    print(f"Checked partial report: {run / 'report.md'}")
+    print(f"{len(report)} current groups; {len(pending)} pending candidates; {len(unanswered)} unanswered or disputed sites.")
+    print("next: reply from report.json; resume only the chosen pending work")
+
+
 def cmd_check(args):
     cat, run, failures = catalog(), Path(args.run), []
-    if args.stage == "answers":
+    if args.stage == "protections":
+        check_protections(run, failures)
+    elif args.stage == "answers":
         check_answers(run, cat, sites_of(run), run_meta(run), failures, args.part)
     elif args.stage == "audit":
         check_audit(run, failures)
@@ -1053,11 +1693,16 @@ def cmd_check(args):
     print(f"{args.stage}{' ' + args.part if args.part else ''}: pass")
     if args.part:
         return
-    if args.stage == "answers":
+    if args.stage == "protections":
+        write_json(run / "protections.checked.json", {"digest": digest(protections_of(run))})
+        print(f"next: {cmd('pilot', run)}")
+    elif args.stage == "answers":
         print(f"next: {cmd('audit', run)}")
     elif args.stage == "audit":
         print(f"next: {cmd('reconcile', run, '--stage', 'audit')}" if audit_refutations(run) else f"next: {cmd('map', run)}")
     elif args.stage == "verdicts":
+        effective, _ = merged_answers(run, sites_of(run))
+        write_json(run / "judged.json", {"facts_digest": effective_digest(run), "answered_sites": sorted(effective)})
         rows = [r for _, _, r in load_verdicts(run, [])]
         print(f"next: {cmd('reconcile', run)}" if any(r["finding"] == "refuted" for r in rows) else
               f"next: consolidator uses {cmd('merge-packet', run)}")
@@ -1068,11 +1713,21 @@ def cmd_check(args):
 def cmd_rule(args):
     run = Path(args.run)
     failures = []
-    check_verdicts(run, failures)
-    check_merges(run, failures)
+    report_path = run / "report.json"
+    report = load_json(report_path) if report_path.exists() else {}
+    if report.get("closed"):
+        if report.get("facts_digest") != effective_digest(run):
+            die("partial report is stale; close again before recording rulings")
+        selected = {member["id"] for group in report["groups"] for member in group["members"]}
+        current = [row for row in load_verdicts(run, failures) if row[2].get("id") in selected]
+        check_verdicts(run, failures, complete=False, rows_override=current)
+        rows = {row["id"]: row for _, _, row in current}
+    else:
+        check_verdicts(run, failures)
+        check_merges(run, failures)
+        rows = {row["id"]: row for _, _, row in load_verdicts(run, [])}
     if failures:
         die("; ".join(failures))
-    rows = {row["id"]: row for _, _, row in load_verdicts(run, [])}
     clusters = {c["id"]: c for c in require_mapping(run)["clusters"]}
     meta = run_meta(run)
     path = rulings_path(run, args.rulings)
@@ -1081,7 +1736,7 @@ def cmd_rule(args):
         die("a custom rulings file must be outside the pinned repository; use the default file at the repository root")
     store = load_json(path) if path.exists() else {"format": 2, "rulings": []}
     ids = list(dict.fromkeys(args.verdicts.split(",")))
-    merges = [m for _, m in load_merges(run, []) or []]
+    merges = [] if report.get("closed") else [m for _, m in load_merges(run, []) or []]
     ids += [m["row"] for m in merges if m["into"] in ids and m["row"] not in ids]
     entries = []
     for vid in ids:
@@ -1184,43 +1839,54 @@ def discovery_text(meta):
 
 
 def declaration_path(effect, package, module):
-    def types(value):
+    """Resolve an exported module, including TypeScript's adjacent declaration lookup."""
+    def declaration(value, wildcard=None):
         if isinstance(value, str):
-            return value if value.endswith((".d.ts", ".d.mts", ".d.cts")) else None
+            value = value.replace("*", wildcard) if wildcard is not None else value
+            suffixes = {".js": ".d.ts", ".mjs": ".d.mts", ".cjs": ".d.cts"}
+            for suffix, replacement in suffixes.items():
+                if value.endswith(suffix):
+                    value = value[:-len(suffix)] + replacement
+                    break
+            if not value.startswith("./") or not value.endswith((".d.ts", ".d.mts", ".d.cts")):
+                return None
+            path = effect / value
+            return path if path.resolve().is_relative_to(effect.resolve()) and path.is_file() else None
         if isinstance(value, dict):
-            if "types" in value:
-                found = types(value["types"])
+            # Explicit types take precedence over runtime branches.
+            keys = [k for k in ("types", "import", "node", "default", "require") if k in value]
+            for key in keys:
+                found = declaration(value[key], wildcard)
                 if found:
                     return found
-            for nested in value.values():
-                found = types(nested)
+        if isinstance(value, list):
+            for item in value:
+                found = declaration(item, wildcard)
                 if found:
                     return found
         return None
-    exports = package.get("exports", {})
-    if isinstance(exports, dict):
-        key = "./" + module
-        target = types(exports.get(key))
-        if key in exports and not target:
-            return None
-        if not target:
-            for key, value in exports.items():
-                if "*" in key:
-                    before, after = key.split("*", 1)
-                    spec = "./" + module
-                    if spec.startswith(before) and spec.endswith(after):
-                        match = spec[len(before):len(spec) - len(after) if after else None]
-                        template = types(value)
-                        if template:
-                            target = template.replace("*", match)
-                            break
-        if target:
-            return effect / target
+
     if "exports" in package:
+        exports = package["exports"]
+        if not isinstance(exports, dict):
+            return None
+        spec = "./" + module
+        if spec in exports:
+            return declaration(exports[spec])
+        patterns = []
+        for key, value in exports.items():
+            if "*" not in key:
+                continue
+            before, after = key.split("*", 1)
+            if spec.startswith(before) and spec.endswith(after) and len(spec) >= len(before) + len(after):
+                match = spec[len(before):len(spec) - len(after) if after else None]
+                patterns.append((len(before), len(key), value, match))
+        if patterns:
+            _, _, value, match = max(patterns, key=lambda x: x[:2])
+            return declaration(value, match)  # A more specific null export blocks fallback.
         return None
-    # Older packages and fixture packages may have no exports map.
     for path in (effect / "dist" / f"{module}.d.ts", effect / "dist/dts" / f"{module}.d.ts"):
-        if path.exists():
+        if path.is_file():
             return path
     return None
 
@@ -1237,16 +1903,23 @@ def require_answers(run):
         die("; ".join(failures))
 
 
+def owner_coverage_of(run):
+    data = require_protections(run) if (Path(run) / "protections.json").exists() else {"owners": []}
+    return [{"owner": o["id"], **row} for o in data["owners"] for row in o["coverage"]]
+
+
 def require_mapping(run):
     data = load_json(Path(run) / "clusters.json")
     if data.get("facts_digest") != effective_digest(run):
         die("answers changed since map; rerun audit and map before judging or reporting")
+    if data.get("owner_coverage", []) != owner_coverage_of(run):
+        die("owner coverage changed since map; rerun map before judging or reporting")
     return data
 
 
 def archive_outputs(run):
     run = Path(run)
-    names = ("judges", "verdicts", "carried.jsonl", "merges.jsonl", "report.json", "clusters.json", "coverage.md")
+    names = ("judges", "verdicts", "carried.jsonl", "merges.jsonl", "report.json", "report.md", "clusters.json", "coverage.md")
     existing = [run / name for name in names if (run / name).exists()]
     if existing:
         archive = run / "history" / str(len(list((run / "history").glob("*"))) + 1)
@@ -1273,22 +1946,33 @@ def save_reusable(run):
     clusters = {c["id"]: c for c in data["clusters"]}
     rows = load_verdicts(run, [])
     entries = load_json(Path(run) / "reusable.json") if (Path(run) / "reusable.json").exists() else []
-    # A completed group can survive even if another judge has not returned yet.
-    for group in sorted({stem for _, stem, _ in rows}):
+    # A stopped group may still contain supported rows. Check each row, then
+    # reject ambiguous identities or overlapping coverage across valid rows.
+    candidates, ids, coverage_count = [], {}, {}
+    # Coverage-only edits remap the report but do not change site judgment facts.
+    context = verdict_inputs(run, mapping=data)
+    for where, stem, row in rows:
+        ids[row.get("id")] = ids.get(row.get("id"), 0) + 1
         failures = []
-        check_verdicts(run, failures, group)
-        if failures:
+        check_verdicts(run, failures, complete=False, rows_override=[(where, stem, row)], context=context)
+        if failures or row["finding"] == "refuted":
             continue
-        for _, stem, row in rows:
-            if stem != group or row["finding"] == "refuted":
-                continue
-            c = clusters[row["cluster"]]
-            listed = [x["site"] for x in c["sites"]] if row["sites"] == "all" else row["sites"]
-            deps = set(listed) | set(row.get("depends_on", []))
-            entries.append({"row": {**row, "sites": listed}, "rule": c["rule"], "context": verdict_context(c),
-                            "facts": {sid: digest(effective[sid]) for sid in sorted(deps)},
-                            "user": {x["site"]: x.get("user") for x in c["sites"] if x["site"] in listed},
-                            "effect": data.get("effect")})
+        c = clusters[row["cluster"]]
+        listed = [x["site"] for x in c["sites"]] if row["sites"] == "all" else row["sites"]
+        keys = {(c["rule"], sid) for sid in listed}
+        for key in keys:
+            coverage_count[key] = coverage_count.get(key, 0) + 1
+        candidates.append((row, c, listed, keys))
+    ambiguous = {key for key, count in coverage_count.items() if count > 1}
+    entries = [e for e in entries if not any((e["rule"], sid) in ambiguous for sid in e["row"]["sites"])]
+    for row, c, listed, keys in candidates:
+        if ids[row["id"]] != 1 or any(coverage_count[k] != 1 for k in keys):
+            continue
+        deps = set(listed) | set(row.get("depends_on", []))
+        entries.append({"row": {**row, "sites": listed}, "rule": c["rule"], "context": verdict_context(c),
+                        "facts": {sid: digest(effective[sid]) for sid in sorted(deps)},
+                        "user": {x["site"]: x.get("user") for x in c["sites"] if x["site"] in listed},
+                        "effect": data.get("effect")})
     latest = {(e["rule"], tuple(e["row"]["sites"])): e for e in entries}
     write_json(Path(run) / "reusable.json", list(latest.values()))
 
@@ -1301,8 +1985,11 @@ def restore_verdicts(run):
     groups = {p.stem: load_json(p) for p in sorted((run / "judges").glob("*.json"))}
     owners = {cid: gid for gid, g in groups.items() for cid in g["clusters"]}
     carried, covered = [], set()
+    context = verdict_inputs(run)
     for entry in entries:
         row = entry["row"]
+        if set(entry["facts"]) & set(data.get("blocked", {})):
+            continue
         if any(sid not in effective or digest(effective[sid]) != value for sid, value in entry["facts"].items()):
             continue
         if row["remedy"] == "effect" and entry["effect"] != data.get("effect"):
@@ -1315,7 +2002,13 @@ def restore_verdicts(run):
             keys = {(c["id"], sid) for sid in row["sites"]}
             if user != entry["user"] or keys & covered:
                 continue
-            carried.append({**row, "id": f"{owners[c['id']]}-R{len(carried)+1}", "cluster": c["id"]})
+            candidate = {**row, "id": f"{owners[c['id']]}-R{len(carried)+1}", "cluster": c["id"]}
+            failures = []
+            check_verdicts(run, failures, complete=False,
+                           rows_override=[("carried.jsonl:reuse", owners[c["id"]], candidate)], context=context)
+            if failures:
+                continue
+            carried.append(candidate)
             covered.update(keys)
             break
     (run / "carried.jsonl").write_text("".join(json.dumps(r) + "\n" for r in carried))
@@ -1369,12 +2062,32 @@ def cmd_audit(args):
     candidates = audit_candidates(run)
     mandatory = [r for r in candidates if r["mandatory"]]
     optional = sorted((r for r in candidates if not r["mandatory"]), key=lambda row: digest(row["id"]))
-    selected = mandatory + (optional if args.all else optional[:args.sample])
+    # Keep the optional cohort through corrections. Removed negatives consumed
+    # their sample slots; replacing them would silently expand the review.
+    scope = sorted(merged_answers(run, sites_of(run))[0])
+    cohort_path = run / "audit-cohort.json"
+    cohort = load_json(cohort_path) if cohort_path.exists() else {}
+    fresh = cohort.get("sites") != scope
+    if fresh:
+        cohort = {"sites": scope, "optional": [], "budget": 30}
+    budget = args.sample if args.sample is not None else cohort["budget"]
+    if budget < len(cohort["optional"]):
+        die("audit sample cannot shrink an existing cohort; use close for a partial finish")
+    ids = list(cohort["optional"])
+    additions = [r["id"] for r in optional if r["id"] not in ids]
+    if fresh or args.all or budget > cohort["budget"]:
+        ids.extend(additions if args.all else additions[:max(0, budget - len(ids))])
+    budget = max(budget, len(ids))
+    write_json(cohort_path, {"sites": scope, "optional": ids, "budget": budget})
+    selected = mandatory + [r for r in optional if r["id"] in ids]
+    eligible_ids = {r["id"] for r in candidates}
+    retired = sorted(set(ids) - eligible_ids)
     cache = load_json(run / "audit-cache.json") if (run / "audit-cache.json").exists() else {}
     reused = [cache[r["id"]] for r in selected if cache.get(r["id"], {}).get("fingerprint") == r["fingerprint"]]
     reused_ids = {r["id"] for r in reused}
     write_json(run / "audit.json", {"facts_digest": effective_digest(run), "eligible": len(candidates),
-                                    "selected": selected, "mandatory": len(mandatory), "sample": args.sample,
+                                    "selected": selected, "mandatory": len(mandatory), "sample": budget,
+                                    "optional_sampled": len(ids), "optional_retired": retired,
                                     "reused": sorted(reused_ids)})
     (run / "audit-answers.jsonl").write_text("".join(json.dumps(r) + "\n" for r in reused))
     merged, sites = merged_answers(run, sites_of(run))
@@ -1382,6 +2095,8 @@ def cmd_audit(args):
            f"Follow `{SKILL / 'audit.md'}`. Append pending results to `{run.resolve() / 'audit-answers.jsonl'}`.",
            f"Selected {len(selected)}/{len(candidates)} eligible answers, including every hint contradiction ({len(mandatory)}). "
            f"Reused {len(reused)} confirmations; {len(candidates)-len(selected)} optional negatives remain unaudited.",
+           f"Optional cohort: {len(ids)} sampled; {len(retired)} no longer eligible after corrections. "
+           "Refresh keeps this cohort. A larger --sample total or --all expands it; a new answered batch starts a new cohort.",
            f"Complete answer sets and correction digests: `{cmd('facts', run)}`."]
     for item in selected:
         if item["id"] in reused_ids:
@@ -1407,10 +2122,10 @@ def validate_correction(run, update, effective, sites, where, failures):
     if not update.get("reason") or update.get("before") != digest(effective[sid]):
         failures.append(f"{where}: correction needs reason and current before digest")
     answers = update.get("answers", {})
-    check_answer_set(run_meta(run)["root"], questions_of(catalog(), sites[sid]["kind"]), answers, where, failures)
-    check_hint_answers(sid, answers, derived_of(run).get(sid, {}), failures)
+    answers = validate_answers(run, sid, sites[sid], answers, where, failures)
     if answers == effective[sid]["answers"]:
         failures.append(f"{where}: correction must change answers")
+    return answers
 
 
 def check_audit(run, failures):
@@ -1443,12 +2158,12 @@ def check_audit(run, failures):
             check_evidence(run_meta(run)["root"], row["evidence"], f"audit:{n}", failures)
         if row.get("result") == "refuted":
             update = row.get("correction")
-            validate_correction(run, update, effective, sites, f"audit:{n}", failures)
+            replacement = validate_correction(run, update, effective, sites, f"audit:{n}", failures)
             if isinstance(update, dict) and update.get("site") != expected[aid]["site"]:
                 failures.append(f"audit:{n}: correction must target this audited site")
             if isinstance(update, dict) and effective[expected[aid]["site"]]["status"] != "not-a-site":
                 qid = expected[aid]["question"]
-                if update.get("answers", {}).get(qid) == effective[expected[aid]["site"]]["answers"].get(qid):
+                if isinstance(replacement, dict) and replacement.get(qid) == effective[expected[aid]["site"]]["answers"].get(qid):
                     failures.append(f"audit:{n}: the audited answer must change")
         elif row.get("result") == "confirmed":
             confirmed[aid] = row
@@ -1477,13 +2192,7 @@ def cmd_correct(args):
         if sid not in sites or sid in updates:
             failures.append(f"correction:{n}: unknown or repeated site {sid}")
             continue
-        if not row.get("reason") or row.get("before") != digest(merged[sid]):
-            failures.append(f"correction:{n}: reason and current before digest required; see facts command")
-        answers = row.get("answers", {})
-        check_answer_set(run_meta(run)["root"], questions_of(catalog(), sites[sid]["kind"]), answers, sid, failures)
-        check_hint_answers(sid, answers, derived_of(run).get(sid, {}), failures)
-        if answers == merged[sid]["answers"]:
-            failures.append(f"correction:{n}: answers did not change")
+        answers = validate_correction(run, row, merged, sites, f"correction:{n}", failures)
         updates[sid] = answers
     if failures:
         die("; ".join(failures))
@@ -1493,9 +2202,22 @@ def cmd_correct(args):
     # Save exact correction evidence before replacing the effective facts.
     history = run / "correction-history"
     history.mkdir(exist_ok=True)
-    if len(list(history.glob("*.jsonl"))) >= args.max_rounds:
-        die("correction round limit reached; report this run as incomplete. Increase --max-rounds only for an agreed continuation")
-    shutil.copyfile(args.file, history / f"{len(list(history.iterdir())) + 1}.jsonl")
+    round_path = run / "review-round.json"
+    round_number = load_json(round_path)["number"] if round_path.exists() else 0
+    ledger_path = run / "correction-rounds.json"
+    rounds = load_json(ledger_path) if ledger_path.exists() else []
+    # Before the first map, corrections belong to the initial evidence pass.
+    if round_number > 0 and round_number not in rounds and len(rounds) >= args.max_rounds:
+        pending = run / "pending-corrections.jsonl"
+        if Path(args.file).resolve() != pending.resolve():
+            shutil.copyfile(args.file, pending)
+        cmd_close(argparse.Namespace(run=str(run), clusters=None, owners=None, rulings=None,
+                                     reason="correction round limit; unapplied corrections remain pending"))
+        die("correction round limit reached; checked partial report written. Increase --max-rounds only for an agreed continuation")
+    if round_number > 0 and round_number not in rounds:
+        rounds.append(round_number)
+    write_json(ledger_path, rounds)
+    shutil.copyfile(args.file, history / f"{len(list(history.glob('*.jsonl'))) + 1}.jsonl")
     save_reusable(run)
     write_json(run / "corrections.json", {**old, **updates})
     archive_outputs(run)
@@ -1503,7 +2225,11 @@ def cmd_correct(args):
         if (run / name).exists():
             (run / name).unlink()
     print("Corrections applied; checked verdicts saved for reuse. Rebuild audit selection and mapping.")
-    print(f"next: {cmd('check', run, '--stage', 'answers')}")
+    if len(rounds) >= args.max_rounds:
+        cmd_close(argparse.Namespace(run=str(run), clusters=None, owners=None, rulings=None,
+                                     reason="correction budget reached; current findings retained, affected work pending"))
+    else:
+        print(f"next: {cmd('check', run, '--stage', 'answers')}")
 
 
 def cmd_facts(args):
@@ -1551,8 +2277,10 @@ def cmd_reconcile(args):
     if failures:
         die("; ".join(failures))
     updates = {}
+    _, sites = merged_answers(args.run, sites_of(args.run))
     for update in corrections:
         sid = update["site"]
+        update = {**update, "answers": expand_answers(args.run, sid, sites[sid]["kind"], update["answers"])}
         if sid in updates and updates[sid]["answers"] != update["answers"]:
             die(f"conflicting corrections for {sid}; resolve the cited evidence before reconcile")
         updates[sid] = update
@@ -1569,14 +2297,22 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     parser = sub.add_parser("inventory"); parser.add_argument("root"); parser.add_argument("--run")
     parser.add_argument("--kinds"); parser.add_argument("--paths"); parser.add_argument("--extra")
+    parser = sub.add_parser("owners"); parser.add_argument("run")
+    parser = sub.add_parser("evidence"); parser.add_argument("run"); parser.add_argument("--file", required=True)
+    parser.add_argument("--url", required=True); parser.add_argument("--retrieved", required=True); parser.add_argument("--id", required=True)
+    parser = sub.add_parser("add-sites"); parser.add_argument("run"); parser.add_argument("--file", required=True)
     parser = sub.add_parser("api"); parser.add_argument("run"); parser.add_argument("--effect")
     parser = sub.add_parser("boundary"); parser.add_argument("run"); parser.add_argument("--tsgo-json")
-    parser = sub.add_parser("shard"); parser.add_argument("run"); parser.add_argument("--answers", type=int, default=400)
+    parser = sub.add_parser("pilot"); parser.add_argument("run"); parser.add_argument("--size", type=int, default=12)
+    parser.add_argument("--assess", action="store_true"); parser.add_argument("--decision", choices=("focus", "expand", "repair")); parser.add_argument("--reason")
+    parser.add_argument("--repairs", help="checked pilot repair record; see pilot.md after corrections")
+    parser = sub.add_parser("shard"); parser.add_argument("run"); parser.add_argument("--answers", type=int, default=200)
+    scope = parser.add_mutually_exclusive_group(); scope.add_argument("--sites"); scope.add_argument("--owners")
     parser = sub.add_parser("packet"); parser.add_argument("run"); parser.add_argument("shard")
     parser = sub.add_parser("check"); parser.add_argument("run")
-    parser.add_argument("--stage", choices=("answers", "audit", "verdicts", "merges"), default="answers")
+    parser.add_argument("--stage", choices=("protections", "answers", "audit", "verdicts", "merges"), default="answers")
     parser.add_argument("--part")
-    parser = sub.add_parser("audit"); parser.add_argument("run"); parser.add_argument("--sample", type=int, default=30, help="optional negatives to audit, in addition to every hint contradiction")
+    parser = sub.add_parser("audit"); parser.add_argument("run"); parser.add_argument("--sample", type=int, help="total optional sample budget for this answered batch; initially 30, retained on refresh; increase explicitly to expand")
     parser.add_argument("--all", action="store_true", help="audit every eligible answer")
     parser = sub.add_parser("correct"); parser.add_argument("run"); parser.add_argument("--file", required=True); parser.add_argument("--max-rounds", type=int, default=3)
     parser = sub.add_parser("facts"); parser.add_argument("run"); parser.add_argument("--sites")
@@ -1588,6 +2324,10 @@ def main():
     parser.add_argument("--include-held", action="store_true", help="revisit rejected or deferred candidates for this run")
     parser = sub.add_parser("judge-packet"); parser.add_argument("run"); parser.add_argument("group")
     parser = sub.add_parser("merge-packet"); parser.add_argument("run")
+    parser = sub.add_parser("close"); parser.add_argument("run")
+    parser.add_argument("--clusters", help="current or most recent cluster ids, comma-separated")
+    parser.add_argument("--owners", help="shared owner ids, comma-separated")
+    parser.add_argument("--rulings"); parser.add_argument("--reason", default="focused review")
     parser = sub.add_parser("rule"); parser.add_argument("run"); parser.add_argument("--rulings")
     parser.add_argument("--decision", choices=("accept", "reject", "defer"), required=True)
     parser.add_argument("--verdicts", required=True); parser.add_argument("--reason", required=True)
@@ -1595,10 +2335,10 @@ def main():
     args = p.parse_args()
     if args.cmd != "inventory":
         ensure_inputs(args.run)
-    for attr in ("answers", "sites_per_judge", "max_rounds"):
+    for attr in ("answers", "sites_per_judge", "max_rounds", "size"):
         if hasattr(args, attr) and getattr(args, attr) <= 0:
             die(f"{attr} must be positive")
-    if hasattr(args, "sample") and args.sample < 0:
+    if getattr(args, "sample", None) is not None and args.sample < 0:
         die("sample must be nonnegative")
     globals()["cmd_" + args.cmd.replace("-", "_")](args)
 

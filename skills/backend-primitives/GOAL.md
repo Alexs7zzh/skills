@@ -11,7 +11,8 @@ Ask an agent where such a codebase can improve and it returns a list. Ask again 
 This explicitly invoked skill separates the work:
 
 - A script lists every site its patterns match and reports the discovery limits. Pattern coverage is not whole-backend coverage.
-- Cheap agents state facts about each site, with citations.
+- A strong agent establishes shared owner, library and platform facts with explicit applicability conditions. Sites reference those facts only with evidence that the conditions hold.
+- A small pilot checks owners and exceptions before broad dispatch. Cheap agents then fill gaps at the selected sites, with citations.
 - The script maps the facts to defects, primitives and Effect concepts by a fixed rule table.
 - Strong agents audit every contradiction of a search hint and selected answers that exclude defect candidates. They then judge the remaining clusters. Sampling leaves an explicit unaudited remainder.
 - The user rules on the verdicts, and the rulings persist across runs.
@@ -26,6 +27,8 @@ Effect is the preferred way to build the mechanics: schedules, timeouts, typed e
 - **Unknown is work.** An answer the code cannot settle is `unknown`, with the missing fact named. A rule that depends on it yields an unresolved candidate, never a silent no. A judge settles it at the source or carries the limit.
 - **Every rule has a way out.** Each rule carries the condition under which its remedy does not fit, and the judge checks it at the sites. A finding of `fine` needs evidence.
 - **Primitives over sprinkled calls.** When many sites share the same facts, the remedy is one primitive that owns the decision. Pasting the same Effect call into each site is not it. One change that removes several rules' facts covers them, and the report shows it once.
+- **Start with shared owners.** The default run prioritizes heavily reused owners, their bypasses and exceptions, together with the entry, crossing and cleanup boundaries that supply their guarantees. An exhaustive sweep is available on request. A focused report accounts for the untouched inventory as pending; narrowing the work never makes that inventory clean.
+- **Shared evidence has conditions.** A wrapper name is not a guarantee. Shared facts name the method, options, deployment or caller conditions that make them apply. Provider defaults, deployed settings and client behavior remain distinct. Pilot corrections to a shared claim repair its reusable evidence and caller bindings before expansion. Site-specific corrections stay local. Repeated notes are a review signal, not proof of poor work.
 - **Defects first.** Some fact combinations are bugs whatever the library. The report leads with them.
 - **Measure guarantees, not adoption.** The coverage table counts sites that have each guarantee: a deadline, a dedupe key, a typed failure, a decoded input. It does not count Effect usage. Rewarding Effect usage produces wrapped pure code with no gain.
 - **Enforce boundaries in tooling.** Where a fact or rule can hold without agents, it should. Pattern searches supply positive evidence for an answerer to confirm or correct; a miss proves no absence. Examples: a lint rule that confines client imports to their adapter, and tsgo diagnostics that expose missed discovery sites.
@@ -33,6 +36,7 @@ Effect is the preferred way to build the mechanics: schedules, timeouts, typed e
 - **Cheap models for facts, strong models for judgment.** The skill recommends model roles; the user decides them. Judges check facts at their citations, and a refuted answer is recorded against its question, so weak questions show up.
 - **Rulings are durable; observations expire.** A site ruling follows its source anchor and deciding facts across runs. Unrelated edits do not reopen it. Rejected and deferred work stays listed outside judging; acceptance does not prove implementation. An explicit broad policy is a separate choice.
 - **Preserve independent work.** A run reviews a frozen source snapshot. Corrections reopen affected verdicts and their declared dependencies; independently supported verdicts survive. Shared client contracts are assessed once for the run, with distinct contracts named in the evidence.
+- **A bounded run still has a result.** Optional audit sampling has a known scope; repairing answers does not silently purchase another sample. Count correction rounds by judgment pass, not files. At a limit or a change in priorities, a checked partial report retains current supported findings and names unresolved and unreviewed work. A cache is never a report.
 - **The script stays bounded.** It owns inventory, input integrity, shape checks, rule mapping, counts and rulings. Keep discovery in the standard library until a real target demonstrates a need for a parser.
 
 ## Maintenance

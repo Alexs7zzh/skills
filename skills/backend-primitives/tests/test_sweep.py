@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Deterministic regression and CLI workflow tests; supplied rows are not model evals."""
 import copy
+import argparse
+import contextlib
+import io
+from unittest import mock
 import importlib.util
 import itertools
 import json
@@ -501,6 +505,231 @@ class SweepTest(unittest.TestCase):
         sweep.check_evidence(snap, str(decl) + ":1", "nested dependency", failures)
         self.assertFalse(failures, failures)
 
+    def test_runtime_export_declarations_and_blocked_subpath(self):
+        effect = self.root / "node_modules/effect"
+        (effect / "dist").mkdir(parents=True)
+        package = {"version": "4.0.3", "exports": {"./*": "./dist/*.js", "./Private": None}}
+        sweep.write_json(effect / "package.json", package)
+        (effect / "dist/Effect.d.ts").write_text("export declare const timeout: unknown;\n")
+        (effect / "dist/Private.d.ts").write_text("export declare const hidden: unknown;\n")
+        self.mapped(); rows = self.verdicts()
+        api = json.loads((self.run_dir / "api.json").read_text())
+        self.assertEqual(api["installed"], "4.0.3")
+        row = next(r for r in rows if r["finding"] == "improvement")
+        row.update(remedy="effect", apis=["Effect.timeout"])
+        self.save_verdicts(rows)
+        run("check", self.run_dir, "--stage", "verdicts")
+        self.assertIsNone(sweep.declaration_path(effect, package, "Private"))
+        (effect / "dist/Worker.d.mts").write_text("export {};\n")
+        self.assertEqual(sweep.declaration_path(effect, {"exports": {"./Worker": "./dist/Worker.mjs"}}, "Worker").suffix, ".mts")
+
+    def test_ignored_dependency_search_and_registered_evidence(self):
+        self.root.joinpath(".gitignore").write_text("node_modules/\n")
+        dep = self.root / "node_modules/client"
+        dep.mkdir(parents=True); (dep / "index.js").write_text("const retryCount = 3;\n")
+        self.prepare()
+        packet = run("packet", self.run_dir, "A01").stdout
+        self.assertIn("--no-ignore", packet)
+        search = subprocess.run(["rg", "--no-ignore", "--follow", "retryCount", str(self.run_dir / "source/node_modules/client")], capture_output=True, text=True)
+        self.assertEqual(search.returncode, 0)
+        excerpt = self.tmp / "excerpt.md"; excerpt.write_text("A supplied test platform contract.\n")
+        run("evidence", self.run_dir, "--file", excerpt, "--url", "https://example.com/contract", "--retrieved", "2026-10-14", "--id", "delivery")
+        failures = []; root = sweep.run_meta(self.run_dir)["root"]
+        sweep.check_evidence(root, "@evidence/delivery.md:1", "test", failures)
+        self.assertEqual(failures, [])
+        (self.run_dir / "evidence/delivery.md").write_text("changed\n")
+        sweep.check_evidence(root, "@evidence/delivery.md:1", "test", failures)
+        self.assertTrue(failures)
+
+    def test_conditional_answers_and_concrete_source_evidence(self):
+        self.prepare(kinds="external-call,error-handling,entry-point")
+        sid, site = next((sid, site) for sid, site in self.sites().items() if site["kind"] == "external-call")
+        answers = answer_set("external-call")
+        for q in CATALOG["kinds"]["external-call"]["questions"]:
+            if q.get("only_if"): answers.pop(q["id"])
+        failures = []; expanded = sweep.validate_answers(self.run_dir, sid, site, answers, "test", failures)
+        self.assertEqual(failures, [])
+        self.assertEqual(expanded["XC2"]["a"], "n/a")
+        answers["XC1"] = {"a": "unknown", "missing": "provider operation contract"}
+        expanded = sweep.expand_answers(self.run_dir, sid, "external-call", answers)
+        self.assertEqual(expanded["XC2"]["a"], "unknown")
+        answers["XC1"] = YES("src/orders.ts:7")
+        failures = []; sweep.validate_answers(self.run_dir, sid, site, answers, "test", failures)
+        self.assertTrue(any("XC2: missing answer" in f for f in failures))
+        q = next(q for k in CATALOG["kinds"].values() for q in k["questions"] if q["id"] == "EH3")
+        failures = []; sweep.check_answer_set(sweep.run_meta(self.run_dir)["root"], {"EH3": q}, {"EH3": YES("src/handler.ts:17")}, "test", failures)
+        self.assertIn("source_ev", " ".join(failures))
+
+    def test_shared_facts_bindings_and_invalidation(self):
+        self.prepare(kinds="external-call")
+        sid, site = next(iter(self.sites().items())); ev = f"{site['path']}:{site['line']}"
+        data = {"owners": [{"id": "O1", "name": "fixture owner", "evidence": [ev], "sites": [{"site": sid, "relation": "uses", "evidence": [ev], "reason": "fixture binding"}], "coverage": [{"boundary": b, "status": "not-applicable", "sites": [], "guarantee": "fixture scope", "evidence": [ev], "reason": "fixture has no contributing boundary"} for b in ("entry", "crossing", "cleanup")]}],
+                "facts": [{"id": "F1", "owner": "O1", "question": "XC5", "basis": "project", "conditions": "default options", "exceptions": "retry disabled", "answer": YES(ev)}], "unknowns": []}
+        sweep.write_json(self.run_dir / "protections.json", data)
+        run("check", self.run_dir, "--stage", "protections")
+        binding = {"shared": "F1", "fact_digest": sweep.shared_digest(data, data["facts"][0]), "binding": {"ev": ev, "note": "default options at call"}}
+        answers = answer_set("external-call", {"XC5": binding})
+        # XC5 becomes yes through the shared fact, so its newly applicable follow-ups are owed.
+        expanded = sweep.expand_answers(self.run_dir, sid, "external-call", answers)
+        for q in CATALOG["kinds"]["external-call"]["questions"]:
+            if q.get("only_if") and sweep.condition_met(q["only_if"], expanded) is True:
+                answers[q["id"]] = {"a": "no", "note": "fixture inspected"}
+        failures = []; expanded = sweep.validate_answers(self.run_dir, sid, site, answers, "test", failures)
+        self.assertEqual(failures, []); self.assertEqual(expanded["XC5"]["a"], "yes")
+        data["facts"][0]["conditions"] = "new options"
+        sweep.write_json(self.run_dir / "protections.json", data); run("check", self.run_dir, "--stage", "protections")
+        failures = []; sweep.validate_answers(self.run_dir, sid, site, answers, "test", failures)
+        self.assertIn("shared fact changed", " ".join(failures))
+        answers["XC5"]["fact_digest"] = sweep.shared_digest(data, data["facts"][0])
+        data["owners"][0]["sites"][0]["relation"] = "bypasses"
+        sweep.write_json(self.run_dir / "protections.json", data); run("check", self.run_dir, "--stage", "protections")
+        failures = []; sweep.validate_answers(self.run_dir, sid, site, answers, "test", failures)
+        self.assertIn("not a verified user", " ".join(failures))
+
+    def test_judge_and_correct_enforce_hint_refutation(self):
+        self.prepare()
+        sid = next(sid for sid, hint in sweep.derived_of(self.run_dir).items() if "IM2" in hint)
+        for path in (self.run_dir / "answers").glob("*.jsonl"):
+            answers = [r for _, r in sweep.load_jsonl(path, [])]
+            for r in answers:
+                if r["site"] == sid:
+                    r["answers"]["IM2"] = YES(sweep.derived_of(self.run_dir)[sid]["IM2"]["ev"])
+            jsonl(path, answers)
+        self.audit(); run("map", self.run_dir); rows = self.verdicts()
+        row = next(r for r in rows if sid in [x["site"] for x in self.clusters()[r["cluster"]]["sites"]])
+        answers = answer_set("import")
+        answers["IM2"].pop("hint_refutation", None)
+        correction = self.correction(sid, answers)
+        row.update(finding="refuted", remedy="none", decision=False, sites=[sid], inspected=[sid], fact="IM2", corrections=[correction])
+        failures = []; sweep.check_verdicts(self.run_dir, failures, complete=False, rows_override=[("test", row["id"].split("-")[0], row)])
+        self.assertIn("requires hint_refutation", " ".join(failures))
+        file = self.tmp / "correction.jsonl"; jsonl(file, [correction])
+        self.assertIn("requires hint_refutation", run("correct", self.run_dir, "--file", file, ok=False).stderr)
+
+    def test_partial_close_revalidates_cache_and_keeps_pending(self):
+        self.mapped(); self.verdicts(); run("check", self.run_dir, "--stage", "verdicts")
+        sweep.save_reusable(self.run_dir)
+        cache = json.loads((self.run_dir / "reusable.json").read_text())
+        corrupted_id = cache[0]["row"]["id"]
+        cache[0]["row"]["evidence"] = ["absent.ts:1"]
+        sweep.write_json(self.run_dir / "reusable.json", cache)
+        # Remove the source judgment; close must not trust the cached row's old check.
+        for p in (self.run_dir / "verdicts").glob("*.jsonl"): p.unlink()
+        run("close", self.run_dir)
+        report = json.loads((self.run_dir / "report.json").read_text())
+        self.assertEqual(report["status"], "partial")
+        self.assertTrue(report["pending"])
+        self.assertTrue(report["groups"])
+        self.assertFalse(any("absent.ts:1" in m["evidence"] for g in report["groups"] for m in g["members"]))
+        chosen = next(iter(self.clusters()))
+        run("close", self.run_dir, "--clusters", chosen)
+        report = json.loads((self.run_dir / "report.json").read_text())
+        self.assertTrue(any(x["reason"] == "outside selected work" for x in report["pending"]))
+
+    def test_round_cap_counts_passes_and_writes_report(self):
+        self.mapped(); self.verdicts(); run("check", self.run_dir, "--stage", "verdicts")
+        ids = [sid for sid, s in self.sites().items() if s["kind"] == "external-call"][:3]
+        file = self.tmp / "correction.jsonl"
+        for sid in ids[:2]:
+            effective, _ = sweep.merged_answers(self.run_dir, self.sites())
+            answers = copy.deepcopy(effective[sid]["answers"])
+            answers["XC4"] = {"a": "unknown", "missing": "fixture caller deadline changed"}
+            jsonl(file, [self.correction(sid, answers)])
+            run("correct", self.run_dir, "--file", file, "--max-rounds", 1)
+        self.assertEqual(json.loads((self.run_dir / "correction-rounds.json").read_text()), [1])
+        report = json.loads((self.run_dir / "report.json").read_text()); self.assertTrue(report["pending"])
+        self.audit(); run("map", self.run_dir)
+        effective, _ = sweep.merged_answers(self.run_dir, self.sites())
+        answers = copy.deepcopy(effective[ids[2]]["answers"]); answers["XC4"] = {"a": "unknown", "missing": "another caller"}
+        jsonl(file, [self.correction(ids[2], answers)])
+        out = run("correct", self.run_dir, "--file", file, "--max-rounds", 1, ok=False)
+        self.assertIn("checked partial report written", out.stderr)
+        report = json.loads((self.run_dir / "report.json").read_text())
+        self.assertTrue(any(x["site"] == ids[2] for x in report["unanswered"]))
+        # Reconcile also uses pending-corrections.jsonl as the correction input.
+        out = run("correct", self.run_dir, "--file", self.run_dir / "pending-corrections.jsonl", "--max-rounds", 1, ok=False)
+        self.assertIn("checked partial report written", out.stderr)
+        self.assertNotIn("Traceback", out.stderr)
+
+    def test_owner_discovery_pilot_and_focused_completion(self):
+        run("inventory", self.root, "--run", self.run_dir, "--kinds", "external-call")
+        extra = self.tmp / "extra.jsonl"
+        jsonl(extra, [{"kind": "external-call", "path": "src/orders.ts", "line": 4, "reason": "fixture exported operation caller"}])
+        old_count = len(self.sites()); run("add-sites", self.run_dir, "--file", extra)
+        self.assertEqual(len(self.sites()), old_count + 1)
+        run("owners", self.run_dir)
+        sweep.write_json(self.run_dir / "protections.json", {"owners": [], "facts": [], "unknowns": []})
+        run("check", self.run_dir, "--stage", "protections"); run("pilot", self.run_dir, "--size", 1)
+        self.assertIn("assess the pilot", run("shard", self.run_dir, ok=False).stderr)
+        p = next((self.run_dir / "shards").glob("*.json")); ids = json.loads(p.read_text())["sites"]
+        jsonl(self.run_dir / "answers" / (p.stem + ".jsonl"), [{"site": sid, "answers": answer_set("external-call")} for sid in ids])
+        run("check", self.run_dir, "--stage", "answers"); self.audit(); run("map", self.run_dir)
+        self.verdicts(); run("check", self.run_dir, "--stage", "verdicts")
+        run("pilot", self.run_dir, "--assess", "--decision", "focus", "--reason", "fixture checked")
+        run("close", self.run_dir)
+        report = json.loads((self.run_dir / "report.json").read_text())
+        self.assertEqual(len(report["unanswered"]), old_count)
+        run("shard", self.run_dir)
+        assigned = [sid for p in (self.run_dir / "shards").glob("*.json") for sid in json.loads(p.read_text())["sites"]]
+        self.assertEqual(len(assigned), len(set(assigned)))
+        self.assertEqual(len(assigned), old_count + 1)
+
+    def test_close_keeps_disputes_across_repeated_close(self):
+        self.mapped(); rows = self.verdicts()
+        row = next(r for r in rows if self.clusters()[r["cluster"]]["rule"] == "XC-no-deadline")
+        sites = [s["site"] for s in self.clusters()[row["cluster"]]["sites"]]
+        effective, _ = sweep.merged_answers(self.run_dir, self.sites())
+        corrections = []
+        for sid in sites:
+            answers = copy.deepcopy(effective[sid]["answers"]); answers["XC4"] = YES("src/orders.ts:7")
+            corrections.append(self.correction(sid, answers))
+        row.update(finding="refuted", remedy="none", decision=False, fact="XC4", corrections=corrections)
+        self.save_verdicts(rows); run("check", self.run_dir, "--stage", "verdicts")
+        jsonl(self.run_dir / "pending-corrections.jsonl", [{**c, "reason": "same correction from another judge"} for c in corrections])
+        for _ in range(2):
+            run("close", self.run_dir)
+            report = json.loads((self.run_dir / "report.json").read_text())
+            self.assertTrue(set(sites) <= {s["site"] for s in report["unanswered"]})
+            self.assertFalse(any(set(sites) & set(m["sites"]) for g in report["groups"] for m in g["members"]))
+        pending = self.run_dir / "pending-corrections.jsonl"
+        self.assertEqual(len(sweep.load_jsonl(pending, [])), len(sites))
+        run("correct", self.run_dir, "--file", pending)
+        run("close", self.run_dir)
+        report = json.loads((self.run_dir / "report.json").read_text())
+        self.assertFalse(set(sites) & {s["site"] for s in report["unanswered"]})
+
+    def test_close_retains_valid_rows_from_incomplete_group(self):
+        self.mapped(); rows = self.verdicts(); row = rows[0]
+        for p in (self.run_dir / "verdicts").glob("*.jsonl"): p.unlink()
+        self.save_verdicts([row])
+        run("close", self.run_dir)
+        report = json.loads((self.run_dir / "report.json").read_text())
+        self.assertEqual(len(report["groups"]), 1)
+        self.assertTrue(report["pending"])
+
+    def test_initial_evidence_corrections_do_not_consume_judge_round(self):
+        self.prepare(kinds="external-call")
+        sid = next(iter(self.sites()))
+        effective, _ = sweep.merged_answers(self.run_dir, self.sites())
+        answers = copy.deepcopy(effective[sid]["answers"]); answers["XC4"] = YES("src/orders.ts:7")
+        path = self.tmp / "correct.jsonl"; jsonl(path, [self.correction(sid, answers)])
+        run("correct", self.run_dir, "--file", path, "--max-rounds", 1)
+        self.assertEqual(json.loads((self.run_dir / "correction-rounds.json").read_text()), [])
+        self.assertFalse((self.run_dir / "report.json").exists())
+
+    def test_credential_unknown_reaches_judge_packet(self):
+        self.prepare(kinds="entry-point")
+        for p in (self.run_dir / "answers").glob("*.jsonl"):
+            rows = [r for _, r in sweep.load_jsonl(p, [])]
+            for row in rows:
+                if self.sites()[row["site"]]["kind"] == "entry-point":
+                    row["answers"] = answer_set("entry-point", {"EP10": {"a": "unknown", "missing": "authentication owner unavailable"}})
+            jsonl(p, rows)
+        run("check", self.run_dir, "--stage", "answers"); self.audit(); run("map", self.run_dir)
+        self.assertTrue(any(c["rule"] == "EP-credential-comparison" for c in self.clusters().values()))
+        for p in (self.run_dir / "judges").glob("*.json"):
+            run("judge-packet", self.run_dir, p.stem)
+
     def test_catalog_references(self):
         qids = []
         for kind, spec in CATALOG["kinds"].items():
@@ -511,12 +740,152 @@ class SweepTest(unittest.TestCase):
             for rule in (r for r in CATALOG["rules"] if r["kind"] == kind):
                 self.assertTrue(set(rule["when"]) <= available)
                 self.assertIn(rule["concept"], CATALOG["concepts"])
+                self.assertTrue(rule["mechanism"])
+                self.assertTrue(rule["counter"])
         self.assertEqual(len(qids), len(set(qids)))
         ids = [r["id"] for r in CATALOG["rules"]]
         self.assertEqual(len(ids), len(set(ids)))
         for c in CATALOG["coverage"]:
             self.assertIn(c["question"], qids)
             self.assertTrue(set(c.get("among", {})) <= set(qids))
+
+    def fixture_owner(self, sid):
+        site = self.sites()[sid]; ev = f"{site['path']}:{site['line']}"
+        return {"owners": [{"id": "O1", "name": "fixture owner", "evidence": [ev],
+                           "sites": [{"site": sid, "relation": "uses", "evidence": [ev], "reason": "fixture call"}],
+                           "coverage": [{"boundary": b, "status": "not-applicable", "sites": [],
+                                         "guarantee": "fixture lifetime", "evidence": [ev], "reason": "fixture has no such dependency"}
+                                        for b in ("entry", "crossing", "cleanup")]}], "facts": [], "unknowns": []}
+
+    def test_optional_audit_cohort_does_not_refill_after_corrections(self):
+        self.prepare()
+        candidates = sweep.audit_candidates(self.run_dir)
+        args = argparse.Namespace(run=str(self.run_dir), sample=10, all=False)
+        with contextlib.redirect_stdout(io.StringIO()): sweep.cmd_audit(args)
+        first = sweep.load_json(self.run_dir / "audit-cohort.json")
+        retired = set(first["optional"][:8])
+        self.assertEqual(len(retired), 8)
+        remaining = [r for r in candidates if r["id"] not in retired]
+        args.sample = None
+        with mock.patch.object(sweep, "audit_candidates", return_value=remaining), contextlib.redirect_stdout(io.StringIO()):
+            sweep.cmd_audit(args)
+            refreshed = sweep.load_json(self.run_dir / "audit.json")
+            self.assertEqual(set(sweep.load_json(self.run_dir / "audit-cohort.json")["optional"]), set(first["optional"]))
+            self.assertEqual(set(refreshed["optional_retired"]), retired)
+            self.assertEqual({r["id"] for r in refreshed["selected"] if not r["mandatory"]}, set(first["optional"]) - retired)
+            self.assertEqual({r["id"] for r in refreshed["selected"] if r["mandatory"]}, {r["id"] for r in candidates if r["mandatory"]})
+            args.sample = 12; sweep.cmd_audit(args)
+            expanded = sweep.load_json(self.run_dir / "audit-cohort.json")
+            self.assertEqual(len(expanded["optional"]), 12)
+            self.assertTrue(set(first["optional"]) <= set(expanded["optional"]))
+
+    def test_optional_cohort_empty_slots_new_mandatory_and_new_batch(self):
+        self.prepare()
+        candidates = sweep.audit_candidates(self.run_dir)
+        optional = [r for r in candidates if not r["mandatory"]]
+        self.assertGreater(len(optional), 3)
+        args = argparse.Namespace(run=str(self.run_dir), sample=3, all=False)
+        with mock.patch.object(sweep, "audit_candidates", return_value=optional[:1]), contextlib.redirect_stdout(io.StringIO()):
+            sweep.cmd_audit(args)
+        args.sample = None
+        new_mandatory = {**optional[2], "mandatory": True}
+        with mock.patch.object(sweep, "audit_candidates", return_value=optional[:2] + [new_mandatory]), contextlib.redirect_stdout(io.StringIO()):
+            sweep.cmd_audit(args)
+            selected = sweep.load_json(self.run_dir / "audit.json")["selected"]
+            self.assertEqual({r["id"] for r in selected}, {optional[0]["id"], new_mandatory["id"]})
+        cohort = sweep.load_json(self.run_dir / "audit-cohort.json")
+        cohort["sites"] = cohort["sites"][:-1]  # prior answered batch had one fewer site
+        sweep.write_json(self.run_dir / "audit-cohort.json", cohort)
+        args.sample = 3
+        with contextlib.redirect_stdout(io.StringIO()): sweep.cmd_audit(args)
+        self.assertEqual(len(sweep.load_json(self.run_dir / "audit-cohort.json")["optional"]), 3)
+        args.all = True
+        with contextlib.redirect_stdout(io.StringIO()): sweep.cmd_audit(args)
+        self.assertEqual(sweep.load_json(self.run_dir / "audit.json")["eligible"], len(sweep.load_json(self.run_dir / "audit.json")["selected"]))
+
+    def test_owner_focus_includes_boundaries_and_retains_exclusions(self):
+        self.prepare()
+        sid = next(s for s, row in self.sites().items() if row["kind"] == "external-call")
+        entry = next(s for s, row in self.sites().items() if row["kind"] == "entry-point")
+        data = self.fixture_owner(sid); coverage = data["owners"][0]["coverage"]
+        coverage[0].update(status="included", sites=[entry])
+        coverage[1].update(status="outside-scope", reason="explicit inventory restriction")
+        coverage[2].update(status="unknown", missing="client cleanup evidence")
+        sweep.write_json(self.run_dir / "protections.json", data)
+        run("check", self.run_dir, "--stage", "protections")
+        self.assertEqual(sweep.owner_sites(self.run_dir, "O1"), {sid, entry})
+        run("pilot", self.run_dir, "--size", 1)
+        self.assertEqual(sweep.load_json(self.run_dir / "pilot.json")["sites"], [entry])
+        self.audit(); run("map", self.run_dir); self.verdicts()
+        run("check", self.run_dir, "--stage", "verdicts")
+        jsonl(self.run_dir / "merges.jsonl", []); run("check", self.run_dir, "--stage", "merges")
+        report = sweep.load_json(self.run_dir / "report.json")
+        self.assertEqual(report["status"], "partial")
+        self.assertEqual({r["status"] for r in report["owner_coverage"]}, {"included", "outside-scope", "unknown"})
+        coverage[0].update(status="included", sites=[])
+        sweep.write_json(self.run_dir / "protections.json", data)
+        self.assertNotEqual(run("check", self.run_dir, "--stage", "protections", ok=False).returncode, 0)
+
+    def test_owner_coverage_change_requires_remap_without_invalidating_site_verdicts(self):
+        self.mapped(); self.verdicts(); run("check", self.run_dir, "--stage", "verdicts")
+        before = sweep.effective_digest(self.run_dir)
+        data = self.fixture_owner(next(iter(self.sites())))
+        data["owners"][0]["coverage"][2].update(status="unknown", missing="cleanup completion unknown")
+        sweep.write_json(self.run_dir / "protections.json", data)
+        previous_map = (self.run_dir / "clusters.json").read_text()
+        self.assertIn("check --stage protections", run("map", self.run_dir, ok=False).stderr)
+        self.assertEqual((self.run_dir / "clusters.json").read_text(), previous_map)
+        run("check", self.run_dir, "--stage", "protections")
+        self.assertEqual(sweep.effective_digest(self.run_dir), before)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit): sweep.require_mapping(self.run_dir)
+        run("map", self.run_dir)
+        self.assertTrue((self.run_dir / "carried.jsonl").read_text().strip())
+        run("check", self.run_dir, "--stage", "verdicts")
+        jsonl(self.run_dir / "merges.jsonl", []); run("check", self.run_dir, "--stage", "merges")
+        self.assertEqual(sweep.load_json(self.run_dir / "report.json")["status"], "partial")
+
+    def test_pilot_repair_scopes_siblings_and_digests(self):
+        self.prepare("external-call")
+        sid, sibling = list(self.sites())[:2]
+        data = self.fixture_owner(sid); ev = data["owners"][0]["evidence"]
+        data["facts"] = [{"id": "F1", "owner": "O1", "question": "XC5", "basis": "project", "conditions": "scheduled caller", "exceptions": "HTTP caller", "answer": YES(ev[0])}]
+        sweep.write_json(self.run_dir / "protections.json", data); run("check", self.run_dir, "--stage", "protections")
+        context = {"corrections_digest": "fixture", "protections_digest": sweep.digest(data)}
+        local = {"sites": [sid], "scope": "site", "reason": "local SQL verb", "evidence": ev, "affected": [sid]}
+        sweep.check_pilot_repairs(self.run_dir, {**context, "repairs": [local]}, context, {sid})
+        shared = {**local, "scope": "shared-fact", "owners": ["O1"], "facts": ["F1"], "affected": [sid, sibling],
+                  "sibling": {"site": sibling, "result": "same scheduled caller", "evidence": ev}}
+        sweep.check_pilot_repairs(self.run_dir, {**context, "repairs": [shared]}, context, {sid})
+        sweep.check_pilot_repairs(self.run_dir, {**context, "repairs": [{**shared, "scope": "binding", "facts": []}]}, context, {sid})
+        sweep.check_pilot_repairs(self.run_dir, {**context, "repairs": [{**shared, "sibling": {"site": None, "result": "no other affected caller", "searched": "all caller imports", "evidence": ev}}]}, context, {sid})
+        invalid = [{**context, "repairs": []}, {**context, "protections_digest": "old", "repairs": [local]},
+                   {**context, "repairs": [{**shared, "sibling": None}]},
+                   {**context, "repairs": [{**shared, "sibling": {"site": sid, "result": "same", "evidence": ev}}]},
+                   {**context, "repairs": [{**shared, "facts": ["missing"]}]}]
+        for repair in invalid:
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                sweep.check_pilot_repairs(self.run_dir, repair, context, {sid})
+
+    def test_corrected_pilot_blocks_expansion_until_current_repair(self):
+        self.prepare("external-call")
+        sid = next(iter(self.sites()))
+        protections = {"owners": [], "facts": [], "unknowns": []}
+        sweep.write_json(self.run_dir / "protections.json", protections); run("check", self.run_dir, "--stage", "protections")
+        sweep.write_json(self.run_dir / "pilot.json", {"sites": [sid], "protections_digest": sweep.digest(protections)})
+        effective, _ = sweep.merged_answers(self.run_dir, self.sites())
+        answers = copy.deepcopy(effective[sid]["answers"]); answers["XC4"] = YES("src/orders.ts:7")
+        file = self.tmp / "correction.jsonl"; jsonl(file, [self.correction(sid, answers)])
+        run("correct", self.run_dir, "--file", file)
+        self.audit(); run("map", self.run_dir); self.verdicts(); run("check", self.run_dir, "--stage", "verdicts")
+        self.assertIn("require --repairs", run("pilot", self.run_dir, "--assess", "--decision", "focus", "--reason", "checked", ok=False).stderr)
+        repairs = sweep.load_json(self.run_dir / "pilot-repairs-template.json")
+        repairs["repairs"] = [{"sites": [sid], "scope": "site", "reason": "local finite timer", "affected": [sid], "evidence": ["src/orders.ts:7"]}]
+        repair_file = self.tmp / "repairs.json"; sweep.write_json(repair_file, repairs)
+        run("pilot", self.run_dir, "--assess", "--decision", "focus", "--reason", "checked", "--repairs", repair_file)
+        run("shard", self.run_dir)
+        saved = sweep.load_json(self.run_dir / "pilot-repairs.json"); saved["repairs"][0]["reason"] = "changed after decision"
+        sweep.write_json(self.run_dir / "pilot-repairs.json", saved)
+        self.assertIn("repair evidence changed", run("shard", self.run_dir, ok=False).stderr)
 
 
 if __name__ == "__main__":
