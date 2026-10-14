@@ -15,7 +15,7 @@ This explicitly invoked skill separates the work:
 - A small pilot checks owners and exceptions before broad dispatch. Cheap agents then fill gaps at the selected sites, with citations.
 - The script maps the facts to defects, primitives and Effect concepts by a fixed rule table.
 - Strong agents audit every contradiction of a search hint and selected answers that exclude defect candidates. They then judge the remaining clusters. Sampling leaves an explicit unaudited remainder.
-- The user rules on the verdicts, and the rulings persist across runs.
+- Judges recommend which changes to pursue, explain their behavior and regression risks, and carry unfinished work forward. The user decides unsettled product tradeoffs; those rulings persist across runs.
 
 Effect is the preferred way to build the mechanics: schedules, timeouts, typed errors, schemas, layers. The skill's goal is the primitives, not a count of Effect calls.
 
@@ -30,6 +30,8 @@ Effect is the preferred way to build the mechanics: schedules, timeouts, typed e
 - **Start with shared owners.** The default run prioritizes heavily reused owners, their bypasses and exceptions, together with the entry, crossing and cleanup boundaries that supply their guarantees. An exhaustive sweep is available on request. A focused report accounts for the untouched inventory as pending; narrowing the work never makes that inventory clean.
 - **Shared evidence has conditions.** A wrapper name is not a guarantee. Shared facts name the method, options, deployment or caller conditions that make them apply. Provider defaults, deployed settings and client behavior remain distinct. Pilot corrections to a shared claim repair its reusable evidence and caller bindings before expansion. Site-specific corrections stay local. Repeated notes are a review signal, not proof of poor work.
 - **Defects first.** Some fact combinations are bugs whatever the library. The report leads with them.
+- **Progress with accountable tradeoffs.** A useful primitive may justify a broad change. Risk calls for a concrete migration and verification plan, not automatic deferral. The agent owns engineering recommendations; the user should decide product outcomes without first having to choose technical tasks.
+- **No unintended regression is the target.** Intended behavior changes, including API changes, are proposed explicitly. Existing obligations and recovery paths constrain the remedy. A source review identifies risks and the evidence needed to control them; it cannot certify an unimplemented change as regression-free.
 - **Measure guarantees, not adoption.** The coverage table counts sites that have each guarantee: a deadline, a dedupe key, a typed failure, a decoded input. It does not count Effect usage. Rewarding Effect usage produces wrapped pure code with no gain.
 - **Enforce boundaries in tooling.** Where a fact or rule can hold without agents, it should. Pattern searches supply positive evidence for an answerer to confirm or correct; a miss proves no absence. Examples: a lint rule that confines client imports to their adapter, and tsgo diagnostics that expose missed discovery sites.
 - **The installed version is the API truth.** Effect renamed much of its API between v3 and v4, and most published guidance is v3. Concept API names are checked against the installed declarations.

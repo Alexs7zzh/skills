@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Backend primitives
 
-Find the target repository, any narrowed paths or kinds, the rulings file and any model choices in the request. Run every step below in order. Implement nothing. Accepted verdicts become code changes only when the user asks for them, under the project's coding workflow.
+Find the target repository, any narrowed paths or kinds, the rulings file and any model choices in the request. Run the assessment below before changing target code. A review-only request ends with recommendations. When the request includes adjustments or fixes, continue from the checked report into implementation under the project's coding workflow; that request already authorizes the work.
 
 ## Terms
 
@@ -39,10 +39,10 @@ Use the user's model and effort choice for each role. When the user named none, 
 
 ## Rules for every step
 
-- Workers write only the output their packet names and run this skill's checks. The coordinator runs the stage commands, which own run artifacts and authorized rulings. Nobody runs target code or tests; the coordinator may run installed tsgo diagnostics through `boundary`. Only the coordinator may retrieve primary documentation for a named missing platform contract, then register a short excerpt with `evidence`, its URL and retrieval date. Workers cite that immutable run evidence. Source reads and searches are allowed.
+- During assessment, workers write only the output their packet names and run this skill's checks. The coordinator runs the stage commands, which own run artifacts and authorized rulings. Nobody runs target code or tests during assessment; the coordinator may run installed tsgo diagnostics through `boundary`. Only the coordinator may retrieve primary documentation for a named missing platform contract, then register a short excerpt with `evidence`, its URL and retrieval date. Workers cite that immutable run evidence. Source reads and searches are allowed.
 - Give each worker the skill directory and packet, without expected findings. Queue workers within available agent capacity. Return check failures to their owner.
 - When an agent's file fails its check, that agent fixes it before the next step starts.
-- Stop for the user only at the cost gate and for rulings. A request to focus or finish closes the current work through `close`.
+- Stop for the user at the cost gate or when a user-owned choice blocks further authorized work. A request to focus or finish closes the current assessment through `close`.
 
 ## 1. Set up
 
@@ -79,20 +79,24 @@ For the pilot, assess and choose the continuation before consolidation. When the
 
 For a correction cap, a changed priority or a requested narrow finish, run `close`, optionally with `--clusters <ids>` or `--owners <ids>`. It remaps current checked answers, retains validated findings, and writes `report.json` and `report.md` with pending candidates, disputed answers and untouched inventory. These findings are not consolidated. Never construct a report from a reuse cache or memory.
 
-## 5. Reply and rule
+## 5. Recommend and continue
 
 Read `<run>/report.json`; it preserves all findings, consequences and decisions under merged changes. Reply in this order:
 
-1. Counts of inventoried, answered and pending sites, clusters and findings by token, plus discovery scope and audit sample size. Label a focused or capped run partial.
-2. Every defect group, including all consequences and any decisions it requires.
-3. Remaining user decisions, with question and recommendation.
-4. Improvements as a checklist, naming the remedy, covered rules and merged row ids.
-5. Unresolved facts and their missing evidence. Then contributing-boundary coverage and exclusions, coverage.md and boundary.md when present.
-6. Model and scope premises and the run directory. Say that absent tooling is unmeasured, not zero violations.
+For up to 15 supported groups, keep the main reply within 600 words unless the user requests the full detail. Use one short row per change, summarizing its main risk and decisive check; keep test matrices and source detail in the linked report. Group unresolved facts by missing evidence and put coverage limits in one short paragraph.
 
-If improvements and decisions exceed 15 groups, show the 15 covering the most sites and link report.json for the rest. Keep all defects and unresolved facts visible.
+1. The recommended work and why it is worth doing, leading with established defects. Label a focused or capped assessment partial. Explain each proposed behavior change in terms of an affected caller or operator.
+2. A compact account of each supported change: benefit, intended before/after behavior, regression mechanism, planned verification and recommended action. Use the judge's records; give row ids as references, not as questions the user must decode. Combine duplicate remedies while retaining each member's risks and obligations.
+3. Only unsettled user-owned choices, with feasible alternatives, their consequences and a recommendation. Separate them from engineering work already authorized.
+4. Held and dropped proposals with their reasons and next steps where required. Distinguish agent recommendations from explicit user rulings. On self-review, revisit the evidence for these dispositions; risk, breadth or lack of urgency alone does not settle them. Keep prior proposals accounted for when recommendations change.
+5. Unresolved facts and missing evidence; counts of inventoried, answered and pending sites and findings; discovery and audit limits; contributing-boundary coverage and exclusions. Link the detailed report and coverage artifacts. Say that absent tooling is unmeasured, not zero violations.
+6. Model and scope premises and the run directory.
 
-Ask for accept, reject or defer by group id, with a reason. Record rulings with `rule --decision <token> --verdicts <ids> --reason <text>`. A ruling includes merged members. Add `--scope <glob>` only for an explicitly requested broad policy. Exact rulings bind the source anchor, rule and deciding answers. Unrelated edits do not reopen them; changed deciding facts do. List counts of held reject and defer rulings, with report.json for their details. Accepted work stays visible until evidence shows it implemented. A ruling never counts as proof that a guarantee holds.
+If improvements exceed 15 groups, show the 15 with the greatest supported consequence or shared guarantee and link report.json for the rest. Keep all defects, user-owned choices and unresolved facts visible. Omitted rows retain their actions in the report.
+
+Record explicit user rulings with `rule --decision <token> --verdicts <ids> --reason <text>`. Agent recommendations are not user rulings. A ruling includes merged members. Add `--scope <glob>` only for an explicitly requested broad policy. Exact rulings bind the source anchor, rule and deciding answers. Unrelated edits do not reopen them; changed deciding facts do. List counts of held reject and defer rulings, with report.json for their details. Accepted work stays visible until evidence shows it implemented. A ruling never counts as proof that a guarantee holds.
+
+For authorized implementation, carry every supported proposal and its action into the coding workflow. Recheck the live source, implement pursued changes and run their verification. Work held for an accessible engineering check starts with that check. Develop recoverable candidates for unsettled tradeoffs when useful; present the concrete result before asking the user to choose. A correction cap ends assessment, not independently supported implementation. Disputed or unknown findings remain pending. Close with implemented changes, observed checks, remaining risks, and an explicit disposition for each unimplemented proposal. Planned verification is never a passing result.
 
 ## Maintaining this skill
 

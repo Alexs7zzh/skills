@@ -147,6 +147,11 @@ class SweepTest(unittest.TestCase):
                        "finding": finding, "remedy": "none" if finding == "unresolved" else "local", "decision": False,
                        "evidence": [f"{s['path']}:{s['line']}"], "proposal": "fixture change", "layer": "service",
                        "consequence": "fixture failing path", "limit": "fixture missing evidence"}
+                if finding in ("defect", "improvement"):
+                    row.update(behavior={"kind": "preserve", "before": "fixture caller result", "after": "fixture caller result"},
+                               risk="fixture adapter could lose caller failure mapping",
+                               validation=["fixture caller retains success and failure mapping"],
+                               action="pursue", recommendation="fixture shared guarantee warrants the migration")
                 group.append(row)
             jsonl(self.run_dir / "verdicts" / (p.stem + ".jsonl"), group)
             rows.extend(group)
@@ -178,7 +183,9 @@ class SweepTest(unittest.TestCase):
         run("check", self.run_dir, "--stage", "verdicts")
         run("merge-packet", self.run_dir)
         jsonl(self.run_dir / "merges.jsonl", [{"row": defect["id"], "into": target["id"], "reason": "fixture shared owner"}])
-        run("check", self.run_dir, "--stage", "merges")
+        checked = run("check", self.run_dir, "--stage", "merges")
+        self.assertIn("continue authorized implementation", checked.stdout)
+        self.assertNotIn("ask for rulings", checked.stdout)
         report = json.loads((self.run_dir / "report.json").read_text())
         group = next(g for g in report["groups"] if g["id"] == target["id"])
         self.assertEqual(group["finding"], "defect")
@@ -189,6 +196,57 @@ class SweepTest(unittest.TestCase):
         self.assertEqual(len(stored), 2)
         run("map", self.run_dir)
         self.assertTrue(any("not implementation evidence" in s.get("user", "") for c in self.clusters().values() for s in c["sites"]))
+
+    def test_change_obligations_survive_merge_and_partial_close(self):
+        self.mapped(); rows = self.verdicts()
+        changed = next(r for r in rows if r["finding"] == "improvement")
+        held = next(r for r in rows if r["finding"] == "defect")
+        changed.update(behavior={"kind": "change", "before": "caller waits without a finite budget", "after": "caller receives a timeout"},
+                       risk="timeout after a committed write can provoke duplicate retry",
+                       validation=["response loss preserves operation identity and recovery"],
+                       action="pursue", recommendation="bound waiting while retaining recovery")
+        held.update(action="hold", next_step="implementer checks old caller mapping; resume when both wire versions pass")
+        self.save_verdicts(rows)
+        run("check", self.run_dir, "--stage", "verdicts")
+        packet = run("merge-packet", self.run_dir).stdout
+        for value in (changed["risk"], changed["validation"][0], held["next_step"]):
+            self.assertIn(value, packet)
+        jsonl(self.run_dir / "merges.jsonl", [{"row": held["id"], "into": changed["id"], "reason": "fixture overlapping implementation; caller prerequisite still applies"}])
+        run("check", self.run_dir, "--stage", "merges")
+        report = json.loads((self.run_dir / "report.json").read_text())
+        group = next(g for g in report["groups"] if g["id"] == changed["id"])
+        self.assertIn(held, group["members"])
+        self.assertIn(changed, group["members"])
+        self.assertEqual(group["merges"][0]["reason"], "fixture overlapping implementation; caller prerequisite still applies")
+        run("close", self.run_dir, "--reason", "fixture bounded finish")
+        report = json.loads((self.run_dir / "report.json").read_text())
+        members = [m for g in report["groups"] for m in g["members"]]
+        self.assertTrue(any(m.get("next_step") == held["next_step"] for m in members))
+        self.assertIn(changed["risk"], (self.run_dir / "report.md").read_text())
+
+    def test_supported_changes_require_actionable_assessment(self):
+        self.mapped(); rows = self.verdicts()
+        row = next(r for r in rows if r["finding"] == "improvement")
+        context = sweep.verdict_inputs(self.run_dir)
+        for key in ("behavior", "risk", "validation", "action", "recommendation"):
+            broken = copy.deepcopy(row); del broken[key]
+            failures = []
+            sweep.check_verdicts(self.run_dir, failures, complete=False,
+                                 rows_override=[("fixture", row["id"].split("-")[0], broken)], context=context)
+            self.assertTrue(any(key in f for f in failures), (key, failures))
+        for patch, expected in (({"action": "hold"}, "next_step"),
+                                ({"action": "defer"}, "action"),
+                                ({"behavior": {"kind": "safe", "before": "a", "after": "b"}}, "behavior.kind"),
+                                ({"behavior": {"kind": "preserve", "before": " ", "after": "b"}}, "before"),
+                                ({"validation": [""]}, "validation"),
+                                ({"risk": []}, "risk"), ({"recommendation": " "}, "recommendation")):
+            failures = []
+            sweep.check_change(dict(row, **patch), "fixture", failures)
+            self.assertTrue(any(expected in f for f in failures), failures)
+        for action in ("pursue", "hold", "drop"):
+            failures = []
+            sweep.check_change(dict(row, action=action, next_step="implementer verifies caller compatibility"), "fixture", failures)
+            self.assertEqual(failures, [])
 
     def test_unknown_prerequisite_and_na(self):
         answers = answer_set("entry-point", {"EP6": {"a": "unknown", "missing": "deployment config"}})

@@ -2,7 +2,7 @@
 
 Read the packet's full finding lines. The repository root and site files are included; open source when needed to establish that one proposal completes the other at all its sites.
 
-Merge only when implementing the retained proposal fulfills every obligation of the absorbed proposal. More sites alone does not establish that. Keep independent changes apart. Merge duplicates both within and across judge groups; every source finding keeps its consequence.
+Merge only when implementing the retained proposal fulfills every obligation of the absorbed proposal, including its behavior and validation. More sites alone does not establish that. Keep independent changes apart. Merge duplicates both within and across judge groups; every source finding keeps its consequence. When actions differ, explain which prerequisites still apply to the combined work; merging never upgrades a held member to ready.
 
 Write one row per merge to the named file:
 

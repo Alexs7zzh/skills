@@ -1388,6 +1388,29 @@ def verdict_inputs(run, mapping=None):
     return cat, data, root, rules, clusters, effective, sites, groups
 
 
+def check_change(row, where, failures):
+    """Check proposal obligations; source review establishes their truth."""
+    for key in ("risk", "recommendation"):
+        if not isinstance(row.get(key), str) or not row[key].strip():
+            failures.append(f"{where}: supported change needs nonempty {key}")
+    behavior = row.get("behavior")
+    if not isinstance(behavior, dict):
+        failures.append(f"{where}: supported change needs behavior object")
+    else:
+        if behavior.get("kind") not in ("preserve", "change"):
+            failures.append(f"{where}: behavior.kind must be preserve or change")
+        for key in ("before", "after"):
+            if not isinstance(behavior.get(key), str) or not behavior[key].strip():
+                failures.append(f"{where}: behavior needs nonempty {key}")
+    checks = row.get("validation")
+    if not isinstance(checks, list) or not checks or any(not isinstance(x, str) or not x.strip() for x in checks):
+        failures.append(f"{where}: validation must list planned checks and expected outcomes")
+    if row.get("action") not in ("pursue", "hold", "drop"):
+        failures.append(f"{where}: action must be pursue, hold or drop")
+    if row.get("action") == "hold" and (not isinstance(row.get("next_step"), str) or not row["next_step"].strip()):
+        failures.append(f"{where}: hold needs next_step with prerequisite, owner and reopening check")
+
+
 def check_verdicts(run, failures, only_group=None, *, complete=True, rows_override=None, context=None):
     cat, data, root, rules, clusters, effective, sites, groups = context or verdict_inputs(run)
     rows = load_verdicts(run, failures) if rows_override is None else rows_override
@@ -1415,6 +1438,7 @@ def check_verdicts(run, failures, only_group=None, *, complete=True, rows_overri
             slots += ["consequence"]
         if finding in ("defect", "improvement"):
             slots += ["proposal", "layer"]
+            check_change(row, where, failures)
             if remedy == "none":
                 failures.append(f"{where}: a supported change needs a remedy")
         if finding == "fine":
@@ -1510,8 +1534,16 @@ def verdict_line(row, clusters, rules, all_sites, extra=""):
     listed = [s["site"] for s in c["sites"]] if row["sites"] == "all" else row["sites"]
     files = sorted({all_sites[s]["path"] for s in listed})
     details = [row.get(k) for k in ("consequence", "proposal", "counter", "limit") if row.get(k)]
+    if row["finding"] in ("defect", "improvement"):
+        behavior = row.get("behavior", {})
+        details += [f"behavior ({behavior.get('kind')}): {behavior.get('before')} -> {behavior.get('after')}",
+                    "risk: " + row.get("risk", ""),
+                    "planned checks: " + "; ".join(row.get("validation", [])),
+                    f"action: {row.get('action')}; {row.get('recommendation', '')}"]
+        if row.get("next_step"):
+            details.append("next: " + row["next_step"])
     if row.get("decision"):
-        details += ["DECISION: " + row["question"], "recommend: " + row["recommendation"]]
+        details += ["DECISION: " + row["question"]]
     return (f"{row['id']} {row['finding']}/{row['remedy']} {c['rule']} [{row.get('layer', '-')}] "
             f"{len(listed)} sites in {', '.join(files)}{extra}: " + "; ".join(details))
 
@@ -1565,7 +1597,8 @@ def print_verdicts(run):
     clusters = {c["id"]: c for c in data["clusters"]}
     _, sites = merged_answers(run, sites_of(run))
     rows = {r["id"]: r for _, _, r in load_verdicts(run, [])}
-    merges = {m["row"]: m["into"] for _, m in load_merges(run, []) or []}
+    merge_rows = [m for _, m in load_merges(run, []) or []]
+    merges = {m["row"]: m["into"] for m in merge_rows}
     groups = {}
     for vid, row in rows.items():
         groups.setdefault(merges.get(vid, vid), []).append(row)
@@ -1574,7 +1607,7 @@ def print_verdicts(run):
         # Preserve every source finding, consequence and decision; only presentation is folded.
         priority = min((FINDINGS.index(m["finding"]) for m in members))
         report.append({"id": owner, "finding": FINDINGS[priority], "decision": any(m["decision"] for m in members),
-                       "members": members})
+                       "members": members, "merges": [m for m in merge_rows if m["into"] == owner]})
     report.sort(key=lambda r: (FINDINGS.index(r["finding"]), not r["decision"], r["id"]))
     write_json(Path(run) / "report.json", {"groups": report, "held": data.get("held", []), "audit": data["audit"], "facts_digest": data["facts_digest"],
                "status": "partial" if data.get("unanswered") or any(r['status'] == 'unknown' for r in data.get('owner_coverage', [])) else "complete",
@@ -1585,6 +1618,8 @@ def print_verdicts(run):
         print(f"{group['id']} {group['finding']}" + ("; needs decision" if group["decision"] else ""))
         for row in group["members"]:
             print("  " + verdict_line(row, clusters, rules, sites))
+        for merge in group["merges"]:
+            print(f"  merged {merge['row']}: {merge['reason']}")
 
 def audit_summary(run):
     run = Path(run)
@@ -1708,7 +1743,7 @@ def cmd_check(args):
               f"next: consolidator uses {cmd('merge-packet', run)}")
     else:
         print_verdicts(run)
-        print("next: reply using report.json, coverage.md and discovery.md; ask for rulings")
+        print("next: recommend from report.json, coverage.md and discovery.md; continue authorized implementation under the project's coding workflow")
 
 def cmd_rule(args):
     run = Path(args.run)
