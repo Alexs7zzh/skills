@@ -67,10 +67,12 @@ Updates follow the latest skill content on the default branch. This repository d
 To make the skills in this workspace available to Codex or Claude Code on the current machine, run:
 
 ```sh
-./scripts/sync-skills.sh
+./scripts/sync-skills.sh --install-hooks
 ```
 
-This links the maintained skills into `~/.agents/skills/` and `~/.claude/skills/`. The script accepts another source directory as its first argument. It adds missing links and removes broken links that it previously created.
+This links the maintained skills into `~/.agents/skills/` and `~/.claude/skills/` and installs Git hooks for this checkout. New skills are linked automatically after a pull (merge or rebase), checkout, or rebase. Existing hooks are preserved; if one conflicts, setup stops and tells you where to call the sync hook from it. Run setup once on each machine after cloning.
+
+For a one-time sync without installing hooks, run `./scripts/sync-skills.sh`. It also accepts another source directory as its first argument. It adds missing links and removes managed links whose target is gone or hidden.
 
 ### Retire a skill variant
 
