@@ -1,6 +1,6 @@
 # Design failure evidence
 
-Read when adding or judging logs, file-loading failures, or retry and recovery behavior. Apply the questions to the affected flow. Answer them in the existing design, proposal or review note; they do not require a separate document. Use the project's severity and monitoring policy.
+Read when adding or judging logs, or examining failure evidence, file-loading failures, or retry and recovery behavior. For diagnosis, use [diagnosis.md](./diagnosis.md) for assessment and response selection. Apply the questions to the affected flow. Answer them in the existing design, proposal or review note; they do not require a separate document. Use the project's severity and monitoring policy.
 
 ## Choose the unit
 
@@ -19,7 +19,7 @@ For an ordinary log that reports no failure or recovery, answer only who uses it
 | What reaches engineering? | The primary report and its destination, actual severity/filter path, retained cause and target, and the decision its fields enable. Name earlier reports that already cover it. |
 | What is accepted? | The exact expected reasons and fallback under product policy. Keep unknown reasons distinct. An expected trigger does not prove correct recovery. |
 
-Missing user identity is a provenance question. Check build target, startup timing, when identity is attached and possible test producers before claiming player impact or test origin. State unknown provenance as unknown.
+If missing identity affects the interpretation, apply diagnosis.md's User loss provenance check.
 
 ## Follow a file through completion
 
@@ -30,7 +30,7 @@ For file loading and derived assets, trace the stages that participate: identify
 - Preserve the distinctions that change handling or engineering action: network, response status, local storage, invalid content, decoder/provider, publication and stale or cancelled work. Map at the owner with the facts, not by downstream string matching.
 - Check which earlier owner already reports the cause. A caller adds target or outcome evidence when needed; it does not promote a known local reason merely because the final operation failed.
 - State what remains visible after failure: the old image, fallback, empty view or unavailable capability. Check which owner settles the request and releases resources on each exit.
-- For shared files, establish the effective path and its writers before adding observations of collisions or deletion failures. A unique extra output does not establish that the default output is unique.
+- For shared files, apply diagnosis.md's Evidence prerequisite before adding observations of collisions or deletion failures. A unique extra output does not establish that the default output is unique.
 
 For a thumbnail loaded without automatic retry, the operation can own one terminal result. It does not need a new episode recorder solely because it has several stages.
 

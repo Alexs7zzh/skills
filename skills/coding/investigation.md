@@ -9,7 +9,7 @@ SKILL.md's Read for the work applies before this method. Read [evidence.md](./ev
 Identify the requested outcome, target version and environment. Retain the Contract: required behavior and its source, applicable rulings and exceptions, and the consumer where the consequence occurs, following SKILL.md's Authority and judgment. Keep unresolved assumptions explicit.
 
 - **Review:** identify the code or diff and existing local changes. Cover the requested scope and the callers, owners or contracts it affects. Do not turn an unrelated pre-existing style concern into requested work. Unchanged code matters when the change depends on it or makes it a new sole path or boundary.
-- **Diagnosis:** retain the symptom, expected experience, original traces and reproduction conditions. Group reports by mechanism or behavior, not just their arrival format. A captured telemetry row establishes an observation, not that a local patch corrected the shipped behavior.
+- **Diagnosis:** use [diagnosis.md](./diagnosis.md) for the shared assessment and response selection. Retain the symptom, expected experience, original traces and reproduction conditions. Group reports by mechanism or behavior, not just their arrival format. A captured telemetry row establishes an observation, not that a local patch corrected the shipped behavior.
 - **Feature or change:** identify acceptance scenarios, including affected failure outcomes. Investigate the design questions that remain; do not invent a defect or a sequence of hypotheses when the requirement is settled.
 
 Keep one evolving note from the start. Its current understanding, evidence pointers and next question should let another reader continue without repeating discovery.
@@ -24,18 +24,9 @@ Keep one evolving note from the start. Its current understanding, evidence point
 
 These steps can overlap. A known cause need not be rediscovered; a failing test is not mandatory for every kind of change. Preserve interrupted or partial evidence without calling it completion. Batch independent checks on stable inputs; a check whose design depends on an earlier result belongs after that result is read.
 
-For each harmful recurring field failure, examine whether the project's detection or recovery policy should have exposed it and whether it did. If the evidence does not yet support a causal repair, inspect bounded containment and observability changes at owned seams. A probe earns implementation only when it names the exact signal and consumer, distinguishes live alternatives, and states which later decision each result changes. "Need more evidence" is a question, not a terminal disposition: name how to obtain it, or explain why no safe owned seam can produce it. Do not add a detector or log that cannot change behavior or an engineering decision.
-
 ## Conclude and continue
 
-Account for the requested questions with supported outcomes or explicit gaps. For each material issue, report:
-
-- the affected client, server, library, platform or external boundary and who can change it;
-- the strongest causal account, counterevidence and confidence;
-- a direct repair, containment or recovery change, or a discriminating probe;
-- the candidate's concrete seam, expected decision value, cost or risk, and validation route.
-
-An intentionally unchanged outcome is complete only after examining plausible bounded repair, containment and observability seams and explaining why none can improve the user outcome or make the next decision more informed. External or third-party ownership does not by itself justify stopping when an owned boundary can detect, contain or explain the failure. A stopped, disproved, impossible or intentionally unchanged outcome is not a successful fix.
+Account for the requested questions with supported outcomes or explicit gaps. For diagnosis, apply diagnosis.md's completion criteria and retain its answers in the evolving note. For other work, report the affected boundary and owner, supported claims and counterevidence, and the candidate's outcome, cost or risk, and validation route. A stopped, disproved, impossible or intentionally unchanged outcome is not a successful fix.
 
 Further work needs a remaining uncertainty or uncovered obligation, not repeated clean passes or pass counts.
 

@@ -9,6 +9,7 @@ Each document owns one kind of decision:
 - good-code.md owns properties of code and conditional mechanism cues.
 - good-change.md owns design and change principles at every level, without selecting investigation or independent review.
 - review.md owns explicit review stages, record meanings and response selection; good-code.md owns the selection table. scripts/check_review.py owns record validation and its command interface.
+- diagnosis.md owns the shared diagnosis questions, response selection and completion criteria at every level. Its shared assessment includes the episode coverage criteria supplied to judges; logging.md owns the failure evidence design procedure.
 - investigation.md owns the explicitly selected deep method for reviews, diagnoses and changes; evidence.md owns its capture and working note; findings.md owns retained claims, decisions and continuity.
 - joint.md owns equal-investigator judgment, agreement, replacements, completion and runtime controls; ledger.md owns its recording, dispatch and checkout mechanics. No normal or solo deep route uses the database.
 - proposal.md owns the proposal's slots, the technical judge and the batch pause; handoff.md owns the owner-facing hand-off, its writer and its writing judge.
@@ -26,6 +27,7 @@ Settle the collaboration outcomes and evidence obligations before changing scrip
 
 For changes to failure ownership or outcome verification, use the bounded cases in [evals/failure-handling.md](evals/failure-handling.md).
 For changes to logging ownership, file finalization or recovery evidence, use [evals/logging.md](evals/logging.md).
+For changes to failure diagnosis, useful improvements or the judge's evidence discrimination, use [evals/diagnosis.md](evals/diagnosis.md). Inspect the investigator's first assessment and response selection before judge feedback, then test the exact proposal with the shared assessment in the judge packet.
 For changes to performance evidence interpretation, use the bounded cases in [evals/performance-diagnosis.md](evals/performance-diagnosis.md).
 For changes to authoritative state or capability dependencies, use the bounded cases in [evals/capability-dependencies.md](evals/capability-dependencies.md).
 For changes to responsibility boundaries, cohesion or dependency direction, use the bounded cases in [evals/architecture-boundaries.md](evals/architecture-boundaries.md).

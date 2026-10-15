@@ -13,7 +13,8 @@ For a specified mechanical or presentation edit, the target and relevant knowled
 |---|---|
 | Code implementation, review or diagnosis | [good-code.md](./good-code.md): Values and the relevant lenses; [good-change.md](./good-change.md): design and boundary judgment |
 | Explicit request to review code, a diff, branch, changeset, PR or uncommitted changes | [review.md](./review.md): selection, investigation and fresh verification |
-| Logs, file-loading failures, retry or recovery | [logging.md](./logging.md): operation and episode evidence, failure-stage checklist |
+| Diagnosis of a symptom, regression, crash, performance problem, error or warning | [diagnosis.md](./diagnosis.md): shared assessment and response selection |
+| Adding or judging logs, or examining failure evidence, file-loading failures, retry or recovery | [logging.md](./logging.md): operation and episode evidence |
 | C++ | [cpp.md](./cpp.md) |
 | Unreal Engine | [unreal.md](./unreal.md), plus cpp.md when the code is C++ |
 
@@ -37,13 +38,13 @@ State deep or joint when selected so the user can correct it. Normal work needs 
 
 ## Judged proposals
 
-When the user says `judged` or `with a judge`, or the workflow you are running names it, read [proposal.md](./proposal.md) before investigating. The investigator and fresh judge share its next-action standard. It composes with any level and does not change authority. `judge` in code, a filename or quoted material is not a selector.
+When the user says `judged` or `with a judge`, or the workflow you are running names it, read [proposal.md](./proposal.md) before investigating. The investigator and fresh judge use diagnosis.md's shared assessment; proposal.md owns the proposal and judgment loop. It composes with any level and does not change authority. `judge` in code, a filename or quoted material is not a selector.
 
 ## Normal work
 
 Read the target and applicable project instructions. Apply the guidance selected under Read for the work.
 
-For implementation, inspect the surrounding code and settle the applicable structural choices under good-change.md before editing. Implement the chosen boundary, then check the diff and requested behavior against its invariants. Explicit reviews follow review.md; for diagnosis, distinguish the cause from a hypothesis. An unresolved question calls for useful inspection or a focused check, not automatic promotion to deep.
+For implementation, inspect the surrounding code and settle the applicable structural choices under good-change.md before editing. Implement the chosen boundary, then check the diff and requested behavior against its invariants. Explicit reviews follow review.md; diagnoses follow diagnosis.md's assessment and response selection. An unresolved question calls for useful inspection or a focused check, not automatic promotion to deep.
 
 Check what is needed to establish the requested result. A one-line value change ordinarily needs the declaration and diff inspected, not a runtime setup or before-and-after screenshots. Run or render it when a real question about the result needs that observation. For a logic change, choose a relevant test or code argument; do not claim runtime behavior from an unexecuted check.
 

@@ -2,6 +2,8 @@
 
 Read when maintaining proposal.md. Use fresh contexts with the coding skill available and a disposable judge agent; never a production ledger or runtime.
 
+**Judge packet:** The judge section from proposal.md together with the Shared assessment section from diagnosis.md, exactly as proposal.md's Dispatch the judge names them. Wherever a check below sends the judge packet, it sends nothing else beyond the case text and the applicable owner rulings.
+
 ## Selection cases
 
 | User request | Expected |
@@ -15,12 +17,12 @@ Read when maintaining proposal.md. Use fresh contexts with the coding skill avai
 ## Workload checks
 
 - **Known cause:** a cluster whose stack and code path establish the cause and a small fix. Recommend fix now with the mechanism in Known; implement nothing before the batch decision. An edited checkout, or an issue recommended because it feels safer, fails.
-- **Unknown cause:** a cluster whose cause is open. The proposal names useful current operations or what blocks them; the judge's prompt holds only The judge section, the proposal and applicable owner rulings. A prompt containing a human hand-off, code, the note, a dispute appendix or an earlier verdict fails.
+- **Unknown cause:** a cluster whose cause is open. The proposal names useful current operations or what blocks them; the judge's prompt holds only the judge packet, the proposal and applicable owner rulings. A prompt containing a human hand-off, code, the note, a dispute appendix or an earlier verdict fails.
 - **Investigate now:** a cluster where a bounded reproduction or lookup would decide the fix. Recommend investigate now with the decision it changes; recommending an issue or a wait for the same work fails.
 - **Static review before capture:** a cluster whose export cannot name the incident's branch while an owned stage on the path violates the stated contract for the observed state. The proposal recommends fix now on that defect with files, changeset and stage verdicts in Known; recommending capture, or a Known without that inventory, fails. Given a capture recommendation whose Known lists no code read, the judge pushes back for static review.
 - **Owner-side alternative:** an accepted proposal changes a schema, while an unevaluated repair at the producer could avoid that migration. State the deciding question and send one fresh investigator the observation, recommendation, rulings and that question. Its comparison must use the owner evidence. A schema change alone, with the alternatives already evaluated, does not trigger this pass.
 - **Does not fit:** the fixture holds a frame that contradicts the proposed account. What does not fit names it and what it would change; leaving it out because the judge cannot evaluate it fails.
-- **Known-result check:** a proposal for one connection's 8-second replication wait, on a path every join uses, commits an engine fixture test that withholds and then delivers confirmation and expects convergence, while its Known already says static review found the handling correct. The judge pushes back: the test cannot fail as described, and the recovery question (did that client converge and stay usable, what would show it) was not asked. Accepting the test as the committed operation fails.
+- **Known-result check:** a proposal for one connection's 8-second replication wait, on a path every join uses, commits an engine fixture test that withholds and then delivers confirmation and expects convergence, while its Known already says static review found the handling correct. The judge pushes back: the test is redundant, because Known already settled the fact it would establish, so its result changes no decision, and the recovery question (did that client converge and stay usable, what would show it) was not asked. Accepting the test as the committed operation fails. The paired control is the same incident with a checked mechanism, a fix now and a fixture test that fails before the repair and passes after it: the judge accepts, and pushing back because the proposal predicts the pass fails. The runnable pair is J5 and J6 in [diagnosis-cases.md](./diagnosis-cases.md), keyed in [diagnosis.md](./diagnosis.md).
 - **Unobservable reopen:** a no-action proposal whose reopen condition is "measured join duration shows slowdowns" while the only duration field is a server log line at Log below the forwarding threshold. The judge pushes back for the forwarded signal, a diagnostic that would supply it, or explicit acceptance; accepting the condition as written fails.
 - **Existing issue:** a cluster matching an open tracker issue. Recommend existing issue applies, or update or reopen with the evidence that changes it; a duplicate issue fails.
 - **Project format:** the project defines an issue format without a counterevidence heading. The proposal still carries What does not fit under some heading; dropping it because the format lacks the heading fails.
@@ -35,7 +37,7 @@ Read when maintaining proposal.md. Use fresh contexts with the coding skill avai
 
 ## Judgment regression
 
-Send only The judge section from proposal.md and [the case packet](./proposal-cases.md) to fresh reviewer contexts. Never include this answer key or previous verdicts. Compare reasons, not just verdicts; verify every requested case ID returned. These compact cases test judgment, not full investigation or dispatch.
+Send only the judge packet and [the case packet](./proposal-cases.md) to fresh reviewer contexts. Never include this answer key or previous verdicts. Compare reasons, not just verdicts; verify every requested case ID returned. These compact cases test judgment, not full investigation or dispatch.
 
 | Case | Expected | Reason-level check |
 |---|---|---|
@@ -50,7 +52,7 @@ Also run a fresh investigator hand-off check with an earlier verdict and a rebut
 
 ## Writing regression
 
-Send only The judge section from proposal.md and [the writing case packet](./proposal-writing-cases.md) to fresh contexts, without this answer key. This checks the technical proposal opening; Hand-off production below checks the separate writer and writing judge. Check every ID and the reasons:
+Send only the judge packet and [the writing case packet](./proposal-writing-cases.md) to fresh contexts, without this answer key. This checks the technical proposal opening; Hand-off production below checks the separate writer and writing judge. Check every ID and the reasons:
 
 - **W1, original failure:** push back because the reader cannot identify what the modules, RVA or portable format mean, which observations are defects, and the proposal's useful limits. Do not invent vendor symbols or attribute the hangs.
 - **W2, unseen sibling:** push back because undefined phases/readiness hide the concrete receipt-delivery change despite useful technical evidence. Require a plain before-and-after, not a new architecture or investigation.
@@ -98,7 +100,7 @@ Judge the explanation without filling gaps from expertise. A correct detail only
 
 ## Outcome and actions
 
-Send The judge section and one case from [the outcome packet](./proposal-outcome-cases.md) to each fresh context, without this answer key. These check reasoning, not particular words or headings: judge substantive coverage of the six questions wherever a case places its answers, and accept a brief reason for an inapplicable question.
+Send the judge packet and one case from [the outcome packet](./proposal-outcome-cases.md) to each fresh context, without this answer key. These check reasoning, not particular words or headings: judge substantive coverage of the six questions wherever a case places its answers, and accept a brief reason for an inapplicable question.
 
 - **O1, expected-event demotion:** push back. Expected network loss does not justify broken recovery or false connected presentation; demotion leaves the required user outcome unmet.
 - **O2, retry delay sibling:** push back. Capacity rejection and its existing recovery are acceptable, but a slower retry needs a supported goal, benefit and latency tradeoff. Fewer warnings or a more conservative number supplies none. The logging response can be assessed separately.
