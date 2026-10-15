@@ -2,7 +2,7 @@
 
 Read when maintaining proposal.md. Use fresh contexts with the coding skill available and a disposable judge agent; never a production ledger or runtime.
 
-**Judge packet:** The judge section from proposal.md together with the Shared assessment section from diagnosis.md, exactly as proposal.md's Dispatch the judge names them. Wherever a check below sends the judge packet, it sends nothing else beyond the case text and the applicable owner rulings.
+**Judge packet:** Use the guidance and conditional inputs named in [proposal.md](../proposal.md), Dispatch the judge. Send them with the case proposal/text and applicable owner rulings, excluding the other material that section prohibits.
 
 ## Selection cases
 

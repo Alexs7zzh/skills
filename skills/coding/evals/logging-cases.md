@@ -21,3 +21,23 @@ An existing recorder opens on loss of usable video for the selected source. It r
 ## L5: ordinary successful startup log
 
 An existing local startup Info line reports the application build version. Support uses it to identify the installed build in an attached local log. It reports no failure or retry. Should this line gain an operation or episode recorder, impairment duration or recovery fields?
+
+## L6: removal evidence before a live kick
+
+A server removes departed participants from a voice room. Every successful removal emits a remote Warning with room, participant, request and timing. A client separately reports being kicked while it still wants that room. Most removals are expected; the successful-removal rows alone establish no harmed participant. The server already has a bounded participant record, but deletes it at departure. It can exit before a later client report arrives, and no cross-process context lookup currently exists. The proposal is to keep the warnings unchanged because a future kick might need attribution. Judge that proposal and the alternative of retaining context for attachment to the kick report. Specify what must be known before choosing; do not implement or investigate the product.
+
+## L7: departure without a callback
+
+A client stops receiving old-room audio and advances to the next world when a Leave callback misses its waiting budget. Shutdown may end the process without that callback. Two remote warnings describe the same timeout and summary. There is no measured successor impairment or established contract violation in the supplied evidence. The concern offered for keeping both warnings is that the service might retain a ghost participant. The client cannot inspect authoritative membership; the service owns membership and expiry, but its detection/reporting coverage has not been checked. Does the timeout establish trouble worth reporting, and which observer should report which concern? Distinguish missing evidence from a safe outcome.
+
+## L8: batch lease cleanup
+
+A worker finishes a batch and makes its result available. Its lease-release acknowledgment sometimes disappears during worker shutdown. The coordinator owns lease expiry and can observe whether an expired lease still consumes capacity. Worker logs currently forward each missing acknowledgment as a warning. The policy accepts an unacknowledged release if expiry frees capacity within one minute; capacity retained after that limit needs engineering action. The coordinator retains job, worker, lease identity, release attempts and expiry in bounded lease state. Design the report, trigger and retained context. Explain whether the worker's missing acknowledgment and the coordinator's retained capacity are the same claim.
+
+## L9: hidden invariant violation
+
+A service detects that the same reservation has been granted to two owners, violating its exclusivity contract. It fences the duplicate before either user sees a failure and then retries safely. The proposed logging change would wait for retries to exhaust or visible user impairment before reporting anything. Judge the trigger and owner. Does successful containment remove the need for engineering evidence?
+
+## L10: required independent success evidence
+
+A payment service records each successful transfer in a durable audit stream required for reconciliation. A browser records a separate actionable presentation failure if the receipt cannot be displayed. The browser can close before the service finishes, and the audit must survive it. The proposal is to suppress success records and retain them only in browser memory for attachment to receipt failures, on the grounds that related events should be combined. Judge the proposal and the reporting responsibilities.

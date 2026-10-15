@@ -9,17 +9,28 @@ Read when adding or judging logs, or examining failure evidence, file-loading fa
 - **Episode:** loss of a required capability until verified usable recovery or an explicit terminal ending. One voice connection can contain several episodes; each can contain several attempts.
 - **Session:** a named lifetime, such as an application process, login, world visit or connection. State which one. A session ID correlates events; it does not define an operation or prove recovery.
 
-For an ordinary log that reports no failure or recovery, answer only who uses it, what decision it supports and where it is delivered. The failure-specific rows below are inapplicable. For an affected failure or recovery flow, answer:
+For an ordinary informational log with its own purpose, answer only who uses it, what decision it supports and where it is delivered. The failure-specific rows below are inapplicable. A successful event retained only to explain a later failure belongs to that failure's evidence design. For an affected failure or recovery flow, answer:
 
 | Question | Required answer |
 | --- | --- |
 | What is the outcome? | The requested capability, target and observation that proves it usable. A completed download is not a displayed image; an accepted connection is not usable voice. |
+| What warrants a report? | For a failure report, the user impairment, violated system contract or unresolved failure classification, its supporting observation and the engineering action the evidence enables. Distinguish observed, suspected and unknown impact. A contract violation can warrant reporting before users notice; an internal timeout alone proves neither impairment nor a defect. |
+| When is reporting warranted? | The failure, state or duration boundary that makes the concern actionable under product policy. Capture context before it disappears. Emit failure reports at this boundary; use the retention and ownership checks below to justify earlier precursor emission. For temporary investigation evidence, name the unresolved decision and the condition for retiring the reporting. |
 | Where does evidence originate? | The stage that knows the native cause or decision, and the point where cleanup, another call or replacement state would destroy it. Capture there before deferring emission. |
-| Who owns the result? | The owner that combines stage outcomes and decides completion, recovery or deliberate absorption. Name what failures can happen before that owner exists. |
-| What reaches engineering? | The primary report and its destination, actual severity/filter path, retained cause and target, and the decision its fields enable. Name earlier reports that already cover it. |
+| Who owns the result? | The owner that can observe the reported concern and combine stage outcomes to decide completion, recovery or deliberate absorption. Name what failures can happen before that owner exists. |
+| What context survives until then? | The existing operation or entity state retaining the needed precursor facts, its identity, size bound and expiry or cleanup. Attach that context to the actionable report. Name any evidence lost before the reporting boundary. |
+| What reaches engineering? | The primary report and its destination, actual severity/filter path, retained cause and target, and the decision its fields enable. For separate reports, name the distinct decision or observation each supplies and why context on the primary report does not suffice. |
 | What is accepted? | The exact expected reasons and fallback under product policy. Keep unknown reasons distinct. An expected trigger does not prove correct recovery. |
 
 If missing identity affects the interpretation, apply diagnosis.md's User loss provenance check.
+
+## Retain context and report at the owner
+
+Prefer retaining precursor facts in existing bounded state and attaching them when trouble becomes actionable over emitting each fact for later correlation. Routine success, intermediate transitions and accepted waits need no remote failure report merely because they might explain a future incident. Before replacing an evidence stream, establish which coverage is still needed. Compare preserving that coverage with explicitly accepting its loss before choosing a replacement collector. If a new map or buffer is needed, justify its decision value, lifetime and cost against existing state; a logging change does not automatically need another recorder.
+
+Choose the reporting location from the claim. A client can observe its lost capability; an authoritative service can observe invalid membership or leaked resources. A missing client callback can follow disconnection or process exit and cannot establish persistent remote state. An observer's unknown result is neither confirmed success nor proof of a defect elsewhere. If the suspected problem is remote, identify an owner that can verify it and the condition that makes it actionable. If no observer can distinguish the alternatives, state that limit and the smallest check that would change the decision.
+
+When context and the failure are in different processes, check whether the reporting owner can obtain the retained context, including after disconnect or producer shutdown. A server-side map is useful only if it survives long enough and the relevant report can reach it. Prefer one combined report when these facts are available together. Keep separate correlated evidence when an independent concern, required audit, or demonstrated lifetime or delivery gap needs it. State the shared identity and coverage limits; matching identity and time alone do not prove causation. Avoid coupling product behavior or shutdown to diagnostic delivery.
 
 ## Follow a file through completion
 

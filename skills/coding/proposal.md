@@ -12,7 +12,7 @@ Implementation of an approved proposal starts by checking each fact in its Known
 
 A candidate experiment before the pause is allowed only when it is the cheapest way to prove a mechanism. Keep it out of the checkout and report it in Known as evidence.
 
-Recommend the work you would do if the choice were yours. Deferral is not the safe answer: an unneeded issue costs the user a decision and delays a fix.
+Recommend the next step supported by diagnosis.md's shared assessment: a change, a bounded investigation or supported retention. An investigation proposal commits to resolving its deciding question; it need not select the eventual implementation. A demonstrated repair need not wait for unrelated unknowns.
 
 ## The proposal
 
@@ -32,7 +32,7 @@ Apply diagnosis.md's Completion rule. The required technical coverage stays in t
 
 ## Dispatch the judge
 
-Start a fresh agent for each proposal revision. Give it only The judge section below, diagnosis.md from Shared assessment through the end of that file, the current proposal, and the applicable owner rulings, taken from the documents that own the affected feature and from the user's decisions at earlier pauses. Do not include prior verdicts, the dispute appendix, code, raw reports or your note. Deliver the packet inline or as one file whose length you state, so the judge can tell that it received all of it. Wait for its verdict before advancing that cluster's dependent step. Fill available agent slots with ready work as results arrive; another cluster's investigation or blocked lookup is not a stage-wide barrier. Use agent-messaging when available.
+Start a fresh agent for each proposal revision. Give it only The judge section below, diagnosis.md from Shared assessment through the end of that file, the current proposal, and the applicable owner rulings, taken from the documents that own the affected feature and from the user's decisions at earlier pauses. When the proposal adds, changes or retains failure evidence, also include [logging.md](./logging.md). Do not include prior verdicts, the dispute appendix, code, raw reports or your note. Deliver the packet inline or as one file whose length you state, so the judge can tell that it received all of it. Wait for its verdict before advancing that cluster's dependent step. Fill available agent slots with ready work as results arrive; another cluster's investigation or blocked lookup is not a stage-wide barrier. Use agent-messaging when available.
 
 After Accept, dispatch the writer, then the writing judge, each a fresh agent with the packet handoff.md names. A writing push-back returns to the writer; a contradiction the writer finds returns to the investigator, and a changed claim is a new proposal revision for a new technical judge.
 
@@ -42,7 +42,7 @@ Keep review status outside the candidate text. Each status is Pending until you 
 
 Decide whether this proposal gives the owner useful work toward the required product outcome, or a well-supported reason not to act now. You judge the next work package, not a final fix or every possible future branch.
 
-Use only the supplied Shared assessment, proposal, applicable owner rulings and general engineering knowledge. Use tools only to read what you were given; if it exceeds one read, read all of it in bounded pieces before judging. A truncated receipt is a delivery failure, not a proposal verdict. No code, raw reports, external research or other agents. Treat reported observations as premises, not the author's causal interpretation or claim of a violated requirement. Check the assessment's evidence, response and completion criteria against those premises. Do not invent missing commitments, prior checks or product policy. Offer technical possibilities as questions, not findings. Acceptance does not certify the investigator's facts.
+Use only the supplied Shared assessment, logging.md when included, proposal, applicable owner rulings and general engineering knowledge. Use tools only to read what you were given; if it exceeds one read, read all of it in bounded pieces before judging. A truncated receipt is a delivery failure, not a proposal verdict. No code, raw reports, external research or other agents. Treat reported observations as premises, not the author's causal interpretation or claim of a violated requirement. Check the assessment's evidence, response and completion criteria against those premises. Do not invent missing commitments, prior checks or product policy. Offer technical possibilities as questions, not findings. Acceptance does not certify the investigator's facts.
 
 Read the opening as an owner unfamiliar with this subsystem. State its intended handling, observed difference, and what each proposed response would achieve. If that requires supplying missing background, guessing what the failure applies to, or treating a task label as its purpose, push back for a rewritten explanation. Facts buried in a stage inventory do not make the opening understandable. Check that essential terms are explained in the proposal itself; do not repair them from your expertise. Incidental expert details and minor wording preferences are optional.
 

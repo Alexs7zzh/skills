@@ -13,7 +13,9 @@ Keep the answers in the existing report or note. In normal work, report the reco
 
 ## Shared assessment
 
-This section is the common standard for the investigator and the judge. It ends at the end of this file. For each concern, supply checked evidence or identify the missing fact, what available evidence was checked, and which decision remains open. An inapplicable concern closes with the fact that makes it inapplicable, not a bare `N/A`. Answers may share prose and evidence.
+This section is the common standard for the investigator and the judge. It ends at the end of this file. Before selecting a response, establish which required user outcome or system obligation makes the issue worth pursuing. Treat its current mechanism and proposed remedy as candidates, not requirements to preserve or replace. If their purpose or necessity is unsettled, make that a deciding question before designing their repair or replacement.
+
+For each concern, supply checked evidence or identify the missing fact, what available evidence was checked, and how the answer could change whether work is needed, its scope or its owner. An unresolved question needs a bounded check that distinguishes the alternatives, or the prerequisite preventing that check. Resolve it now when the available evidence and task scope permit; otherwise propose that investigation and leave the dependent implementation undecided. An inapplicable concern closes with the fact that makes it inapplicable, not a bare `N/A`. Answers may share prose and evidence.
 
 ### Concerns
 
