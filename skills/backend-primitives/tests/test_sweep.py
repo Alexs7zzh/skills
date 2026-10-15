@@ -96,6 +96,19 @@ class SweepTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
+    def run_rulings(self):
+        return json.loads((self.run_dir / "rulings.json").read_text())["rulings"]
+
+    def defect_ready(self):
+        self.mapped(); rows = self.verdicts()
+        jsonl(self.run_dir / "merges.jsonl", [])
+        run("check", self.run_dir, "--stage", "merges")
+        return next(r for r in rows if r["finding"] == "defect")
+
+    def ruled(self, decision="reject", *extra):
+        target = self.defect_ready()
+        return run("rule", self.run_dir, "--decision", decision, "--verdicts", target["id"], "--reason", "fixture decision", *extra)
+
     def sites(self):
         return sweep.sites_of(self.run_dir)
 
@@ -192,8 +205,9 @@ class SweepTest(unittest.TestCase):
         self.assertTrue(group["decision"])
         self.assertIn(defect, group["members"])
         run("rule", self.run_dir, "--decision", "accept", "--verdicts", target["id"], "--reason", "fixture")
-        stored = json.loads((self.root / sweep.RULINGS_NAME).read_text())["rulings"]
+        stored = self.run_rulings()
         self.assertEqual(len(stored), 2)
+        self.assertFalse((self.root / sweep.RULINGS_NAME).exists())
         run("map", self.run_dir)
         self.assertTrue(any("not implementation evidence" in s.get("user", "") for c in self.clusters().values() for s in c["sites"]))
 
@@ -538,20 +552,95 @@ class SweepTest(unittest.TestCase):
         effective, _ = sweep.merged_answers(self.run_dir, self.sites())
         self.assertEqual(effective[sid]["answers"][item["question"]]["a"], "yes")
 
-    def test_rejected_ruling_survives_unrelated_new_run(self):
-        self.mapped(); rows = self.verdicts()
-        jsonl(self.run_dir / "merges.jsonl", [])
-        run("check", self.run_dir, "--stage", "merges")
-        target = next(r for r in rows if r["finding"] == "defect")
-        run("rule", self.run_dir, "--decision", "reject", "--verdicts", target["id"], "--reason", "fixture decision")
+    def test_rejected_ruling_carries_only_into_runs_given_its_file(self):
+        self.ruled()
+        first = self.run_dir / "rulings.json"
         (self.root / "unrelated.txt").write_text("unrelated live edit")
         self.run_dir = self.tmp / "second-run"
         self.prepare(); self.audit(); run("map", self.run_dir)
+        # A new run, like a new session, starts without earlier rulings.
+        self.assertFalse(json.loads((self.run_dir / "clusters.json").read_text())["held"])
+        run("map", self.run_dir, "--rulings", first)
         data = json.loads((self.run_dir / "clusters.json").read_text())
         self.assertTrue(data["held"])
         self.assertTrue(all(x["decision"] == "reject" for x in data["held"]))
-        run("map", self.run_dir, "--include-held")
+        run("map", self.run_dir, "--rulings", first, "--include-held")
         self.assertFalse(json.loads((self.run_dir / "clusters.json").read_text())["held"])
+
+    def git(self, repo, *cmd):
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+        subprocess.run(["git", "-C", str(repo), *cmd], check=True, capture_output=True, env=env)
+
+    def test_rulings_stay_in_the_run_and_out_of_the_tracked_tree(self):
+        for cmd in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "fixture"]):
+            self.git(self.root, *cmd)
+        out = self.ruled()
+        self.assertIn(str(self.run_dir / "rulings.json"), out.stdout)
+        self.assertEqual(len(self.run_rulings()), 1)
+        self.assertFalse((self.run_dir / "rulings.json.partial").exists())
+        status = subprocess.run(["git", "-C", str(self.root), "status", "--porcelain"], capture_output=True, text=True)
+        self.assertEqual(status.stdout, "")
+
+    def test_unwritable_rulings_file_fails_with_one_line(self):
+        locked = self.tmp / "locked"
+        locked.mkdir()
+        locked.chmod(0o500)
+        try:
+            target = self.defect_ready()
+            out = run("rule", self.run_dir, "--decision", "reject", "--verdicts", target["id"], "--reason", "fixture",
+                      "--rulings", locked / "rulings.json", ok=False)
+        finally:
+            locked.chmod(0o700)
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("cannot write rulings file", out.stderr)
+        self.assertNotIn("Traceback", out.stderr)
+
+    def test_unreadable_or_corrupt_rulings_file_fails_instead_of_reading_empty(self):
+        self.mapped()
+        locked = self.tmp / "locked"
+        locked.mkdir()
+        locked.chmod(0)
+        try:
+            out = run("map", self.run_dir, "--rulings", locked / "rulings.json", ok=False)
+        finally:
+            locked.chmod(0o700)
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("cannot read rulings file", out.stderr)
+        self.assertNotIn("Traceback", out.stderr)
+        (self.run_dir / "rulings.json").write_text('{"format": 2, "rul')
+        out = run("map", self.run_dir, ok=False)
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("is not valid JSON", out.stderr)
+        self.assertNotIn("Traceback", out.stderr)
+
+    def test_old_root_rulings_file_is_reported_and_not_read(self):
+        self.ruled()
+        (self.run_dir / "rulings.json").rename(self.root / sweep.RULINGS_NAME)
+        mapped = run("map", self.run_dir)
+        self.assertIn("is no longer read", mapped.stdout)
+        self.assertIn(f"copy it to {self.run_dir / 'rulings.json'}", mapped.stdout)
+        self.assertFalse(json.loads((self.run_dir / "clusters.json").read_text())["held"])
+        # Following the note keeps the old decisions without writing into the tracked tree.
+        shutil.copy(self.root / sweep.RULINGS_NAME, self.run_dir / "rulings.json")
+        run("map", self.run_dir)
+        self.assertTrue(json.loads((self.run_dir / "clusters.json").read_text())["held"])
+
+    def test_run_directory_inside_the_tracked_tree_is_refused(self):
+        mono = self.tmp / "mono"
+        shutil.copytree(self.root, mono / "packages" / "api")
+        for cmd in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "fixture"]):
+            self.git(mono, *cmd)
+        out = run("inventory", mono / "packages/api", "--run", mono / "sweep-run", ok=False)
+        self.assertIn("outside the target's tracked tree", out.stderr)
+        self.assertFalse((mono / "sweep-run").exists())
+
+    def test_custom_rulings_file_inside_target_is_refused(self):
+        target = self.defect_ready()
+        out = run("rule", self.run_dir, "--decision", "reject", "--verdicts", target["id"], "--reason", "fixture",
+                  "--rulings", self.root / "custom.json", ok=False)
+        self.assertIn("must be outside the target's tracked tree", out.stderr)
+        self.assertFalse((self.root / "custom.json").exists())
 
     def test_nested_workspace_dependencies_remain_citable(self):
         decl = self.root / "packages/api/node_modules/effect/Effect.d.ts"

@@ -24,10 +24,10 @@ usage:
                         [--rulings FILE] [--scope GLOB]
 
 Every command reads catalog.json in the skill directory and writes only inside
-RUN, except `rule`, which writes the rulings file. The rulings file defaults to
-backend-primitives.rulings.json at the target's root. A failing command prints
-one line per failure and exits 1. Each command's last line names the next
-step. Only the Python 3.9+ standard library.
+RUN, except `rule --rulings FILE`, which writes FILE. Rulings default to
+RUN/rulings.json, so they end with the run's scratch directory. A failing
+command prints one line per failure and exits 1. Each command's last line
+names the next step. Only the Python 3.9+ standard library.
 """
 import argparse
 import copy
@@ -46,6 +46,7 @@ from pathlib import Path
 
 SKILL = Path(__file__).resolve().parent.parent
 SCRIPT = Path(__file__).resolve()
+# The old tracked-tree location. It is no longer read; map and rule report it.
 RULINGS_NAME = "backend-primitives.rulings.json"
 ANSWER_TOKENS = ("yes", "no", "unknown", "n/a")
 LANES = ("defect", "primitive", "adopt")
@@ -213,8 +214,8 @@ def cmd_inventory(args):
     globs = args.paths.split(",") if args.paths else []
     live_root = root
     run = Path(args.run).resolve() if args.run else default_run_dir(root, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-    if run.resolve().is_relative_to(root):
-        die("run directory must be outside the target repository")
+    if run.resolve().is_relative_to(tracked_root(root)):
+        die("run directory must be outside the target's tracked tree")
     if run.exists() and any(run.iterdir()):
         die(f"{run} is not empty; choose a new run directory")
     root = snapshot_sources(live_root, run)
@@ -1154,8 +1155,45 @@ def evaluate(rule, answers):
     return state
 
 
+def live_root_of(run):
+    meta = run_meta(run)
+    return Path(meta.get("source_root", meta["root"]))
+
+
+def tracked_root(live_root):
+    """The git work tree containing the target, or the target itself without git."""
+    try:
+        out = subprocess.run(["git", "-C", str(live_root), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=10)
+        if out.returncode == 0 and out.stdout.strip():
+            return Path(out.stdout.strip()).resolve()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return Path(live_root).resolve()
+
+
 def rulings_path(run, given):
-    return Path(given) if given else Path(run_meta(run).get("source_root", run_meta(run)["root"])) / RULINGS_NAME
+    """Rulings are scratch for the session that made them, so they live with the run."""
+    if given:
+        return Path(given)
+    legacy = live_root_of(run) / RULINGS_NAME
+    if legacy.is_file():
+        print(f"note: {legacy} is no longer read; rulings now live in each run directory. "
+              f"To keep its decisions for this run, copy it to {Path(run) / 'rulings.json'} before recording "
+              "new rulings; otherwise delete it from the repository.")
+    return Path(run) / "rulings.json"
+
+
+def load_rulings_store(path):
+    # Read directly: Path.exists() reports False for an untraversable directory.
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"format": 2, "rulings": []}
+    except OSError as exc:
+        die(f"cannot read rulings file {path}: {exc.strerror}; ask the user to allow reads there")
+    except ValueError as exc:
+        die(f"rulings file {path} is not valid JSON ({exc}); repair or remove it")
 
 
 def ruling_effect(rulings, rule_id, site_path, identity=None):
@@ -1242,7 +1280,7 @@ def cmd_map(args):
         merged = {sid: row for sid, row in merged.items() if sid not in blocked}
     api = load_json(run / "api.json") if (run / "api.json").exists() else {"installed": None, "missing": {}}
     rpath = rulings_path(run, args.rulings)
-    rulings = load_json(rpath).get("rulings", []) if rpath.exists() else []
+    rulings = load_rulings_store(rpath).get("rulings", [])
     by_rule = {r["id"]: r for r in cat["rules"]}
     matches, held = {}, []
     for sid, row in sorted(merged.items()):
@@ -1766,10 +1804,10 @@ def cmd_rule(args):
     clusters = {c["id"]: c for c in require_mapping(run)["clusters"]}
     meta = run_meta(run)
     path = rulings_path(run, args.rulings)
-    live_root = Path(meta.get("source_root", meta["root"]))
-    if path.resolve().is_relative_to(live_root) and path.resolve() != live_root / RULINGS_NAME:
-        die("a custom rulings file must be outside the pinned repository; use the default file at the repository root")
-    store = load_json(path) if path.exists() else {"format": 2, "rulings": []}
+    tracked = tracked_root(live_root_of(run))
+    if args.rulings and path.resolve().is_relative_to(tracked):
+        die(f"a custom rulings file must be outside the target's tracked tree {tracked}; omit --rulings to use the run's file")
+    store = load_rulings_store(path)
     ids = list(dict.fromkeys(args.verdicts.split(",")))
     merges = [] if report.get("closed") else [m for _, m in load_merges(run, []) or []]
     ids += [m["row"] for m in merges if m["into"] in ids and m["row"] not in ids]
@@ -1788,8 +1826,14 @@ def cmd_rule(args):
             entry.update(policy=True, scope=args.scope)
         entries.append(entry)
     store["rulings"].extend(entries)
-    write_json(path, store)
-    print(f"{len(entries)} rulings written to {path}; decisions remain visible on later matches")
+    # Replace atomically so an interrupted write cannot leave a truncated store.
+    partial = path.with_name(path.name + ".partial")
+    try:
+        write_json(partial, store)
+        os.replace(partial, path)
+    except OSError as exc:
+        die(f"cannot write rulings file {path}: {exc.strerror}; ask the user to allow writes there")
+    print(f"{len(entries)} rulings written to {path}; decisions remain visible on later matches in this run")
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

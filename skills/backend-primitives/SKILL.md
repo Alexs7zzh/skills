@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Backend primitives
 
-Find the target repository, any narrowed paths or kinds, the rulings file and any model choices in the request. Run the assessment below before changing target code. A review-only request ends with recommendations. When the request includes adjustments or fixes, continue from the checked report into implementation under the project's coding workflow; that request already authorizes the work.
+Find the target repository, any narrowed paths or kinds, a custom rulings file and any model choices in the request. Run the assessment below before changing target code. A review-only request ends with recommendations. When the request includes adjustments or fixes, continue from the checked report into implementation under the project's coding workflow; that request already authorizes the work.
 
 ## Terms
 
@@ -20,7 +20,7 @@ Each term has one meaning in every file of this skill.
 - **Concept**: the remedy a rule points at, either a project primitive or an Effect API.
 - **Cluster**: one rule's matching sites, with an id such as `C03`. A site whose deciding answer is `unknown` is unresolved.
 - **Verdict**: a record with a finding, a remedy and a separate decision flag. judge.md owns their criteria.
-- **Ruling**: the user's accept, reject or defer on a verdict, kept in the rulings file.
+- **Ruling**: the user's accept, reject or defer on a verdict, kept in the run's rulings file.
 - **Run directory**: scratch for one sweep, outside the target repository. `inventory` creates it and prints its path.
 - **Script**: `scripts/sweep.py`. `python3 scripts/sweep.py --help` lists its commands. Each command's last line names the next step.
 
@@ -53,9 +53,9 @@ Use the user's model and effort choice for each role. When the user named none, 
 5. Record the pilot's decision with `pilot --assess --decision focus|expand|repair --reason <evidence>`. Default to `focus`: use `shard --owners <ids>` for owners and their contributing boundaries, or `--sites <ids>` for an explicitly selected set. Use unscoped `shard` for a requested exhaustive sweep. It appends only unassigned sites. A `repair` decision blocks expansion until reassessed.
 6. Before dispatching an expanded batch, apply the cost gate. If its shard count exceeds the user's limit, or 30 when none was set, ask for a narrower scope. Existing checked work remains usable; narrow the next selection instead of restarting the inventory.
 
-The default rulings file is `backend-primitives.rulings.json` at the repository root. A custom file must be outside the pinned repository. Pass its path with `--rulings` to both `map` and `rule`.
+`rule` writes `<run>/rulings.json` and `map` reads it, so rulings end with the run's scratch directory. To carry them into a later run in the same session, pass that file with `--rulings` to the later run's `map` and `rule`. A custom file must be outside the target's tracked tree. When `map` or `rule` notes an old `backend-primitives.rulings.json` at the target root, relay the note to the user. Do not move, merge or delete that file yourself. When `rule` cannot write its file, ask the user to allow writes to the printed path.
 
-Inventory copies source and configuration into `<run>/source`. Workers read that snapshot; live repository edits do not invalidate the run. Snapshot edits or skill bundle changes require a new inventory. Installed libraries are not frozen; judges recheck their cited defaults. Results describe the snapshot, so check live changes before implementing them. Old run formats require a new inventory. Legacy rulings without site identities remain available for reference but cannot suppress findings.
+Inventory copies source and configuration into `<run>/source`. Workers read that snapshot; live repository edits do not invalidate the run. Snapshot edits or skill bundle changes require a new inventory. Installed libraries are not frozen; judges recheck their cited defaults. Results describe the snapshot, so check live changes before implementing them. Old run formats require a new inventory. Rulings without site identities, from an older format, cannot suppress findings.
 
 ## 2. Answer
 

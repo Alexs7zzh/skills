@@ -15,7 +15,7 @@ This explicitly invoked skill separates the work:
 - A small pilot checks owners and exceptions before broad dispatch. Cheap agents then fill gaps at the selected sites, with citations.
 - The script maps the facts to defects, primitives and Effect concepts by a fixed rule table.
 - Strong agents audit every contradiction of a search hint and selected answers that exclude defect candidates. They then judge the remaining clusters. Sampling leaves an explicit unaudited remainder.
-- Judges recommend which changes to pursue, explain their behavior and regression risks, and carry unfinished work forward. The user decides unsettled product tradeoffs; those rulings persist across runs.
+- Judges recommend which changes to pursue, explain their behavior and regression risks, and carry unfinished work forward. The user decides unsettled product tradeoffs; the run keeps those rulings so the same question is not asked again during that work.
 
 Effect is the preferred way to build the mechanics: schedules, timeouts, typed errors, schemas, layers. The skill's goal is the primitives, not a count of Effect calls.
 
@@ -36,9 +36,9 @@ Effect is the preferred way to build the mechanics: schedules, timeouts, typed e
 - **Enforce boundaries in tooling.** Where a fact or rule can hold without agents, it should. Pattern searches supply positive evidence for an answerer to confirm or correct; a miss proves no absence. Examples: a lint rule that confines client imports to their adapter, and tsgo diagnostics that expose missed discovery sites.
 - **The installed version is the API truth.** Effect renamed much of its API between v3 and v4, and most published guidance is v3. Concept API names are checked against the installed declarations.
 - **Cheap models for facts, strong models for judgment.** The skill recommends model roles; the user decides them. Judges check facts at their citations, and a refuted answer is recorded against its question, so weak questions show up.
-- **Rulings are durable; observations expire.** A site ruling follows its source anchor and deciding facts across runs. Unrelated edits do not reopen it. Rejected and deferred work stays listed outside judging; acceptance does not prove implementation. An explicit broad policy is a separate choice.
+- **Rulings are session scratch; observations expire.** `rule` stores rulings in the run directory, so they end with the run's scratch files and a new session starts without them. A later run in the same session can reuse them by passing that file. A shared ruling follows its source anchor and deciding facts across those runs; unrelated edits do not reopen it. Rulings save the user from answering again during the work and never become a project requirement. Rejected and deferred work stays listed outside judging; acceptance does not prove implementation. An explicit broad policy is a separate choice.
 - **Preserve independent work.** A run reviews a frozen source snapshot. Corrections reopen affected verdicts and their declared dependencies; independently supported verdicts survive. Shared client contracts are assessed once for the run, with distinct contracts named in the evidence.
-- **A bounded run still has a result.** Optional audit sampling has a known scope; repairing answers does not silently purchase another sample. Count correction rounds by judgment pass, not files. At a limit or a change in priorities, a checked partial report retains current supported findings and names unresolved and unreviewed work. A cache is never a report.
+- **A bounded run still has a result.** Optional audit sampling has a known scope; repairing answers does not silently purchase another sample. Count correction rounds by judgment pass, not files. At a limit or a change in priorities, a checked partial report retains current supported findings and names unresolved and unreviewed work. A reuse cache is never a report.
 - **The script stays bounded.** It owns inventory, input integrity, shape checks, rule mapping, counts and rulings. Keep discovery in the standard library until a real target demonstrates a need for a parser.
 
 ## Maintenance
