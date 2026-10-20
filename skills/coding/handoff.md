@@ -8,7 +8,9 @@ The owner knows the product and decides what to approve. They have not read the 
 
 ## Shape
 
-Write these parts in this order, as short paragraphs. Use the project's labels when it supplies them; otherwise label each part with its bold name. Length is whatever the decision needs and nothing more. A one-line severity change needs a few sentences; a cause fix with an open attribution question needs more. Word count is not a goal in either direction: a block that runs long is usually keeping proposal content, and a block padded to fill every part of the shape is as bad. Most cases land between about 100 and 250 words after the occurrence and impact lines; treat that as a signal to recheck, not a rule.
+Give the hand-off a short title that names the action's nature and object; use it as the issue title when publishing. Use the project's agreed action kind or explicit verbs such as fix, investigate, add diagnostics, or keep local. A symptom-only title hides the proposal; tracker labels do not replace the words. State the same action plainly in the opening, before its supporting detail. Separate a functional repair from a reporting or evidence change; include both when both are recommended.
+
+Then write these parts in this order, as short paragraphs. Use the project's labels when it supplies them; otherwise label each part with its bold name. Length is whatever the decision needs and nothing more. A one-line severity change needs a few sentences; a cause fix with an open attribution question needs more. Word count is not a goal in either direction: a block that runs long is usually keeping proposal content, and a block padded to fill every part of the shape is as bad. Most cases land between about 100 and 250 words after the occurrence and impact lines; treat that as a signal to recheck, not a rule.
 
 - **What happened.** When it happens: the user action or system event. What the player or system loses, and what recovery, fallback or feedback follows. Whether the triggering condition and its handling are defective, expected under a stated policy, or still unclassified. If the owner would not otherwise know what the feature is doing, spend one or two sentences on the ordinary case before the failure. Counts go only where the project's occurrence and impact labels ask for them, and each of those labels is one line.
 - **Why our code is at fault.** For a demonstrated defect, explain what the code does and what it should do instead in one or two sentences. Name the mechanism in product words (the retry count, the message, the request, the cleanup job), not subsystem words (the resize driver, the failure boundary, the acknowledgement). Skip this part for correct handling or an intended policy change; explain the new goal in What to do.
@@ -48,7 +50,7 @@ A fresh context receives this file, the accepted technical proposal, the project
 - What happened, and how does the user fare?
 - When does it happen?
 - Is our code wrong, or is this correct handling or a policy choice?
-- What will change?
+- What action do the title and opening propose, and what will it change?
 - Why is that response worthwhile, including any material cost?
 - What will it leave unresolved or unchanged?
 
@@ -77,7 +79,7 @@ When the user asks to file the hand-off in a tracker, the issue is the hand-off 
 - **Mark what the proposal did not say.** A fact added from current source, an inferred alternative, or a constraint line written to meet this template is labeled as such in the agent part. The human part makes no new claim.
 - **Provenance, not sources.** End with one or two sentences naming the run, its window and both review verdicts. Not a list of files.
 - **Labels follow the project's rules.** Attach the priority its rubric supports from the case's counts and window. Attach a kind label only when the hand-off establishes a concrete failure. Never attach a readiness label an agent may not set.
-- **Existing issue applies.** When the proposal's recommendation is to update or reopen an existing issue, post a comment there in the same shape, opening with one line on what is new for that issue, and do not relabel or reopen it. A no-action case is not filed unless the user asks; its reopen signal belongs in the report.
+- **Existing issue applies.** When the proposal's recommendation is to update or reopen an existing issue, post a comment there in the same shape, opening with one line on what is new for that issue, and do not relabel or reopen it. An assessment that supports no change needs no issue unless the user asks. Forwarded-log triage uses diagnosis.md's response selection before reaching this publishing step.
 
 ## Example
 

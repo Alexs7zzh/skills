@@ -52,6 +52,26 @@ A pagination helper returns an empty final page when the item count is an exact 
 
 An issue proposes replacing a nightly catalog rebuild with continuous event processing because a background job sometimes retries for twenty minutes. The old catalog remains searchable throughout. The supplied evidence shows retry duration, but not the age of the served data, which edits were waiting, or whether a customer saw incorrect results. The freshness obligation and the reason for the nightly schedule have not been checked. Product requirements, the job's source and the consumer's catalog-selection logic are available to the next investigator, but are not included in this bounded packet. The owner asks for a proposal, not implementation. State what work should happen next and why; do not claim inspections of the unavailable files.
 
+## D9
+
+Triage recurring forwarded Error reports for an optional image preview. On each report the requested preview fails and a generic icon appears; the owner accepts that fallback. The current build still produces the report. Checked source covers request completion, fallback and the severity filter. The report says only `Preview request failed`, with target, build and time; it loses the HTTP status and native failure code before emission. The provider's documented status/code distinctions would select a provider investigation, a local request repair or accepted rejection. Those values are available in the completion callback and the existing forwarding path can retain them. No retained record can recover them for these incidents. The previous assessment said, "No action; handling is accepted. Keep monitoring and reopen if it happens again." Source access and a bounded reporting proposal are authorized; product edits are not.
+
+## D10
+
+Triage recurring forwarded warnings from a file importer. Checked current source rejects inputs over the intentional size cap, preserves the file and shows the approved size explanation. The exact local reason is `InputTooLarge`; the caller promotes it to Warning and engineering receives every occurrence. Unknown reasons and parser failures have separate Error reports. Producer severity can keep only this known reason local. There is no external provider or unresolved user loss. The owner asks what should happen next, not to change the import cap.
+
+## D11
+
+Review an importer's intentional size cap and explain whether its behavior needs changing. The supplied source check verifies preserved input, actionable feedback and successful smaller imports. Expected rejection already stays local; unknown reasons still reach engineering. There is no forwarded incident to triage. The owner requests assessment only, not new telemetry or a tracker issue.
+
+## D12
+
+Process incoming current-build terminal synchronization reports before new triage. An existing pending Diagnostics issue covers their exact signatures, which already appear in its temporary triage-ledger entry. Checked handling preserves unsent edits and accurately shows that synchronization failed. All useful source checks are complete; the native code is retained, but only the provider can identify its meaning for this account. That issue owns an open support request with the retained request ID. Its answer reaches the integration maintainer in the support tracker by Friday. The issue has a scheduled Friday review; if the response supplies a supported local correction, propose that repair; if it confirms an accepted temporary refusal, assess the reason-specific reporting change; if it is inconclusive or absent, escalate the support request with the retained sample and decide whether an owned reproduction can supply the missing distinction. No available evidence change or independent repair is currently justified. The owner permits collection until that review. The existing work and signatures are supplied facts, not a request to edit the tracker or ledger.
+
+## D13
+
+Triage newly received reports with the same message template as a closed retry bug. Every received row identifies build 410; the bug was repaired in build 412 and current source is build 415. Checked producer and recovery paths confirm the repair and deliberately retain the message for independent terminal failures. No build 412-or-newer affected incident is present. The triage ledger still has the closed issue's pending entry and template ignore. Rollout of build 415 finishes Thursday; the release owner reviews build-tagged reports then, escalates rollout if build 410 persists, and investigates any build 412-or-newer report against its actual source path. The owner asks for triage and ledger disposition, with no product or live tracker edits.
+
 # Judge inputs
 
 Judge each case independently under the supplied The judge section. Return its ID, verdict and essential reasons. Use the supplied facts and source descriptions as premises; do not research or inspect code.

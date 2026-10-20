@@ -98,6 +98,17 @@ Use fresh authors given only observations, checked source behavior, intended pro
 
 Judge the explanation without filling gaps from expertise. A correct detail only in the evidence appendix does not excuse its omission from the owner-facing situation or final summary. After a failed writing trial, repair the owning instruction and repeat in fresh contexts. Confirm the repaired behavior with a raw-observation/source trial so selected intermediate facts cannot manufacture the result. Keep trial packets and outputs outside the published skill; only stable cases and expected behavior belong here.
 
+## Action in the title and opening
+
+Use T1 through T4 in [proposal-writing-cases.md](./proposal-writing-cases.md) for fresh writer and writing-judge checks, withholding this answer key. These inputs cover the reported failure, a sibling, a near negative and an adequate existing text.
+
+- **T1, hidden reporting proposal:** the title and first sentence explicitly say improve hang diagnostics or the equivalent evidence action. Neither a symptom-only title nor "fix hangs" is accurate. The opening preserves that the change does not prevent hangs; no extra label or invented defect substitutes for the words.
+- **T2, suppression sibling:** use the supplied Suppress title kind, with the exact expected report as its object, and explain in the opening that it stays local. Preserve functioning playback and fallback. No claim of new format support or repaired playback.
+- **T3, functional near negative:** title and opening say restore reconnect or fix recovery with the consequence made clear. Calling an enum/classification change diagnostics-only fails because it restores behavior.
+- **T4, known-good assessment:** preserve the clear existing title/opening and supported no-change outcome without a forced Fix/Diagnostics/Suppress label or extra machinery. This is general assessment, not forwarded-log triage.
+
+For writing-judge controls, replace a correct T1 title with "Fix severe hangs" while leaving its diagnostic body intact, and separately with "Severe hang reports". Push back on the false or hidden action even though the body is adequate. A correct action title with a symptom-only opening also needs repair. A kind label attached outside the text does not cure either defect. The unmodified clear title and opening must pass without inventing a project taxonomy.
+
 ## Outcome and actions
 
 Send the judge packet and one case from [the outcome packet](./proposal-outcome-cases.md) to each fresh context, without this answer key. These check reasoning, not particular words or headings: judge substantive coverage of the six questions wherever a case places its answers, and accept a brief reason for an inapplicable question.
@@ -127,9 +138,10 @@ Use fresh contexts with facts and contemporary owner rulings, withholding later 
 - **Covered-recorder control:** the recorder opens at first impairment, covers startup and the early warning, and retains cause, attempts, duration and usable recovery or explicit terminal ending. Accept without mandatory further coverage work or a parallel stream.
 - **Cheaper ownership check:** a failed shared-file cleanup has both per-process output and a default output. Check effective paths and actual writers before proposing more collection; the unique extra path alone proves no isolation.
 
-For dispatch, execute the affected stage rather than ask what the model would do. Count actual agent spawns and record tool timestamps. Use the same accepted waiting packet in the old and new arms.
+For dispatch, execute the affected stage rather than ask what the model would do. Count actual agent spawns and record tool timestamps. Use the same pending-diagnostics packet in the old and new arms.
 
-- **Accepted wait:** reviewed handling and episode evidence are sufficient, delay/retry/feedback alternatives have been evaluated, and a forwarded terminal/prolonged event is the reopen signal. Preserve that signal and spawn no confirmatory second investigator.
+- **Existing pending diagnostics:** an open issue owns collection with exact signatures already in the temporary ledger. Its task names the pending data, consumer, bounded review and next action if data is missing or inconclusive. Filter those reports before new triage and continue the existing issue. No new Wait/no-action proposal, repeated investigation, confirmatory second investigator or permanent global exclusion. Closing the issue removes its pending entry and ignores.
+- **Mixed pending/new batch:** include that pending signature alongside a report with the same text whose new source/schema evidence lies outside the issue's scope. Filter only the covered input; dispatch the normal investigator, technical judge, writer and writing judge route for the new assessment. The batch accounts for both inputs, but the pending continuation gets no new proposal or judged hand-off. A general assessment-only input with no forwarded report still permits supported no change.
 - **Unresolved alternative:** a possible producer repair could avoid a schema migration and has not been evaluated. Dispatch one second investigator with the deciding question before the spawn; use its evidence to select the response.
 - **Clarification:** the user asks whether the known retained file and bounded comparison are the accepted next action. Answer from the accepted facts without a judge or writer round. A new material recommendation still needs review before a new owner decision.
 

@@ -37,3 +37,25 @@ Unknown: None affecting this disposition.
 What does not fit: None.
 Recommendation: No action: the intended limit and handling are verified; changing parser internals would not improve this outcome. Reopen on failure below the limit or a changed product requirement.
 Scope/risk: Preserve the supported limit and behavior.
+
+# Hand-off action inputs
+
+Use each T case independently for a fresh writer under handoff.md. Treat the accepted proposal as supplied evidence; do not inspect code or invent further work. Produce the owner-facing title and text. For a writing-judge trial, supply that same proposal and the exact produced hand-off, following handoff.md's reading order. Keep the answer key out of both packets.
+
+## T1
+
+Accepted proposal: severe-hang reports retain absolute addresses for some loaded binaries because the module lookup stops at a fixed count. Expand that lookup to the process's loaded modules so reports retain binary-relative offsets that can be compared between launches. The timing detector is correct; no cause of the hang is established and this change prevents no hang. This is engine evidence work. Unknown vendor symbols still limit names and source lines. The owner needs to decide whether to approve the diagnostic change. No project title taxonomy or tracker label is supplied.
+
+## T2
+
+Accepted proposal: the optional thumbnail importer correctly rejects an unsupported format, keeps video playback working and shows a generic icon. Its caller forwards the accepted local reason as an Error. Keep only that exact reason local by producer severity; preserve forwarded errors for unknown formats/classifications and actual playback failures. This changes reporting and no supported formats. No further diagnostic fields are needed. The project calls this response Suppress in titles; its label scheme supplies no additional action semantics.
+
+## T3
+
+Accepted proposal: after connection loss the client stores an unexpected-error value instead of the recognized disconnected value, so required reconnect never starts and the user remains stranded. Correct that classification so the existing reconnect runs. The proposed work restores behavior; it is not merely an evidence change. No incident attribution or unrelated logging work is proposed. No project title taxonomy is supplied.
+
+## T4
+
+Accepted proposal: the intentional CSV size cap is correct, preserves input, explains how to split it and keeps expected rejections local. The owner requested assessment, with no forwarded incident or remaining work.
+
+Existing hand-off: **Keep the supported CSV import limit.** Keep the current import limit and feedback. Oversized files are preserved, and customers can split them into smaller files. Checked handling already supplies the intended outcome; no change is recommended.
