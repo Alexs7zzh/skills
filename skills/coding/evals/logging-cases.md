@@ -41,3 +41,23 @@ A service detects that the same reservation has been granted to two owners, viol
 ## L10: required independent success evidence
 
 A payment service records each successful transfer in a durable audit stream required for reconciliation. A browser records a separate actionable presentation failure if the receipt cannot be displayed. The browser can close before the service finishes, and the audit must survive it. The proposal is to suppress success records and retain them only in browser memory for attachment to receipt failures, on the grounds that related events should be combined. Judge the proposal and the reporting responsibilities.
+
+## L11: ambiguous forwarded preview failure
+
+An optional preview falls back to the approved generic icon. Its current terminal Error says only `preview unavailable`; the callback has a native reason distinguishing an accepted unsupported input, a provider refusal and a malformed local request, but drops it before the completion owner reports. The owner already knows whether the fallback was presented. Source and delivery checks establish that the existing report can retain both results, and no retained row can recover the missing reason. Propose the useful reporting work now. Do not wait for additional identical rows or claim that accepting the icon classifies every failure. These are supplied checked premises; there are no other source files or live services to inspect in this bounded read-only case.
+
+## L12: automatic synchronization recovery
+
+Every retry forwards a Warning while a synchronizer tries to catch up a second device. Reconnecting transport alone does not establish caught-up documents. The completion owner has bounded state for first/changed causes, attempts, start time and a positive caught-up observation. Ordinary recovered transients are accepted. Recovery can remain pending indefinitely, but no maximum acceptable impairment has been agreed. Propose the reporting change, the unresolved policy choice and what happens after any prolonged boundary when catch-up later succeeds or the account is replaced. No numeric duration may be inferred from the retry count. The supplied source descriptions are checked premises; this case permits only a proposal.
+
+## L13: sample loss and a rare durable-write bug
+
+An optional live meter may discard noncritical samples under product policy, but the accepted loss amount has never been quantified. The owner can retain offered/lost sample counts and observation start/end times; every discard currently forwards an Error. Exceeding the eventual accepted loss limit will count as an engineering failure. Propose a concrete magnitude policy decision and its producer enforcement without inventing a numeric cutoff. Separately, one observed write acknowledged a durable user edit and then discarded it, violating the stated durability contract. Its cause is checked: the writer acknowledges before the durable commit succeeds. Assess both concerns; there are no other files or live services in this read-only fixture.
+
+## L14: accepted one-shot handling
+
+Assess an intentional one-shot import refusal. It preserves the file, displays the approved size explanation and records the exact expected reason locally. Unknown reasons still forward one self-sufficient Error. The operation does not retry and every branch settles. There is no missing deciding evidence, accepted-limit dispute or forwarded incident. Do not change code, telemetry or the tracker.
+
+## L15: existing voice availability boundary
+
+The product explicitly requires one prolonged Warning after 30 seconds of continuously unavailable client connection, including initial and in-flight waits, with the later outcome retained. Server startup measures from the first refused player mint request; the three-second construction observation is local, and known configuration/construction Errors are immediate. Ordinary recovered transients within policy stay local. Existing episode state tracks original/changed cause, attempts, continuous unavailability and verified usable listening. Audit a proposal to remove the 30-second report and wait for fleet counts to select a new threshold. Only these checked premises and the existing product ruling are available; no runtime or state writes are authorized.

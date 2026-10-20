@@ -24,9 +24,22 @@ For an ordinary informational log with its own purpose, answer only who uses it,
 
 If missing identity affects the interpretation, apply diagnosis.md's User loss provenance check.
 
+## Concrete reporting proposals
+
+For a forwarded failure, apply each matching row after checking the available source and retained evidence. These are conditional proposals, not a requirement to add telemetry to every assessment. A rare actionable bug still needs repair; neither a live call site nor a low count classifies an outcome as accepted. Do not propose waiting for more identical reports.
+
+| Checked condition | Propose this work |
+| --- | --- |
+| The error hides an action-changing cause or outcome | Retain the causal result before it disappears, and carry the relevant recovery or fallback outcome to the owner that decides completion. Reuse its report; name the distinction engineering can then decide. |
+| Automatic recovery forwards intermediate attempts | Move reporting to the episode decision below. Keep accepted attempts local; retain verified usability, failed recovery, any policy-defined failure-to-recover boundary and its later ending. |
+| Magnitude or loss determines whether attention is warranted | Propose the quantity, unit and observation window, product or measurement basis, code predicate, delivery and reset/rearm condition. A percentage needs its numerator and denominator. Enforce the agreed predicate before forwarding: accepted values stay quiet or local; a threshold defining engineering failure emits Error. Preserve feature-specific Warning boundaries for operational degradation. If no cutoff is supported, name that policy decision and how to settle it rather than inventing a number. Unknown classifications and contract violations bypass accepted-value filtering. |
+| The exact reason and its handling are already accepted | Encode that classification at the producer or completion owner and keep it local, preserving required feedback and still-actionable reasons. |
+
 ## Retain context and report at the owner
 
-Prefer retaining precursor facts in existing bounded state and attaching them when trouble becomes actionable over emitting each fact for later correlation. Routine success, intermediate transitions and accepted waits need no remote failure report merely because they might explain a future incident. Before replacing an evidence stream, establish which coverage is still needed. Compare preserving that coverage with explicitly accepting its loss before choosing a replacement collector. If a new map or buffer is needed, justify its decision value, lifetime and cost against existing state; a logging change does not automatically need another recorder.
+Prefer retaining precursor facts in existing bounded state and attaching them when trouble becomes actionable over emitting each fact for later correlation. Routine success, intermediate transitions and accepted waits need no remote failure report merely because they might explain a future incident.
+
+Before replacing a forwarded stream, identify its actionable coverage and establish the acceptance policy and replacement report/delivery. Preserve that coverage until the replacement is ready, then remove intermediate forwarding in the same change. An unset limit needs a bounded policy decision; it does not authorize interim demotion or require a new collector. Explicitly accepting less coverage is an owner policy choice with a stated cost. If a new map or buffer is needed, justify its decision value, lifetime and cost against existing state; a logging change does not automatically need another recorder.
 
 Choose the reporting location from the claim. A client can observe its lost capability; an authoritative service can observe invalid membership or leaked resources. A missing client callback can follow disconnection or process exit and cannot establish persistent remote state. An observer's unknown result is neither confirmed success nor proof of a defect elsewhere. If the suspected problem is remote, identify an owner that can verify it and the condition that makes it actionable. If no observer can distinguish the alternatives, state that limit and the smallest check that would change the decision.
 
@@ -55,11 +68,11 @@ Answer these questions before implementing the logging, or before accepting it i
 2. What observation closes it as recovered? Which endings mean exhaustion, cancellation, target replacement, departure or shutdown instead? A lost process or missing ending leaves the result unknown.
 3. Which owner retains the first and changed causes, attempts, start time, elapsed impairment and final outcome? State the bounded representation for changed causes and the clock's meaning.
 4. Which existing report carries those facts? Does its lifetime cover early failures, pending waits and teardown? Name any gap rather than adding a parallel stream by default.
-5. When does engineering need a report? Use a supported duration or state threshold for prolonged impairment. Keep ordinary recovered transients local unless monitoring policy needs them. Record terminal actionable failure once.
+5. When does engineering need a report? Define a policy-backed failure-to-recover boundary for a capability that can remain pending. Keep intermediate attempts local unless they establish an independently actionable failure. Record actionable failed recovery once; a retry or success callback does not decide usable recovery.
 6. If prolonged impairment is reported while recovery continues, how does the same owner later report recovery or termination? Waiting until session shutdown must not hide a permanently pending operation.
 7. What resets after recovery so a new failure is visible? What fences stale completions and keeps a target change from closing the successor's episode?
 
-Default outcome mapping: an ordinary recovery within the accepted limit stays local unless monitoring policy requires it; prolonged impairment emits a bounded report followed by its ending; actionable terminal failure emits one report. Observed cancellation or shutdown is a terminal non-recovered ending; an unobserved process loss or missing ending is unknown.
+Default outcome mapping: an ordinary verified recovery within the accepted limit stays local unless product policy requires an outcome report; prolonged impairment emits a bounded report followed by its verified recovery or terminal ending; actionable failed recovery emits one report. Observed cancellation or shutdown is a terminal non-recovered ending; an unobserved process loss or missing ending is unknown. Use the concrete reporting menu for an unset limit, and preserve an existing explicit product boundary rather than replacing it with a fleet-derived cutoff.
 
 Prefer a bounded outcome summary over a remote error for every expected attempt. A terminal invariant failure can require immediate reporting; explain that exception. A recovered episode still exceeds the product's loss limit when its measured duration does, so recovery alone is not a reason to discard it.
 
