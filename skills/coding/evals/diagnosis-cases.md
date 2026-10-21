@@ -72,6 +72,18 @@ Process incoming current-build terminal synchronization reports before new triag
 
 Triage newly received reports with the same message template as a closed retry bug. Every received row identifies build 410; the bug was repaired in build 412 and current source is build 415. Checked producer and recovery paths confirm the repair and deliberately retain the message for independent terminal failures. No build 412-or-newer affected incident is present. The triage ledger still has the closed issue's pending entry and template ignore. Rollout of build 415 finishes Thursday; the release owner reviews build-tagged reports then, escalates rollout if build 410 persists, and investigates any build 412-or-newer report against its actual source path. The owner asks for triage and ledger disposition, with no product or live tracker edits.
 
+## D14
+
+Triage a forwarded warning from a desktop client: an input device appeared after the provider reported an empty list. The line records a secondary operating-system device count only when that count ran during the same read. The proposal keeps the line local whenever the count did not report a device. Observed rows include counts that succeeded with zero, counts that failed, and counts that finished after the read window. Current source emits the line unchanged. One user in fourteen days.
+
+## D15
+
+A five-second preview deadline logs one warning for three producer states: the capture was never requested, the capture finished but its decode is pending, the decode finished but the presenting widget is still loading. The proposal adds "frames since request", read from the engine's global frame counter, and "viewport size" to tell "the viewport never drew" from "drew but slowly", and assigns "never drew" to the player's machine. The frame counter advances every engine tick whether or not the viewport draws; the size check catches only a zero-size gate. One row, one user.
+
+## D16
+
+A settings-file save fails with an operating-system sharing code, twice per attempt because the open is retried once. The proposal keeps the code local by code alone and names as its reopen condition "later reports show repeated failures". A later successful save heals the in-session state; a holder that persists through quit silently reverts the settings. No in-process holder check exists today; two other sharing codes are already kept local by code alone.
+
 # Judge inputs
 
 Judge each case independently under the supplied The judge section. Return its ID, verdict and essential reasons. Use the supplied facts and source descriptions as premises; do not research or inspect code.
