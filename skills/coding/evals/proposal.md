@@ -56,7 +56,7 @@ Send only the judge packet and [the writing case packet](./proposal-writing-case
 
 - **W1, original failure:** push back because the reader cannot identify what the modules, RVA or portable format mean, which observations are defects, and the proposal's useful limits. Do not invent vendor symbols or attribute the hangs.
 - **W2, unseen sibling:** push back because undefined phases/readiness hide the concrete receipt-delivery change despite useful technical evidence. Require a plain before-and-after, not a new architecture or investigation.
-- **W3, known-good rewrite:** accept the bounded evidence improvement; the before-and-after, address terms, missing-symbol limit and unchanged capture bounds are explicit. Do not require proving the hang cause to improve formatting.
+- **W3, known-good rewrite:** accept the bounded evidence improvement; the before-and-after, address terms, missing-symbol limit and unchanged capture bounds are explicit. Do not require proving the hang cause to improve formatting. The opening's direct comparison benefit is sufficient; format definitions, cost and detailed limits may follow in the technical sections. Do not apply the complete hand-off's reader questions to this shorter opening or invent a result-dependent decision for a checked reporting repair.
 - **W4, near negative:** accept verified intentional handling. Do not demand definitions of incidental expert terms or expand a concise brief into a fixed questionnaire.
 
 For the nearest realistic batch, inspect hand-offs and readable proposals separately: each identifies the problem and response, preserves consequential limits and links supporting evidence. A hand-off must not invent commitments or claim acceptance for a changed technical package.
@@ -75,6 +75,17 @@ Use fresh writer contexts given only handoff.md, one accepted technical proposal
 - **Delete, do not explain:** a push-back names one incidental undefined implementation qualifier. The revision deletes the sentence or qualifier; a revision that adds a definition, an inventory of unchanged behavior or a test plan fails.
 
 A writer that keeps the proposal's nouns in shorter sentences, or that keeps delete-list items, fails. A judge that fills a gap from its own expertise and accepts fails. A judge that pushes back on length alone fails.
+
+## Project-combined writing review
+
+Use C1 through C4 in [proposal-writing-cases.md](./proposal-writing-cases.md) in fresh author and judge contexts, without this answer key. Enter through the actual project workflow's handoff.md pointer. Check that both roles read that file and apply its criteria without adding separate writing roles. This is a writing-stage trial with supplied technical findings, not fresh source diagnosis or publication.
+
+- **C1, original failure class:** explain the player action, storage and transfer roles, unknown cause and source-only handling. State what the diagnostic result lets engineering decide, preserve Windows/privacy cost and leave upload repair and recovery unclaimed. The judge can explain that decision from the brief alone.
+- **C2, unseen background sibling:** leave user activity and observed consequence unknown. Preserve the previous list as a source fact, distinguish version evidence from proof of blame, and explain the two next actions without inventing an outage or functional repair.
+- **C3, near negative:** an accepted cancellation with working recovery needs only the justified reporting change. Do not invent a broken join, diagnostic collection, or subsystem glossary.
+- **C4, known-good:** preserve the adequate existing brief without expanding it to fill headings, counts or an architecture inventory. The judge accepts the reporting-only scope and its visibility cost.
+
+Give a fresh judge a C1 control that names only a generic storage response and promises “bounded transport cause” for a “classification decision,” with system roles and the result-dependent action present only in the technical findings. Require push-back on the missing decision explanation; the appendix cannot supply it. Separately check a brief that assigns the failure to AWS or claims recovered placements despite the unknowns. It fails fidelity even if its language is clear. These checks preserve the same writing standard across separate and combined roles; they do not measure a speed or quality gain over another model.
 
 ## Outcome grouping and proportional hand-off
 

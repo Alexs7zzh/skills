@@ -59,3 +59,29 @@ Accepted proposal: after connection loss the client stores an unexpected-error v
 Accepted proposal: the intentional CSV size cap is correct, preserves input, explains how to split it and keeps expected rejections local. The owner requested assessment, with no forwarded incident or remaining work.
 
 Existing hand-off: **Keep the supported CSV import limit.** Keep the current import limit and feedback. Oversized files are preserved, and customers can split them into smaller files. Checked handling already supplies the intended outcome; no change is recommended.
+
+# Project-combined hand-off inputs
+
+Use these at the writing stage of a project workflow that assigns drafting to the investigator and technical/writing judgment to one fresh judge. Supply that workflow's pointer to handoff.md, not a separate writing recipe. The supplied technical findings are premises for this stage, not evidence of a new investigation. Produce titles and human briefs without publishing. For judgment, read the brief before the technical findings. Keep the answer key out of both packets.
+
+## C1
+
+Checked findings: placing an imported image in an online world requires uploading its bytes to AWS S3 storage before creating the placement. Unreal's HTTP client performs the upload. Two Windows upload requests from one player in one session failed with a generic receive error and no HTTP response. The overlapping fourteen-day lookup found the same two requests. The native code alone cannot distinguish a recognized connection ending from a response-format or encrypted-connection problem. No historical cause is established. Current code returns the failure, preserves local bytes, cancels waiting placement previews, shows an upload-failed message and allows another explicit attempt. Player recovery was not observed. Existing reports omit finer native detail that is available before cleanup. The proposed small engine/project diagnostic carries a bounded, privacy-safe reason into the existing report. A recognized accepted connection ending could support a later decision to keep that outcome local; unexpected response or encrypted-connection evidence directs focused diagnosis, and unknowns retain engineering visibility. Existing secure-connection policy still applies; a security-related label alone does not prove a defect. The work requires Windows and privacy verification, adds no retry and repairs no upload. A project uses [Diagnostics] titles and paragraphs, with detailed evidence in a disclosure below the human brief.
+
+## C2
+
+Hypothetical checked findings: a periodic world-list refresh retains the previous usable list when it cannot read a reply. Three reports from two sessions contain ParseFailure but omit the reply's declared format version, which is available at failure. No active user action, distinct-user count, stale display or eventual recovery was observed. The proposed small client diagnostic retains that version without world contents. An unsupported version directs compatibility review; rejection of a supported version directs inspection of the reply and parser. The version does not by itself prove either side defective. Unknowns remain visible. No refresh repair, retry or backend change is proposed. The same project uses [Diagnostics] titles and paragraph briefs.
+
+## C3
+
+Hypothetical checked findings: explicit user cancellation of world joining returns to the world list, and another join works, established by source and a controlled check. Four reports from two sessions in one day concern that exact accepted cancellation. Move only its Error report to local logs; genuine failures and unknown results must still reach engineering. The work changes no joining behavior and gives up central visibility of these expected cancellations. The project uses [Suppress] titles and paragraph briefs. No further evidence collection or architecture explanation is proposed.
+
+## C4
+
+Hypothetical checked findings: an empty world name is correctly rejected, the previous name is preserved, the UI explains the missing name and the user can correct it. The exact expected validation result is unnecessarily forwarded as Error. Keep it local while retaining engineering reports for unknown failures. No change to rename behavior is proposed. The project uses [Suppress] titles and paragraph briefs.
+
+Existing hand-off:
+
+**[Suppress] Keep empty world names out of engineering errors**
+
+Leaving a world name empty is already rejected with an explanation, and the previous name stays intact. Keep this expected validation result in local logs so it no longer reaches engineering as an error. Preserve the explanation and the user's ability to enter another name; unknown failures must remain visible. This changes reporting only and gives up central visibility of this expected rejection.
